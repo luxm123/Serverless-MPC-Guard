@@ -2,6 +2,24 @@ import boto3
 import json
 import time
 import os
+from botocore.config import Config
+
+def get_lambda_client():
+    """
+    Returns a boto3 lambda client configured with adaptive retries
+    to handle 'Rate Exceeded' and throttling errors gracefully.
+    """
+    config = Config(
+        retries = {
+            'max_attempts': 10,
+            'mode': 'adaptive'
+        },
+        connect_timeout=10,
+        read_timeout=30
+    )
+    return boto3.client('lambda', 
+                       region_name=os.environ.get('AWS_REGION','us-east-1'),
+                       config=config)
 
 def find_state_machine_arn():
     sfn = boto3.client('stepfunctions', region_name=os.environ.get('AWS_REGION','us-east-1'))
