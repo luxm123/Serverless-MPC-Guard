@@ -1,0 +1,117 @@
+{
+  "StartAt": "Initialize",
+  "States": {
+    "Initialize": {
+      "Type": "Pass",
+      "Parameters": {
+        "requestId.$": "States.UUID()",
+        "task_name.$": "$.task_name",
+        "priority.$": "$.priority",
+        "metrics.$": "$.metrics",
+        "risk.$": "$.risk",
+        "wcp_mode.$": "$.wcp_mode",
+        "strategy.$": "$.strategy",
+        "enable_feedback.$": "$.enable_feedback"
+      },
+      "ResultPath": "$",
+      "Next": "Risk Scoring"
+    },
+    "Risk Scoring": {
+      "Type": "Pass",
+      "ResultPath": "$.risk_scoring",
+      "Parameters": {
+        "risk.$": "$.risk",
+        "note": "placeholder_risk_scoring"
+      },
+      "Next": "MPC Decide"
+    },
+    "MPC Decide": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "ResultPath": "$.mpc_result",
+      "Parameters": {
+        "FunctionName": "{{MPC_CONTROLLER_ARN}}",
+        "InvocationType": "RequestResponse",
+        "Payload": {
+          "requestId.$": "$.requestId",
+          "metrics.$": "$.metrics",
+          "wcp_mode.$": "$.wcp_mode",
+          "strategy.$": "$.strategy",
+          "enable_feedback.$": "$.enable_feedback",
+          "task": {
+            "priority.$": "$.priority",
+            "id.$": "$.requestId",
+            "risk.$": "$.risk"
+          }
+        }
+      },
+      "Next": "Choose Shedding"
+    },
+    "Choose Shedding": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.mpc_result.Payload.decision.shouldShed",
+          "BooleanEquals": true,
+          "Next": "Enqueue to Recovery Queue"
+        }
+      ],
+      "Default": "Execute Task"
+    },
+    "Execute Task": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "ResultPath": "$.executionResult",
+      "Parameters": {
+        "FunctionName": "{{BUSINESS_WORKER_ARN}}",
+        "InvocationType": "RequestResponse",
+        "Payload": {
+          "requestId.$": "$.requestId",
+          "task_name.$": "$.task_name",
+          "mode": "normal",
+          "risk.$": "$.risk",
+          "resource_alloc.$": "$.mpc_result.Payload.decision.resource_alloc"
+        }
+      },
+      "Next": "Report Metrics"
+    },
+    "Enqueue to Recovery Queue": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sqs:sendMessage",
+      "Parameters": {
+        "QueueUrl": "{{RECOVERY_QUEUE_URL}}",
+        "MessageBody": {
+          "task": {
+            "id.$": "$.requestId",
+            "priority.$": "$.priority"
+          },
+          "original_intent.$": "$.task_name",
+          "risk.$": "$.risk",
+          "reason": "MPC Shedding"
+        }
+      },
+      "ResultPath": "$.shedResult",
+      "Next": "Trigger Recovery Worker"
+    },
+    "Trigger Recovery Worker": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "{{RECOVERY_WORKER_ARN}}",
+        "InvocationType": "RequestResponse"
+      },
+      "ResultPath": "$.recoveryResult",
+      "Next": "Report Metrics"
+    },
+    "Report Metrics": {
+      "Type": "Pass",
+      "ResultPath": "$.workflowStatus",
+      "Parameters": {
+        "status": "OK",
+        "decision.$": "$.mpc_result.Payload.decision"
+      },
+      "End": true
+    }
+  },
+  "TimeoutSeconds": 300
+}
