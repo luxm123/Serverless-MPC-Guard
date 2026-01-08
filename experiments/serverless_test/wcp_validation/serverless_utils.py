@@ -75,7 +75,7 @@ def invoke_worker_lambda(decision, task, mode='auto', resource_alloc=None, **kwa
     resource_alloc: float override (optional)
     kwargs: Additional fields to merge into lambda payload (e.g. strategy, metrics)
     """
-    lmb = boto3.client('lambda', region_name=os.environ.get('AWS_REGION','us-east-1'))
+    lmb = get_lambda_client()
     name = os.environ.get('MPC_WORKER_NAME','MPC_BusinessWorker')
     
     # Worker expects resource_alloc at root or inside decision? 
