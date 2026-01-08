@@ -11,11 +11,11 @@ def get_lambda_client():
     """
     config = Config(
         retries = {
-            'max_attempts': 10,
+            'max_attempts': 50,
             'mode': 'adaptive'
         },
-        connect_timeout=10,
-        read_timeout=30
+        connect_timeout=15,
+        read_timeout=60
     )
     return boto3.client('lambda', 
                        region_name=os.environ.get('AWS_REGION','us-east-1'),
