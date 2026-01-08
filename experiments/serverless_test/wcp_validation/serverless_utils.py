@@ -29,7 +29,7 @@ def invoke_controller_lambda(payload, mode='strict', **kwargs):
     mode: 'baseline', 'simple', 'strict' (Passed in payload if supported by Lambda)
     kwargs: Additional fields to merge into lambda payload (e.g. strategy)
     """
-    lmb = boto3.client('lambda', region_name=os.environ.get('AWS_REGION','us-east-1'))
+    lmb = get_lambda_client()
     name = os.environ.get('MPC_CONTROLLER_NAME','MPC_Controller')
     
     # Construct Lambda payload
