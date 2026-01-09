@@ -8,6 +8,8 @@ sys.path.append(os.path.join(os.getcwd(), 'src'))
 from src.mpc.controller import MPCController
 from src.mpc.optimization import Optimizer
 from src.wcp.wcp_update import wcp_update
+from src.mpc.middleware import MPCMiddleware
+from src.mpc import middleware as middleware_mod
 
 def test_full_flow():
     controller = MPCController()
@@ -43,5 +45,45 @@ def test_full_flow():
     
     print("\nTest Passed!")
 
+def test_middleware_admission_priority_mapping():
+    middleware_mod._L1_CACHE['params'] = {
+        'bP': 2000.0,
+        'rls_states': {},
+        'shadow_price': 0.0,
+        'last_alloc': 1.0,
+        'optimizer_weights': {'w1': 1.0, 'w2': 0.5, 'w3': 5.0},
+        'gamma': 0.1,
+        'u_eta': 0.05,
+        'u_max_delta': 0.15,
+        'slo_limit': 1000.0,
+        'p90_belief': 100.0,
+        'pred_admit_enabled': True,
+        'admit_thr_platinum_ms': 50.0,
+        'admit_thr_gold_ms': 50.0,
+        'admit_thr_standard_ms': 50.0,
+        'queue_delay_model': 'backlog_linear',
+        'queue_backlog_ttl_s': 2.0,
+        'buffer_servers_default': 1.0,
+        'avg_service_ms': 100.0,
+    }
+    middleware_mod._L1_CACHE['version'] = 1
+    middleware_mod._L1_CACHE['last_sync'] = 1e12
+
+    mw = MPCMiddleware()
+
+    event = {
+        'metrics': {'p90': 100.0, 'queue_backlog': 10.0, 'concurrency': 1.0},
+        'task': {'id': 't_mw_1', 'priority': 'platinum'},
+        'slo_limit': 1000.0,
+    }
+    decision, dbg = mw.decide(event)
+
+    assert decision.get('shouldShed') is True
+    assert decision.get('tier') == 'platinum'
+    assert decision.get('queue_backlog_source') == 'metrics'
+    assert decision.get('pred_total_latency_ms', 0.0) > 0.0
+    assert decision.get('admit_threshold_ms', 0.0) == 50.0
+
 if __name__ == "__main__":
     test_full_flow()
+    test_middleware_admission_priority_mapping()

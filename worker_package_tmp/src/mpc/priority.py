@@ -224,7 +224,20 @@ class PriorityManager:
         bv = float(task.get('business_value', 0.5))
         # Consistency roughly maps to how stable/reliable we want this to be
         # We can map 'tier' to consistency requirement.
-        tier = task.get('tier', 'standard')
+        raw_tier = task.get('tier', None)
+        if raw_tier is None:
+            raw_tier = task.get('priority', None)
+        if raw_tier is None:
+            raw_tier = task.get('user_tier', None)
+        tier = str(raw_tier or 'standard').strip().lower()
+        if tier in ['critical', 'p0', 'p1']:
+            tier = 'platinum'
+        elif tier in ['high', 'p2']:
+            tier = 'gold'
+        elif tier in ['std', 'normal']:
+            tier = 'standard'
+        elif tier in ['low', 'background', 'bulk']:
+            tier = 'standard'
         
         cl_plat = 0.9
         cl_gold = 0.7

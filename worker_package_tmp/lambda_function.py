@@ -47,7 +47,18 @@ def lambda_handler(event, context):
             internal_decision, debug_info = _MIDDLEWARE.decide(event)
             # Override external decision
             decision = internal_decision
-            mpc_debug = debug_info
+            mpc_debug = debug_info or {}
+            mpc_debug.update(
+                {
+                    'resource_alloc': decision.get('resource_alloc', 1.0),
+                    'p90_prediction': decision.get('p90_prediction', 0.0),
+                    'uncertainty': decision.get('uncertainty', 0.0),
+                    'shouldShed': decision.get('shouldShed', False),
+                    'pred_queue_delay_ms': decision.get('pred_queue_delay_ms', 0.0),
+                    'queue_backlog': decision.get('queue_backlog', 0.0),
+                    'tier': decision.get('tier', None),
+                }
+            )
             # Inject alloc into event for penalty logic below
             event['resource_alloc'] = decision.get('resource_alloc', 1.0)
             print(f"[Integrated MPC] Alloc: {event['resource_alloc']:.2f}, Shed: {decision.get('shouldShed')}")

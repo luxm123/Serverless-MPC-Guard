@@ -21,6 +21,14 @@ class MPCController:
             'slo_limit': 500.0, 'slo_timeout_limit': 0.0, 'slo_error_limit': 0.0, 'slo_mem_limit': 0.8,
             'u_max_delta': 0.15, 'sched_price_high': 200.0, 'sched_price_med': 50.0, 'sched_price_low': 10.0,
             'sched_prio_high_thr': 0.8, 'sched_prio_med_thr': 0.4, 'sched_relax_factor': 1.2,
+            # Admission / buffer control
+            'pred_admit_enabled': True,
+            'admit_thr_platinum_ms': None,
+            'admit_thr_gold_ms': None,
+            'admit_thr_standard_ms': None,
+            'queue_delay_model': 'backlog_linear',
+            'queue_backlog_ttl_s': 2.0,
+            'buffer_servers_default': 1.0,
             # Optimizer thresholds
             'opt_w3_step_inc': 50.0, 'opt_w3_step_dec': 0.95, 'opt_w3_min': 5.0, 'opt_w3_max': 200.0,
             'opt_waste_stable_thr': 0.05, 'opt_waste_tense_thr': 0.2, 'opt_viol_tense_thr': 0.1,
@@ -54,6 +62,14 @@ class MPCController:
         for k, v in defaults.items():
             if k not in system_state:
                 system_state[k] = v
+
+        slo_limit_ms = float(system_state.get('slo_limit', 500.0))
+        if system_state.get('admit_thr_platinum_ms') is None:
+            system_state['admit_thr_platinum_ms'] = slo_limit_ms * 1.2
+        if system_state.get('admit_thr_gold_ms') is None:
+            system_state['admit_thr_gold_ms'] = slo_limit_ms * 1.0
+        if system_state.get('admit_thr_standard_ms') is None:
+            system_state['admit_thr_standard_ms'] = slo_limit_ms * 0.8
         
     def update_feedback(self, metrics, system_state):
         """Part III: Closed-loop parameter update"""
