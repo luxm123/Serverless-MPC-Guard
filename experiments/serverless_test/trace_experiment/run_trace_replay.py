@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import random
 import concurrent.futures
 import pandas as pd
 import numpy as np
@@ -12,8 +13,8 @@ from experiments.serverless_test.wcp_validation.serverless_utils import invoke_c
 
 class TraceReplayer:
     def __init__(self, trace_file="trace_data.csv", output_file="experiment_results.csv", thread_num=50):
-        self.trace_file = os.path.join(os.path.dirname(__file__), trace_file)
-        self.output_file = os.path.join(os.path.dirname(__file__), output_file)
+        self.trace_file = trace_file
+        self.output_file = output_file
         self.results = []
         self.thread_num = thread_num
 
@@ -149,11 +150,11 @@ class TraceReplayer:
         print("==========================\n")
 
 if __name__ == "__main__":
-    # 统一指定Trace文件路径和线程数
-    trace_path = "G:\\datasets\\processed\\clean_trace.csv"
+    # 统一指定Trace文件（相对路径，Windows/Linux双系统兼容）
+    trace_path = "./datasets/processed/clean_trace.csv"
     thread_count = 50
 
-    # 实例化Replayer并加载一次数据
+    # 实例化Replayer并加载一次数据，全局复用
     replayer = TraceReplayer(trace_file=trace_path, thread_num=thread_count)
     replayer.load_trace()
 
