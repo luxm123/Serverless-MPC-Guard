@@ -63,34 +63,49 @@ class TraceReplayer:
             time.sleep(wait_time)
 
         e2e_latency, slowdown, is_violation = 0.0, 0.0, False
-        success = True
         ideal_duration = row['duration']
+        controller_ok = True
+        worker_ok = True
 
         try:
             start_t = time.time()
-            # 1. 调用控制器获取调度决策
-            controller_resp = invoke_controller_lambda(payload, mode=wcp_mode)
-            decision = controller_resp.get('decision', {}) if controller_resp else {}
 
-            # 2. 使用决策调用工作函数
+            decision = {}
+            if strategy != 'baseline':
+                controller_resp = invoke_controller_lambda(payload, mode=wcp_mode, strategy=strategy)
+                if controller_resp and isinstance(controller_resp, dict):
+                    decision = controller_resp.get('decision', {}) or {}
+                else:
+                    controller_ok = False
+
             task_payload = {"task_name": f"TraceReq-{req_id}", "simulated_duration_ms": ideal_duration}
-            invoke_worker_lambda(decision, task_payload, mode='auto')
+            worker_result = invoke_worker_lambda(decision, task_payload, mode='auto', strategy=strategy)
+            if worker_result is None:
+                worker_ok = False
 
             end_t = time.time()
             e2e_latency = (end_t - start_t) * 1000.0
             slowdown = e2e_latency / max(1.0, ideal_duration)
-
-            # SLO违约判断：端到端延迟是否超过理想时长的2倍
-            is_violation = e2e_latency > (ideal_duration * 2.0)
+            is_violation = (not controller_ok) or (not worker_ok) or (e2e_latency > (ideal_duration * 2.0))
 
         except Exception as e:
-            success = False
+            controller_ok = False
+            worker_ok = False
+            is_violation = True
             print(f"[错误] 请求 {req_id} 失败: {str(e)}")
 
-        # 记录本次请求的结果
+        success = controller_ok and worker_ok
+
         self.results.append({
-            "req_id": req_id, "trace_duration": ideal_duration, "e2e_latency": e2e_latency,
-            "slowdown": slowdown, "slo_violation": is_violation, "strategy": strategy, "success": success
+            "req_id": req_id,
+            "trace_duration": ideal_duration,
+            "e2e_latency": e2e_latency,
+            "slowdown": slowdown,
+            "slo_violation": is_violation,
+            "strategy": strategy,
+            "controller_ok": controller_ok,
+            "worker_ok": worker_ok,
+            "success": success
         })
 
         if req_id % 50 == 0:  # 定期打印进度

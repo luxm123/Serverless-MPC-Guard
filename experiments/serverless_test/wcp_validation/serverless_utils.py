@@ -130,11 +130,16 @@ def invoke_worker_lambda(decision, task, mode='auto', resource_alloc=None, **kwa
         # For simplicity, we use client-side duration as a proxy for E2E latency.
         
         raw = resp['Payload'].read().decode('utf-8')
+
+        if 'FunctionError' in resp:
+            print(f"Worker Lambda Error: {raw}")
+            return None
+
         body = json.loads(raw)
-        
+
         return {
             'response': body,
-            'client_duration': (end_t - start_t) * 1000.0 # ms
+            'client_duration': (end_t - start_t) * 1000.0
         }
     except Exception as e:
         print(f"Worker invoke error: {e}")
