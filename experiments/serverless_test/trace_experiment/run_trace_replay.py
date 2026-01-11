@@ -1,137 +1,168 @@
-import pandas as pd
+import sys
 import os
+import time
+import concurrent.futures
+import pandas as pd
 import numpy as np
-import random
 
-def process_azure_trace(input_dir, output_file):
-    print(f'Processing Azure 2019 Trace (Lite Version) from {input_dir}...')
-    
-    if not os.path.exists(input_dir):
-        print(f'Error: Input directory {input_dir} not found!')
-        return
+# --- 动态路径设置 ---
+# 将项目根目录添加到系统路径，以便导入项目内模块（例如 `from src.utils import ...`）
+# 这种方式使得脚本在任何位置都能被正确执行
+try:
+    # 获取当前脚本的目录
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    # 从脚本目录向上回溯四层，找到项目根目录
+    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..', '..'))
+    if PROJECT_ROOT not in sys.path:
+        sys.path.append(PROJECT_ROOT)
+except NameError:
+    # 为Jupyter等交互式环境提供备用方案
+    PROJECT_ROOT = os.path.abspath('.')
+    if PROJECT_ROOT not in sys.path:
+        sys.path.append(PROJECT_ROOT)
 
-    # ==========================================
-    # 1. 配置：只处理必要的数据范围
-    # ==========================================
-    TARGET_DAY = 'd01'        # 只看第1天
-    MAX_FUNCTIONS = 200       # 只采样前200个函数（足够把单机打满）
-    MAX_MINUTES = 60          # 只取前60分钟（足够覆盖30分钟实验）
-    
-    # ==========================================
-    # 2. 读取元数据 (Duration & Memory)
-    # ==========================================
-    print("Loading metadata (Duration & Memory)...")
-    
-    # 读取 Duration (只保留必要的列)
-    duration_files = [f for f in os.listdir(input_dir) if f.startswith('function_durations_percentiles.anon')]
-    df_duration = pd.DataFrame()
-    for f in duration_files:
-        path = os.path.join(input_dir, f)
-        temp = pd.read_csv(path, usecols=['HashFunction', 'Average'])
-        df_duration = pd.concat([df_duration, temp], ignore_index=True)
-    df_duration.rename(columns={'Average': 'duration'}, inplace=True)
-    # 去重，防止同一个函数有多条记录
-    df_duration = df_duration.drop_duplicates(subset=['HashFunction'])
+# 假设的工具函数导入路径，在实际项目中，这些函数应放在共享模块中
+from experiments.serverless_test.wcp_validation.serverless_utils import invoke_controller_lambda, invoke_worker_lambda
 
-    # 读取 Memory
-    memory_files = [f for f in os.listdir(input_dir) if f.startswith('app_memory_percentiles.anon')]
-    df_memory = pd.DataFrame()
-    for f in memory_files:
-        path = os.path.join(input_dir, f)
-        temp = pd.read_csv(path, usecols=['HashApp', 'AverageAllocatedMb'])
-        df_memory = pd.concat([df_memory, temp], ignore_index=True)
-    df_memory.rename(columns={'AverageAllocatedMb': 'memory'}, inplace=True)
-    df_memory = df_memory.drop_duplicates(subset=['HashApp'])
 
-    # ==========================================
-    # 3. 读取调用链 (Invocations) - 核心优化点
-    # ==========================================
-    print(f"Loading invocations (Day {TARGET_DAY}, First {MAX_FUNCTIONS} funcs, First {MAX_MINUTES} mins)...")
-    
-    invoke_file = f"invocations_per_function_md.anon.{TARGET_DAY}.csv"
-    invoke_path = os.path.join(input_dir, invoke_file)
-    
-    if not os.path.exists(invoke_path):
-        print(f"Error: Target file {invoke_file} not found!")
-        return
+class TraceReplayer:
+    """
+    从CSV文件加载处理过的请求轨迹，并根据不同的策略重放负载，以测量系统性能。
+    """
+    def __init__(self, trace_file, output_dir, thread_num=50):
+        self.trace_file = trace_file
+        self.output_dir = output_dir
+        self.results = []
+        self.thread_num = thread_num
+        self.trace_data = []
 
-    # 关键优化：只读取前 N 行 (nrows=MAX_FUNCTIONS)
-    # 这样内存占用极低
-    df_invokes = pd.read_csv(invoke_path, nrows=MAX_FUNCTIONS)
-    
-    # ==========================================
-    # 4. 数据展开与打散 (Unroll & Jitter)
-    # ==========================================
-    final_records = []
-    
-    # 筛选出分钟列（列名为 '1', '2', ... '1440'）
-    # 只取前 MAX_MINUTES 列
-    minute_cols = [str(i) for i in range(1, MAX_MINUTES + 1) if str(i) in df_invokes.columns]
-    
-    print("Processing and unrolling data...")
-    
-    # 预处理元数据索引，加速查找
-    dur_map = df_duration.set_index('HashFunction')['duration'].to_dict()
-    mem_map = df_memory.set_index('HashApp')['memory'].to_dict()
+    def load_trace(self):
+        """从指定的CSV文件加载轨迹数据。"""
+        if not os.path.exists(self.trace_file):
+            print(f"[致命错误] 轨迹文件不存在: '{self.trace_file}'")
+            print("请确认文件路径是否正确。")
+            sys.exit(1)  # 如果数据文件缺失，则终止程序
 
-    for _, row in df_invokes.iterrows():
-        func_hash = row['HashFunction']
-        app_hash = row['HashApp']
-        
-        # 获取该函数的元数据
-        dur = dur_map.get(func_hash, 100)  # 默认 100ms
-        mem = mem_map.get(app_hash, 128)   # 默认 128MB
-        
-        # 遍历每一分钟
-        for col in minute_cols:
-            val = row[col]
-            if pd.isna(val):
-                continue
-            count = int(val)
-            if count == 0:
-                continue
-            
-            # 这一分钟的起始毫秒数
-            base_ms = (int(col) - 1) * 60 * 1000
-            
-            # 【重要】将 Count 转换为具体的时间戳
-            # 比如这一分钟调用了 5 次，我们随机分布这 5 次请求（泊松分布/均匀分布）
-            # 避免所有请求都在第 0 毫秒到达
-            for _ in range(count):
-                # 随机偏移量 0~59999ms
-                jitter = random.randint(0, 59999)
-                timestamp = base_ms + jitter
-                
-                final_records.append({
-                    'timestamp': timestamp,
-                    'duration': int(dur),
-                    'memory': int(mem)
-                })
+        print(f"[信息] 正在从 {self.trace_file} 加载轨迹...")
+        self.trace_data = pd.read_csv(self.trace_file).sort_values(by="timestamp").to_dict('records')
+        print(f"[信息] 已加载 {len(self.trace_data)} 个请求。")
 
-    # ==========================================
-    # 5. 保存结果
-    # ==========================================
-    if not final_records:
-        print("Warning: No records generated. Check if input data has invocations.")
-        return
+    def run_request(self, req_id, row, strategy, wcp_mode, start_exp):
+        """
+        执行单个请求。此函数由线程池并发调用。
+        """
+        payload = {
+            "metrics": {}, "priority": "standard", "risk": {},
+            "strategy": strategy, "wcp_mode": wcp_mode
+        }
 
-    df_final = pd.DataFrame(final_records)
-    # 按时间排序
-    df_final = df_final.sort_values(by='timestamp')
-    
-    out_dir = os.path.dirname(output_file)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-    
-    df_final.to_csv(output_file, index=False)
-    print(f'Saved cleaned data to {output_file}')
-    print(f'Total Requests: {len(df_final)}')
-    print(f'Time Range: 0 to {df_final["timestamp"].max() / 1000 / 60:.1f} minutes')
+        # 根据轨迹中的时间戳，等待并模拟请求的到达时间
+        target_time = start_exp + (row['timestamp'] / 1000.0)
+        wait_time = target_time - time.time()
+        if wait_time > 0:
+            time.sleep(wait_time)
 
-if __name__ == '__main__':
-    # ======================== 只改这里！只改这里！只改这里！========================
-    # 删掉Windows的G:\路径，替换成你的EC2上的真实绝对路径，这是你截图里的目录！
-    RAW_DIR = "/home/ec2-user/Serverless-MPC-Guard/datasets/raw"
-    OUTPUT_FILE = "/home/ec2-user/Serverless-MPC-Guard/datasets/processed/clean_trace.csv"
+        e2e_latency, slowdown, is_violation = 0.0, 0.0, False
+        success = True
+        ideal_duration = row['duration']
+
+        try:
+            start_t = time.time()
+            # 1. 调用控制器获取调度决策
+            controller_resp = invoke_controller_lambda(payload, mode=wcp_mode)
+            decision = controller_resp.get('decision', {}) if controller_resp else {}
+
+            # 2. 使用决策调用工作函数
+            task_payload = {"task_name": f"TraceReq-{req_id}", "simulated_duration_ms": ideal_duration}
+            invoke_worker_lambda(decision, task_payload, mode='auto')
+
+            end_t = time.time()
+            e2e_latency = (end_t - start_t) * 1000.0
+            slowdown = e2e_latency / max(1.0, ideal_duration)
+
+            # SLO违约判断：端到端延迟是否超过理想时长的2倍
+            is_violation = e2e_latency > (ideal_duration * 2.0)
+
+        except Exception as e:
+            success = False
+            print(f"[错误] 请求 {req_id} 失败: {str(e)}")
+
+        # 记录本次请求的结果
+        self.results.append({
+            "req_id": req_id, "trace_duration": ideal_duration, "e2e_latency": e2e_latency,
+            "slowdown": slowdown, "slo_violation": is_violation, "strategy": strategy, "success": success
+        })
+
+        if req_id % 50 == 0:  # 定期打印进度
+            print(f"[{strategy}] Req {req_id}: Ideal={ideal_duration}ms -> Actual={e2e_latency:.1f}ms (Slowdown={slowdown:.2f})")
+
+    def run_experiment(self, strategy, wcp_mode, output_filename):
+        """为给定的策略运行一次完整的实验。"""
+        print(f"\n>>> 开始实验: Strategy='{strategy}', Mode='{wcp_mode}', Threads={self.thread_num} <<<")
+        self.results = []  # 为新实验重置结果
+        start_exp = time.time()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_num) as executor:
+            futures = [executor.submit(self.run_request, i, row, strategy, wcp_mode, start_exp) for i, row in enumerate(self.trace_data)]
+            concurrent.futures.wait(futures)
+
+        output_path = os.path.join(self.output_dir, output_filename)
+        print(f">>> 实验结束. 正在保存结果到 {output_path}...")
+        pd.DataFrame(self.results).to_csv(output_path, index=False)
+        self.analyze_results(strategy)
+
+    def analyze_results(self, strategy):
+        """分析并打印实验结果摘要。"""
+        df = pd.DataFrame(self.results)
+        if df.empty:
+            print("[警告] 没有可供分析的结果。")
+            return
+
+        df_success = df[df['success'] == True]
+        total_reqs, success_reqs = len(df), len(df_success)
+        fail_rate = (total_reqs - success_reqs) / total_reqs * 100 if total_reqs > 0 else 0
+
+        print(f"\n=== '{strategy}' 策略实验摘要 ===")
+        print(f"总请求数: {total_reqs} | 成功: {success_reqs} | 失败率: {fail_rate:.2f}%")
+        if success_reqs > 0:
+            violation_rate = (df_success['slo_violation'].sum() / success_reqs) * 100
+            print(f"平均减速因子: {df_success['slowdown'].mean():.2f}")
+            print(f"P99 减速因子: {df_success['slowdown'].quantile(0.99):.2f}")
+            print(f"SLO 违约率: {violation_rate:.2f}%")
+        print("==============================\n")
+
+
+if __name__ == "__main__":
+    # --- 实验配置 ---
+    # 动态定位项目根目录并构建数据集的绝对路径
+    # 这种方法在任何机器（本地, EC2）上都能正常工作
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..', '..'))
+    TRACE_FILE_PATH = os.path.join(PROJECT_ROOT, 'datasets', 'processed', 'clean_trace.csv')
     
-    process_azure_trace(RAW_DIR, OUTPUT_FILE)
+    # 定义实验结果的保存目录
+    RESULTS_DIR = os.path.join(SCRIPT_DIR, 'results')
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+
+    THREAD_COUNT = 50  # 并发请求数
+
+    # --- 运行实验 ---
+    # 1. 初始化Replayer并加载一次数据
+    replayer = TraceReplayer(trace_file=TRACE_FILE_PATH, output_dir=RESULTS_DIR, thread_num=THREAD_COUNT)
+    replayer.load_trace()
+
+    # 2. 运行基线（Baseline）实验
+    replayer.run_experiment(
+        strategy='baseline',
+        wcp_mode='baseline',
+        output_filename='results_baseline.csv'
+    )
+
+    # 3. 运行你的MPC实验
+    replayer.run_experiment(
+        strategy='mpc',
+        wcp_mode='strict',
+        output_filename='results_mpc.csv'
+    )
+
+    print("所有实验已完成。")
