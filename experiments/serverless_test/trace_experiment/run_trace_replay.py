@@ -11,8 +11,8 @@ import numpy as np
 try:
     # 获取当前脚本的目录
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-    # 从脚本目录向上回溯四层，找到项目根目录
-    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..', '..'))
+    # 从脚本目录向上回溯三层，找到项目根目录 (trace_experiment -> serverless_test -> experiments -> Serverless-MPC-Guard)
+    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..'))
     if PROJECT_ROOT not in sys.path:
         sys.path.append(PROJECT_ROOT)
 except NameError:
@@ -135,9 +135,9 @@ class TraceReplayer:
 if __name__ == "__main__":
     # --- 实验配置 ---
     # 动态定位项目根目录并构建数据集的绝对路径
-    # 这种方法在任何机器（本地, EC2）上都能正常工作
+    # 修正：向上回溯3层即可到达 Serverless-MPC-Guard
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..', '..'))
+    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..', '..'))
     TRACE_FILE_PATH = os.path.join(PROJECT_ROOT, 'datasets', 'processed', 'clean_trace.csv')
     
     # 定义实验结果的保存目录
