@@ -129,8 +129,9 @@ def process_azure_trace(input_dir, output_file):
     print(f'Time Range: 0 to {df_final["timestamp"].max() / 1000 / 60:.1f} minutes')
 
 if __name__ == '__main__':
-    # 请确保这个路径是你存放原始大文件的位置
-    RAW_DIR = r"G:\datasets\raw\azurefunctions-dataset2019"
-    OUTPUT_FILE = r"G:\datasets\processed\clean_trace.csv"
+    # ======================== 只改这里！只改这里！只改这里！========================
+    # 删掉Windows的G:\路径，替换成你的EC2上的真实绝对路径，这是你截图里的目录！
+    RAW_DIR = "/home/ec2-user/Serverless-MPC-Guard/datasets/raw"
+    OUTPUT_FILE = "/home/ec2-user/Serverless-MPC-Guard/datasets/processed/clean_trace.csv"
     
     process_azure_trace(RAW_DIR, OUTPUT_FILE)
