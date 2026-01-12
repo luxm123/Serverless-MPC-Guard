@@ -202,15 +202,8 @@ def run_experiment_sequence(mode, steps=10, quiet=False):
             else:
                 raw_unc = float(unc_dict)
                 
-            # 3. Get Bounds
-            # In strict mode, wcp_bound (upper) is in meta
-            wcp_bound_upper = meta_data.get('wcp_bound', 0.0)
-            if wcp_bound_upper == 0.0:
-                # Fallback: pred + unc
-                wcp_bound_upper = pred + raw_unc
-            
-            p90_lower = pred - raw_unc # simple symmetric or 0
-            p90_upper = wcp_bound_upper
+            p90_lower = pred - raw_unc
+            p90_upper = pred + raw_unc
             
             # Infer prediction center for display
             pred_p90 = pred
@@ -219,7 +212,7 @@ def run_experiment_sequence(mode, steps=10, quiet=False):
             is_covered = (p90_lower <= m['p90'] <= p90_upper)
             effective_unc = raw_unc
             debug = result.get('wcp_debug', {})
-            mode_in_debug = debug.get('mode', 'unknown')
+            mode_in_debug = debug.get('mode', mode)
             
             step_data.update({
                 'pred': pred_p90,

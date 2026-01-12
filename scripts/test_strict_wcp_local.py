@@ -61,7 +61,10 @@ def test_strict_wcp():
                 print(f"{i:<5} | {metrics['p90']:<10.2f} | {prev_pred[0]:<10.2f} | {prev_unc:<12.2f} | {l1_score:<10.2f} | {is_covered}")
         
         # Store for next verification
-        state['last_uncertainty'] = uncertainty
+        if isinstance(uncertainty, dict):
+            state['last_uncertainty'] = float(uncertainty.get('p90', 0.0))
+        else:
+            state['last_uncertainty'] = float(uncertainty)
         
     # 4. Analyze Results
     coverage_rate = sum(coverages) / len(coverages) if coverages else 0.0

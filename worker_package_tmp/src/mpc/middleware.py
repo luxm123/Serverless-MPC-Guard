@@ -153,21 +153,6 @@ class MPCMiddleware:
                     backlog_source = 'default_cold'
         queue_backlog = float(queue_backlog or 0.0)
 
-        raw_tier = task.get('tier', None)
-        if raw_tier is None:
-            raw_tier = task.get('priority', None)
-        if raw_tier is None:
-            raw_tier = task.get('user_tier', None)
-        tier = str(raw_tier or 'standard').strip().lower()
-        if tier in ['critical', 'p0', 'p1']:
-            tier = 'platinum'
-        elif tier in ['high', 'p2']:
-            tier = 'gold'
-        elif tier in ['std', 'normal']:
-            tier = 'standard'
-        elif tier in ['low', 'background', 'bulk']:
-            tier = 'standard'
-
         unc_p90 = 0.0
         if isinstance(uncertainty, dict):
             unc_p90 = float(uncertainty.get('p90', 0.0) or 0.0)
@@ -207,24 +192,47 @@ class MPCMiddleware:
             'u_eta': state.get('u_eta', 0.05),
             'u_max_delta': state.get('u_max_delta', 0.15),
             'slo_limit': slo_limit_ms,
-            'pred_queue_delay_ms': queue_delay_ms
+            'pred_queue_delay_ms': queue_delay_ms,
+            'prio_cl_w_latency': state.get('prio_cl_w_latency', state.get('priority_weights', {}).get('prio_cl_w_latency', None)),
+            'prio_cl_w_risk': state.get('prio_cl_w_risk', state.get('priority_weights', {}).get('prio_cl_w_risk', None)),
+            'prio_cl_w_wait': state.get('prio_cl_w_wait', state.get('priority_weights', {}).get('prio_cl_w_wait', None)),
         }
+        system_state = {k: v for k, v in system_state.items() if v is not None}
+
+        priority_score, task_vec = self.controller.priority_mgr.calculate_priority(task, system_state)
+        try:
+            priority_score = float(priority_score)
+        except Exception:
+            priority_score = 0.5
+        if priority_score < 0.0:
+            priority_score = 0.0
+        if priority_score > 1.0:
+            priority_score = 1.0
 
         pred_admit_enabled = bool(state.get('pred_admit_enabled', True))
         if pred_admit_enabled:
             thr_platinum = float(state.get('admit_thr_platinum_ms', slo_limit_ms * 1.2) or (slo_limit_ms * 1.2))
             thr_gold = float(state.get('admit_thr_gold_ms', slo_limit_ms * 1.0) or (slo_limit_ms * 1.0))
             thr_standard = float(state.get('admit_thr_standard_ms', slo_limit_ms * 0.8) or (slo_limit_ms * 0.8))
-            tier_thr = thr_standard
-            if tier == 'platinum':
-                tier_thr = thr_platinum
-            elif tier == 'gold':
-                tier_thr = thr_gold
+            if priority_score >= 0.5:
+                t = (priority_score - 0.5) / 0.5
+                admit_thr = thr_gold + t * (thr_platinum - thr_gold)
+            else:
+                t = priority_score / 0.5
+                admit_thr = thr_standard + t * (thr_gold - thr_standard)
 
             pred_total_ms = float(pred_dict.get('p90', 0.0) or 0.0) + unc_p90 + queue_delay_ms
-            if pred_total_ms > tier_thr:
+            if pred_total_ms > admit_thr:
                 degrade_plan = "store_to_sqs"
-                if tier in ['platinum', 'gold']:
+                cl_val = None
+                try:
+                    if isinstance(task_vec, list) and len(task_vec) >= 2:
+                        cl_val = float(task_vec[1])
+                except Exception:
+                    cl_val = None
+                recovery_thr = float(state.get('admit_recovery_prio_thr', 0.5) or 0.5)
+                recovery_cl_thr = float(state.get('admit_recovery_cl_thr', 0.6) or 0.6)
+                if priority_score >= recovery_thr or (cl_val is not None and cl_val >= recovery_cl_thr):
                     degrade_plan = "store_to_sqs_recovery"
                 early_decision = {
                     'shouldShed': True,
@@ -234,20 +242,20 @@ class MPCMiddleware:
                     'uncertainty': uncertainty,
                     'pred_queue_delay_ms': queue_delay_ms,
                     'pred_total_latency_ms': pred_total_ms,
-                    'admit_threshold_ms': tier_thr,
+                    'admit_threshold_ms': admit_thr,
                     'queue_backlog': queue_backlog,
                     'queue_backlog_source': backlog_source,
-                    'tier': tier,
+                    'priority_score': priority_score,
                 }
                 dbg = debug_info or {}
                 dbg.update(
                     {
                         'pred_queue_delay_ms': queue_delay_ms,
                         'pred_total_latency_ms': pred_total_ms,
-                        'admit_threshold_ms': tier_thr,
+                        'admit_threshold_ms': admit_thr,
                         'queue_backlog': queue_backlog,
                         'queue_backlog_source': backlog_source,
-                        'tier': tier,
+                        'priority_score': priority_score,
                         'servers': servers,
                         'service_ms': eff_service_ms,
                         'queue_delay_model': queue_delay_model,
@@ -279,6 +287,15 @@ class MPCMiddleware:
             self._async_save_state(state, version)
 
         decision_out = result['decision']
+        thr_platinum = float(state.get('admit_thr_platinum_ms', slo_limit_ms * 1.2) or (slo_limit_ms * 1.2))
+        thr_gold = float(state.get('admit_thr_gold_ms', slo_limit_ms * 1.0) or (slo_limit_ms * 1.0))
+        thr_standard = float(state.get('admit_thr_standard_ms', slo_limit_ms * 0.8) or (slo_limit_ms * 0.8))
+        if priority_score >= 0.5:
+            t = (priority_score - 0.5) / 0.5
+            admit_thr = thr_gold + t * (thr_platinum - thr_gold)
+        else:
+            t = priority_score / 0.5
+            admit_thr = thr_standard + t * (thr_gold - thr_standard)
         internal_decision = {
             'shouldShed': bool(decision_out.get('should_shed', False)),
             'degrade_plan': decision_out.get('degrade_plan'),
@@ -287,18 +304,10 @@ class MPCMiddleware:
             'uncertainty': uncertainty,
             'pred_queue_delay_ms': queue_delay_ms,
             'pred_total_latency_ms': float(pred_dict.get('p90', 0.0) or 0.0) + unc_p90 + queue_delay_ms,
-            'admit_threshold_ms': (
-                float(state.get('admit_thr_platinum_ms', slo_limit_ms * 1.2) or (slo_limit_ms * 1.2))
-                if tier == 'platinum'
-                else (
-                    float(state.get('admit_thr_gold_ms', slo_limit_ms * 1.0) or (slo_limit_ms * 1.0))
-                    if tier == 'gold'
-                    else float(state.get('admit_thr_standard_ms', slo_limit_ms * 0.8) or (slo_limit_ms * 0.8))
-                )
-            ),
+            'admit_threshold_ms': admit_thr,
             'queue_backlog': queue_backlog,
             'queue_backlog_source': backlog_source,
-            'tier': tier,
+            'priority_score': priority_score,
         }
         dbg = debug_info or {}
         dbg.update(
@@ -306,7 +315,7 @@ class MPCMiddleware:
                 'pred_queue_delay_ms': queue_delay_ms,
                 'queue_backlog': queue_backlog,
                 'queue_backlog_source': backlog_source,
-                'tier': tier,
+                'priority_score': priority_score,
                 'servers': servers,
                 'service_ms': eff_service_ms,
                 'queue_delay_model': queue_delay_model,
@@ -383,6 +392,25 @@ class MPCMiddleware:
         self.controller.optimizer.w1 = weights.get('w1', 1.0)
         self.controller.optimizer.w2 = weights.get('w2', 0.5)
         self.controller.optimizer.w3 = weights.get('w3', 5.0)
+        pw = state.get('priority_weights', {})
+        try:
+            self.controller.priority_mgr.lambda1 = float(pw.get('lambda1', self.controller.priority_mgr.lambda1))
+        except Exception:
+            pass
+        try:
+            self.controller.priority_mgr.alpha = float(pw.get('alpha', self.controller.priority_mgr.alpha))
+        except Exception:
+            pass
+        try:
+            self.controller.priority_mgr.beta = float(pw.get('beta', self.controller.priority_mgr.beta))
+        except Exception:
+            pass
+        phi = pw.get('phi', None)
+        if isinstance(phi, list) and len(phi) == 2:
+            try:
+                self.controller.priority_mgr.phi = [float(phi[0]), float(phi[1])]
+            except Exception:
+                pass
         
     def _parse_dynamo_item(self, item):
         # ... (Simplified parser based on controller logic) ...
@@ -392,10 +420,29 @@ class MPCMiddleware:
         def get_float(m, k, default):
             try: return float(m.get(k, {}).get('N', default))
             except: return float(default)
+        def get_phi(m, k):
+            try:
+                l = m.get(k, {}).get('L', [])
+                if not l:
+                    return [0.6, 0.4]
+                return [float(x.get('N', '0.5')) for x in l]
+            except Exception:
+                return [0.6, 0.4]
             
         rls_states_json = item.get('rls_states', {}).get('S', '{}')
         try: rls_states = json.loads(rls_states_json)
         except: rls_states = {}
+
+        pr_map = item.get('priority_weights', {}).get('M', {})
+        priority_weights = {
+            'lambda1': get_float(pr_map, 'lambda1', 0.6),
+            'alpha': get_float(pr_map, 'alpha', 0.7),
+            'beta': get_float(pr_map, 'beta', 0.3),
+            'phi': get_phi(pr_map, 'phi'),
+            'prio_cl_w_latency': get_float(pr_map, 'prio_cl_w_latency', 0.45),
+            'prio_cl_w_risk': get_float(pr_map, 'prio_cl_w_risk', 0.35),
+            'prio_cl_w_wait': get_float(pr_map, 'prio_cl_w_wait', 0.20),
+        }
 
         return {
             'bP': get_float(params_map, 'bP', 2000.0),
@@ -404,6 +451,10 @@ class MPCMiddleware:
             'shadow_price': get_float(item, 'shadow_price', 0.0),
             'last_alloc': get_float(params_map, 'last_alloc', 1.0),
             'optimizer_weights': {'w1': 1.0, 'w2': 0.5, 'w3': 5.0}, # Defaults
+            'priority_weights': priority_weights,
+            'prio_cl_w_latency': priority_weights.get('prio_cl_w_latency', 0.45),
+            'prio_cl_w_risk': priority_weights.get('prio_cl_w_risk', 0.35),
+            'prio_cl_w_wait': priority_weights.get('prio_cl_w_wait', 0.20),
             'gamma': get_float(params_map, 'gamma', 0.1),
             'u_eta': get_float(params_map, 'u_eta', 0.05),
             'u_max_delta': get_float(params_map, 'u_max_delta', 0.15),
@@ -426,6 +477,18 @@ class MPCMiddleware:
             'shadow_price': 0.0,
             'last_alloc': 1.0,
             'optimizer_weights': {'w1': 1.0, 'w2': 0.5, 'w3': 5.0},
+            'priority_weights': {
+                'lambda1': 0.6,
+                'alpha': 0.7,
+                'beta': 0.3,
+                'phi': [0.6, 0.4],
+                'prio_cl_w_latency': 0.45,
+                'prio_cl_w_risk': 0.35,
+                'prio_cl_w_wait': 0.20,
+            },
+            'prio_cl_w_latency': 0.45,
+            'prio_cl_w_risk': 0.35,
+            'prio_cl_w_wait': 0.20,
             'gamma': 0.1,
             'u_eta': 0.05,
             'u_max_delta': 0.15,

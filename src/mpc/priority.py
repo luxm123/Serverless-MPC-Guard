@@ -1,4 +1,5 @@
 import math
+import time
 
 class PriorityManager:
     """
@@ -6,34 +7,37 @@ class PriorityManager:
     Logic: Hierarchical Evaluation + Subjective/Objective Weight Fusion
     """
     def __init__(self):
-        pass
+        self.lambda1 = 0.6
+        self.alpha = 0.7
+        self.beta = 0.3
+        self.phi = [0.6, 0.4]
 
     def update_params(self, metrics, state=None):
         """
         Adaptive Priority Parameter Tuning.
         """
-        # Defaults
-        lambda1 = 0.6
-        alpha = 0.7
-        beta = 0.3
-        phi = [0.6, 0.4]
+        local_state = state or {}
+        lambda1 = float(getattr(self, 'lambda1', 0.6))
+        beta = float(getattr(self, 'beta', 0.3))
+        alpha = 1.0 - beta
+        phi = list(getattr(self, 'phi', [0.6, 0.4]))
         
-        if state:
-            lambda1 = float(state.get('prio_lambda1', lambda1))
-            beta = float(state.get('prio_beta', beta))
-            # alpha is usually 1-beta
-            phi_raw = state.get('prio_phi', phi)
+        if local_state:
+            lambda1 = float(local_state.get('prio_lambda1', lambda1))
+            beta = float(local_state.get('prio_beta', beta))
+            alpha = 1.0 - beta
+            phi_raw = local_state.get('prio_phi', phi)
             if isinstance(phi_raw, list) and len(phi_raw) == 2:
                 phi = [float(x) for x in phi_raw]
 
         # 1. Assess Performance
         error_rate = float(metrics.get('error_rate', 0.0))
-        err_thr = float(state.get('prio_err_thr', 0.05))
+        err_thr = float(local_state.get('prio_err_thr', 0.05))
         
-        lambda_step = float(state.get('prio_lambda_step', 0.05))
-        lambda_min = float(state.get('prio_lambda_min', 0.2))
-        lambda_max = float(state.get('prio_lambda_max', 0.8))
-        lambda_inc = float(state.get('prio_lambda_inc', 0.01))
+        lambda_step = float(local_state.get('prio_lambda_step', 0.05))
+        lambda_min = float(local_state.get('prio_lambda_min', 0.2))
+        lambda_max = float(local_state.get('prio_lambda_max', 0.8))
+        lambda_inc = float(local_state.get('prio_lambda_inc', 0.01))
         
         if error_rate > err_thr:
             # High error -> Trust objective constraints (shadow price) more
@@ -49,11 +53,83 @@ class PriorityManager:
         # Update Subjective Weights (Fuzzy Group Decision)
         new_phi = self._update_subjective_weights(metrics, phi)
 
+        try:
+            slo = float(metrics.get('slo_violation_rate', 0.0) or 0.0)
+        except Exception:
+            slo = 0.0
+        try:
+            timeout_rate = float(metrics.get('timeout_rate', 0.0) or 0.0)
+        except Exception:
+            timeout_rate = 0.0
+        try:
+            err_rate = float(metrics.get('error_rate', 0.0) or 0.0)
+        except Exception:
+            err_rate = 0.0
+        backlog = metrics.get('queue_backlog', metrics.get('queue', local_state.get('queue_backlog_belief', 0.0)))
+        try:
+            backlog = float(backlog or 0.0)
+        except Exception:
+            backlog = 0.0
+        try:
+            shadow_price = float(local_state.get('shadow_price', 0.0) or 0.0)
+        except Exception:
+            shadow_price = 0.0
+
+        slo_thr = float(local_state.get('prio_slo_tense_thr', 0.02) or 0.02)
+        timeout_thr = float(local_state.get('prio_timeout_tense_thr', 0.02) or 0.02)
+        err_thr2 = float(local_state.get('prio_err_tense_thr', 0.05) or 0.05)
+        backlog_thr = float(local_state.get('prio_backlog_tense_thr', 50.0) or 50.0)
+        sp_scale = float(local_state.get('prio_sp_scale', 100.0) or 100.0)
+
+        t_vals = []
+        if slo_thr > 0:
+            t_vals.append(slo / slo_thr)
+        if timeout_thr > 0:
+            t_vals.append(timeout_rate / timeout_thr)
+        if err_thr2 > 0:
+            t_vals.append(err_rate / err_thr2)
+        if backlog_thr > 0:
+            t_vals.append(backlog / backlog_thr)
+        if sp_scale > 0:
+            t_vals.append(shadow_price / sp_scale)
+        tension = max(t_vals) if t_vals else 0.0
+        t = self._clamp01(tension)
+
+        w_lat_stable, w_risk_stable, w_wait_stable = 0.40, 0.30, 0.30
+        w_lat_tense, w_risk_tense, w_wait_tense = 0.55, 0.35, 0.10
+        w_lat_target = (1.0 - t) * w_lat_stable + t * w_lat_tense
+        w_risk_target = (1.0 - t) * w_risk_stable + t * w_risk_tense
+        w_wait_target = (1.0 - t) * w_wait_stable + t * w_wait_tense
+
+        w_lat_old = float(local_state.get('prio_cl_w_latency', 0.45) or 0.45)
+        w_risk_old = float(local_state.get('prio_cl_w_risk', 0.35) or 0.35)
+        w_wait_old = float(local_state.get('prio_cl_w_wait', 0.20) or 0.20)
+        eta_w = float(local_state.get('prio_cl_w_eta', 0.2) or 0.2)
+        if eta_w < 0.0:
+            eta_w = 0.0
+        if eta_w > 1.0:
+            eta_w = 1.0
+
+        w_lat_new = (1.0 - eta_w) * w_lat_old + eta_w * w_lat_target
+        w_risk_new = (1.0 - eta_w) * w_risk_old + eta_w * w_risk_target
+        w_wait_new = (1.0 - eta_w) * w_wait_old + eta_w * w_wait_target
+        w_sum_new = max(1e-6, w_lat_new + w_risk_new + w_wait_new)
+        w_lat_new, w_risk_new, w_wait_new = w_lat_new / w_sum_new, w_risk_new / w_sum_new, w_wait_new / w_sum_new
+        if state is not None:
+            state['prio_cl_w_latency'] = w_lat_new
+            state['prio_cl_w_risk'] = w_risk_new
+            state['prio_cl_w_wait'] = w_wait_new
+
         if state is not None:
             state['prio_lambda1'] = lambda1
             state['prio_beta'] = beta
             state['prio_alpha'] = alpha
             state['prio_phi'] = new_phi
+        
+        self.lambda1 = lambda1
+        self.alpha = alpha
+        self.beta = beta
+        self.phi = new_phi
 
         return {'lambda1': lambda1, 'alpha': alpha, 'beta': beta, 'phi': new_phi}
 
@@ -195,6 +271,104 @@ class PriorityManager:
             
         return [cv / sum_cv for cv in cvs]
 
+    def _clamp01(self, x):
+        try:
+            x = float(x)
+        except Exception:
+            return 0.0
+        if x < 0.0:
+            return 0.0
+        if x > 1.0:
+            return 1.0
+        return x
+
+    def _parse_01(self, v):
+        if v is None:
+            return None
+        try:
+            x = float(v)
+        except Exception:
+            return None
+        if x > 1.0:
+            if x <= 100.0:
+                x = x / 100.0
+            else:
+                x = 1.0
+        if x < 0.0:
+            x = 0.0
+        return x
+
+    def _compute_cl_from_task(self, task, system_state=None):
+        system_state = system_state or {}
+        lat = None
+        for k in ['latency_sens', 'latency_sensitivity', 'latency_sensitive', 'latency_criticality', 'slo_sensitivity']:
+            lat = self._parse_01(task.get(k))
+            if lat is not None:
+                break
+
+        risk = None
+        risk_raw = task.get('risk')
+        if isinstance(risk_raw, dict):
+            impact = self._parse_01(risk_raw.get('impact'))
+            volatility = self._parse_01(risk_raw.get('volatility'))
+            if impact is None and volatility is None:
+                risk = None
+            else:
+                impact = 0.0 if impact is None else impact
+                volatility = 0.0 if volatility is None else volatility
+                risk = self._clamp01(0.7 * impact + 0.3 * volatility)
+        else:
+            risk = self._parse_01(task.get('risk_score'))
+
+        ts = task.get('enqueue_ts')
+        if ts is None:
+            ts = task.get('created_at')
+        if ts is None:
+            ts = task.get('timestamp')
+        wait_norm = None
+        try:
+            if ts is not None:
+                wait_s = max(0.0, time.time() - float(ts))
+                scale = float(system_state.get('prio_wait_scale_s', 30.0) or 30.0)
+                if scale <= 0.0:
+                    scale = 30.0
+                wait_norm = 1.0 - math.exp(-wait_s / scale)
+        except Exception:
+            wait_norm = None
+
+        provided = (lat is not None) or (risk is not None) or (wait_norm is not None)
+        if not provided:
+            return None, False
+
+        w_lat = float(system_state.get('prio_cl_w_latency', 0.45))
+        w_risk = float(system_state.get('prio_cl_w_risk', 0.35))
+        w_wait = float(system_state.get('prio_cl_w_wait', 0.20))
+        w_sum = max(1e-6, w_lat + w_risk + w_wait)
+        w_lat, w_risk, w_wait = w_lat / w_sum, w_risk / w_sum, w_wait / w_sum
+
+        lat = 0.0 if lat is None else lat
+        risk = 0.0 if risk is None else risk
+        wait_norm = 0.0 if wait_norm is None else wait_norm
+
+        raw = w_lat * lat + w_risk * risk + w_wait * wait_norm
+        k = float(system_state.get('prio_cl_sigmoid_k', 4.0))
+        center = float(system_state.get('prio_cl_sigmoid_center', 0.5))
+        z = k * (raw - center)
+        if z >= 50:
+            cl = 1.0
+        elif z <= -50:
+            cl = 0.0
+        else:
+            cl = 1.0 / (1.0 + math.exp(-z))
+        cl = self._clamp01(cl)
+        cl_min = float(system_state.get('prio_cl_min', 0.05))
+        cl_max = float(system_state.get('prio_cl_max', 0.95))
+        if cl < cl_min:
+            cl = cl_min
+        if cl > cl_max:
+            cl = cl_max
+        return cl, True
+
     def calculate_priority(self, task, system_state=None):
         """
         Step 3.1 & 3.2: Calculate Final Priority Score.
@@ -203,18 +377,15 @@ class PriorityManager:
         # Assume task has raw features: 'business_value', 'user_tier', 'latency_sens'
         # Normalize to [0, 1]
         
-        # Load weights from state if available
-        lambda1 = 0.6
-        alpha = 0.7
-        beta = 0.3
-        phi = [0.6, 0.4]
+        lambda1 = float(getattr(self, 'lambda1', 0.6))
+        beta = float(getattr(self, 'beta', 0.3))
+        alpha = 1.0 - beta
+        phi = list(getattr(self, 'phi', [0.6, 0.4]))
         
         if system_state:
             lambda1 = float(system_state.get('prio_lambda1', lambda1))
             beta = float(system_state.get('prio_beta', beta))
-            # alpha is derived
             alpha = 1.0 - beta
-            
             phi_raw = system_state.get('prio_phi', phi)
             if isinstance(phi_raw, list) and len(phi_raw) == 2:
                 phi = [float(x) for x in phi_raw]
@@ -222,37 +393,11 @@ class PriorityManager:
         # ... (rest of the logic uses lambda1, alpha, beta, phi)
         
         bv = float(task.get('business_value', 0.5))
-        # Consistency roughly maps to how stable/reliable we want this to be
-        # We can map 'tier' to consistency requirement.
-        raw_tier = task.get('tier', None)
-        if raw_tier is None:
-            raw_tier = task.get('priority', None)
-        if raw_tier is None:
-            raw_tier = task.get('user_tier', None)
-        tier = str(raw_tier or 'standard').strip().lower()
-        if tier in ['critical', 'p0', 'p1']:
-            tier = 'platinum'
-        elif tier in ['high', 'p2']:
-            tier = 'gold'
-        elif tier in ['std', 'normal']:
-            tier = 'standard'
-        elif tier in ['low', 'background', 'bulk']:
-            tier = 'standard'
-        
-        cl_plat = 0.9
-        cl_gold = 0.7
-        cl_std = 0.5
-        if system_state:
-            cl_plat = float(system_state.get('prio_cl_plat', 0.9))
-            cl_gold = float(system_state.get('prio_cl_gold', 0.7))
-            cl_std = float(system_state.get('prio_cl_std', 0.5))
-
-        if tier == 'platinum':
-            cl = cl_plat
-        elif tier == 'gold':
-            cl = cl_gold
+        cl_attr, has_attr = self._compute_cl_from_task(task, system_state)
+        if has_attr:
+            cl = float(cl_attr)
         else:
-            cl = cl_std
+            cl = float((system_state or {}).get('prio_cl_default', 0.5))
             
         # Indicator Vector R_i = [bv, cl]
         R_i = [bv, cl]

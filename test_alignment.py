@@ -1,6 +1,7 @@
 
 import sys
 import os
+import time
 
 # Add src to path
 sys.path.append(os.path.join(os.getcwd(), 'src'))
@@ -10,6 +11,7 @@ from src.mpc.optimization import Optimizer
 from src.wcp.wcp_update import wcp_update
 from src.mpc.middleware import MPCMiddleware
 from src.mpc import middleware as middleware_mod
+from src.mpc.priority import PriorityManager
 
 def test_full_flow():
     controller = MPCController()
@@ -73,17 +75,42 @@ def test_middleware_admission_priority_mapping():
 
     event = {
         'metrics': {'p90': 100.0, 'queue_backlog': 10.0, 'concurrency': 1.0},
-        'task': {'id': 't_mw_1', 'priority': 'platinum'},
+        'task': {'id': 't_mw_1'},
         'slo_limit': 1000.0,
     }
     decision, dbg = mw.decide(event)
 
     assert decision.get('shouldShed') is True
-    assert decision.get('tier') == 'platinum'
     assert decision.get('queue_backlog_source') == 'metrics'
     assert decision.get('pred_total_latency_ms', 0.0) > 0.0
     assert decision.get('admit_threshold_ms', 0.0) == 50.0
+    pr = decision.get('priority_score', None)
+    assert pr is not None
+    assert 0.0 <= float(pr) <= 1.0
+
+def test_cl_continuous_from_task_attrs():
+    pm = PriorityManager()
+    now = time.time()
+    system_state = {'shadow_price': 0.0}
+    t_low = {
+        'id': 't_low',
+        'business_value': 0.5,
+        'latency_sens': 0.0,
+        'risk': {'impact': 0.0, 'volatility': 0.0},
+        'timestamp': now,
+    }
+    t_high = {
+        'id': 't_high',
+        'business_value': 0.5,
+        'latency_sens': 1.0,
+        'risk': {'impact': 1.0, 'volatility': 1.0},
+        'timestamp': now - 120.0,
+    }
+    _, v_low = pm.calculate_priority(t_low, system_state)
+    _, v_high = pm.calculate_priority(t_high, system_state)
+    assert v_high[1] > v_low[1]
 
 if __name__ == "__main__":
     test_full_flow()
     test_middleware_admission_priority_mapping()
+    test_cl_continuous_from_task_attrs()

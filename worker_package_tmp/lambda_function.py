@@ -56,7 +56,7 @@ def lambda_handler(event, context):
                     'shouldShed': decision.get('shouldShed', False),
                     'pred_queue_delay_ms': decision.get('pred_queue_delay_ms', 0.0),
                     'queue_backlog': decision.get('queue_backlog', 0.0),
-                    'tier': decision.get('tier', None),
+                    'priority_score': decision.get('priority_score', None),
                 }
             )
             # Inject alloc into event for penalty logic below
