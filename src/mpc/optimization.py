@@ -47,6 +47,12 @@ class Optimizer:
         w3_min = float(state.get('opt_w3_min', 5.0))
         w3_max = float(state.get('opt_w3_max', 200.0))
         
+        # 2. Adapt w2 (Waste Penalty) - Define params early
+        w2_step_inc = float(state.get('opt_w2_step_inc', 10.0))
+        w2_step_dec = float(state.get('opt_w2_step_dec', 0.98))
+        w2_min = float(state.get('opt_w2_min', 0.5))
+        w2_max = float(state.get('opt_w2_max', 50.0))
+        
         if viol_rate > 0.0:
             w3 = w3_min + (viol_rate * w3_step_inc) + (int_viol_err * 10.0)
         else:
@@ -75,12 +81,7 @@ class Optimizer:
             w3 = max(w3_min, w3 * w3_relax_mul)
             w2 = max(w2_min, w2 * w2_relax_mul)
             
-        # 2. Adapt w2 (Waste Penalty)
-        w2_step_inc = float(state.get('opt_w2_step_inc', 10.0))
-        w2_step_dec = float(state.get('opt_w2_step_dec', 0.98))
-        w2_min = float(state.get('opt_w2_min', 0.5))
-        w2_max = float(state.get('opt_w2_max', 50.0))
-        
+        # Adapt w2 (Waste Penalty) logic
         waste_base = float(state.get('opt_waste_err_base', 0.1))
         waste_cap = float(state.get('opt_waste_err_cap', 0.5))
         int_cap = float(state.get('opt_int_waste_cap', 5.0))
