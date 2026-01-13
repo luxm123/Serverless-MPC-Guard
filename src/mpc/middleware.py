@@ -193,7 +193,7 @@ class MPCMiddleware:
             queue_delay_ms = (queue_backlog * eff_service_ms) / servers
         
         # System State
-        qos_slo_map = {'Q1': 30.0, 'Q2': 200.0, 'Q3': 2000.0}
+        qos_slo_map = {'Q1': 300.0, 'Q2': 800.0, 'Q3': 2000.0}
         slo_limit_ms = float(qos_slo_map.get(qos, float(event.get('slo_limit', state.get('slo_limit', 1000.0)))))
         system_state = {
             'shadow_price': state.get('shadow_price', 0.0),

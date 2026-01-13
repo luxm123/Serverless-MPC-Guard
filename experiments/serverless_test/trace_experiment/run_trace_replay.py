@@ -36,6 +36,8 @@ class TraceReplayer:
         self.results = []
         self.thread_num = thread_num
         self.trace_data = []
+        self.slo_violation_window = []
+        self.lock = threading.Lock()
 
     def load_trace(self):
         """从指定的CSV文件加载轨迹数据。"""
@@ -62,8 +64,17 @@ class TraceReplayer:
             prio = "low"
         qos_class = "Q1" if prio == "critical" else ("Q2" if prio == "standard" else "Q3")
 
+        # Calculate current SLO violation rate (Client-side feedback)
+        current_slo_violation_rate = 0.0
+        with self.lock:
+            if self.slo_violation_window:
+                current_slo_violation_rate = sum(self.slo_violation_window) / len(self.slo_violation_window)
+
         payload = {
-            "metrics": {}, "priority": prio, "risk": {},
+            "metrics": {
+                "slo_violation_rate": current_slo_violation_rate
+            }, 
+            "priority": prio, "risk": {},
             "strategy": strategy, "wcp_mode": wcp_mode
         }
 
@@ -119,10 +130,18 @@ class TraceReplayer:
 
         success = controller_ok and worker_ok
 
-        slo_map = {"Q1": 30.0, "Q2": 200.0, "Q3": 2000.0}
-        slo_bound = slo_map.get(qos_class, 200.0)
+        # 更新 SLO 阈值以符合现实网络环境 (Network RTT ~170ms)
+        slo_map = {"Q1": 300.0, "Q2": 800.0, "Q3": 2000.0}
+        slo_bound = slo_map.get(qos_class, 2000.0)
         met_slo = (e2e_latency <= slo_bound) and success
         shed_by_worker = (worker_status == "degraded")
+
+        # Update Violation History
+        violation_val = 1.0 if not met_slo else 0.0
+        with self.lock:
+            self.slo_violation_window.append(violation_val)
+            if len(self.slo_violation_window) > 100:
+                self.slo_violation_window.pop(0)
 
         self.results.append({
             "req_id": req_id,
