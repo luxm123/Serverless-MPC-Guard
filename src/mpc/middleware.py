@@ -106,6 +106,15 @@ class MPCMiddleware:
         task = event.get('task', {})
         # If client didn't send metrics (Real Scenario), use our belief from state
         state, version = self._load_state()
+        qos_raw = task.get('qos', task.get('priority'))
+        qos = 'Q3'
+        if isinstance(qos_raw, str):
+            s = qos_raw.strip().lower()
+            if s in ('critical', 'q1', 'high'):
+                qos = 'Q1'
+            elif s in ('standard', 'q2', 'medium'):
+                qos = 'Q2'
+        task['qos_class'] = qos
         
         if not metrics or 'p90' not in metrics:
              metrics = metrics.copy()
@@ -184,7 +193,8 @@ class MPCMiddleware:
             queue_delay_ms = (queue_backlog * eff_service_ms) / servers
         
         # System State
-        slo_limit_ms = float(event.get('slo_limit', state.get('slo_limit', 1000.0)))
+        qos_slo_map = {'Q1': 30.0, 'Q2': 200.0, 'Q3': 2000.0}
+        slo_limit_ms = float(qos_slo_map.get(qos, float(event.get('slo_limit', state.get('slo_limit', 1000.0)))))
         system_state = {
             'shadow_price': state.get('shadow_price', 0.0),
             'last_alloc': last_alloc,
@@ -204,6 +214,15 @@ class MPCMiddleware:
             priority_score = float(priority_score)
         except Exception:
             priority_score = 0.5
+        if qos == 'Q1':
+            if priority_score < 0.95:
+                priority_score = 0.95
+        elif qos == 'Q2':
+            if priority_score < 0.65:
+                priority_score = 0.65
+        else:
+            if priority_score > 0.35:
+                priority_score = 0.35
         if priority_score < 0.0:
             priority_score = 0.0
         if priority_score > 1.0:
@@ -211,18 +230,34 @@ class MPCMiddleware:
 
         pred_admit_enabled = bool(state.get('pred_admit_enabled', True))
         if pred_admit_enabled:
-            thr_platinum = float(state.get('admit_thr_platinum_ms', slo_limit_ms * 1.2) or (slo_limit_ms * 1.2))
-            thr_gold = float(state.get('admit_thr_gold_ms', slo_limit_ms * 1.0) or (slo_limit_ms * 1.0))
-            thr_standard = float(state.get('admit_thr_standard_ms', slo_limit_ms * 0.8) or (slo_limit_ms * 0.8))
-            if priority_score >= 0.5:
-                t = (priority_score - 0.5) / 0.5
-                admit_thr = thr_gold + t * (thr_platinum - thr_gold)
-            else:
-                t = priority_score / 0.5
-                admit_thr = thr_standard + t * (thr_gold - thr_standard)
+            admit_thr = slo_limit_ms
 
             pred_total_ms = float(pred_dict.get('p90', 0.0) or 0.0) + unc_p90 + queue_delay_ms
-            if pred_total_ms > admit_thr:
+
+            # --- Optimization: Proactive Gradient & Bulkhead Isolation ---
+            should_shed_early = False
+            shed_reason = "latency"
+
+            # 1. Gradient Control: Shed Q3 if latency is deteriorating (rising edge)
+            p90_belief = float(state.get('p90_belief', 100.0))
+            current_pred_p90 = float(pred_dict.get('p90', 0.0) or 0.0)
+            latency_gradient = current_pred_p90 - p90_belief
+            
+            if qos == 'Q3' and latency_gradient > 5.0 and current_pred_p90 > (slo_limit_ms * 0.6):
+                should_shed_early = True
+                shed_reason = "gradient_control"
+
+            # 2. Bulkhead Isolation: Virtual capacity reservation via Shadow Price
+            current_price = float(state.get('shadow_price', 0.0))
+            if not should_shed_early:
+                if current_price > 50.0 and qos == 'Q3':
+                    should_shed_early = True
+                    shed_reason = "bulkhead_q3"
+                elif current_price > 150.0 and qos == 'Q2':
+                    should_shed_early = True
+                    shed_reason = "bulkhead_q2"
+
+            if should_shed_early or (qos != 'Q1' and pred_total_ms > admit_thr):
                 degrade_plan = "store_to_sqs"
                 cl_val = None
                 try:
@@ -230,10 +265,9 @@ class MPCMiddleware:
                         cl_val = float(task_vec[1])
                 except Exception:
                     cl_val = None
-                recovery_thr = float(state.get('admit_recovery_prio_thr', 0.5) or 0.5)
-                recovery_cl_thr = float(state.get('admit_recovery_cl_thr', 0.6) or 0.6)
-                if priority_score >= recovery_thr or (cl_val is not None and cl_val >= recovery_cl_thr):
+                if qos == 'Q2' or (cl_val is not None and cl_val >= 0.6):
                     degrade_plan = "store_to_sqs_recovery"
+                
                 early_decision = {
                     'shouldShed': True,
                     'degrade_plan': degrade_plan,
@@ -246,6 +280,8 @@ class MPCMiddleware:
                     'queue_backlog': queue_backlog,
                     'queue_backlog_source': backlog_source,
                     'priority_score': priority_score,
+                    'qos_class': qos,
+                    'shed_reason': shed_reason
                 }
                 dbg = debug_info or {}
                 dbg.update(
@@ -259,6 +295,10 @@ class MPCMiddleware:
                         'servers': servers,
                         'service_ms': eff_service_ms,
                         'queue_delay_model': queue_delay_model,
+                        'qos_class': qos,
+                        'latency_gradient': latency_gradient,
+                        'shadow_price': current_price,
+                        'shed_reason': shed_reason
                     }
                 )
                 return early_decision, dbg
@@ -308,6 +348,7 @@ class MPCMiddleware:
             'queue_backlog': queue_backlog,
             'queue_backlog_source': backlog_source,
             'priority_score': priority_score,
+            'qos_class': qos,
         }
         dbg = debug_info or {}
         dbg.update(
