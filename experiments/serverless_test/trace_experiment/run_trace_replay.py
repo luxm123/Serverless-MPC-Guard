@@ -51,8 +51,17 @@ class TraceReplayer:
         """
         执行单个请求。此函数由线程池并发调用。
         """
+        # Inject dynamic priority (simulating mixed workload)
+        r = random.random()
+        if r < 0.30:
+            prio = "critical"
+        elif r < 0.65:
+            prio = "standard"
+        else:
+            prio = "low"
+
         payload = {
-            "metrics": {}, "priority": "standard", "risk": {},
+            "metrics": {}, "priority": prio, "risk": {},
             "strategy": strategy, "wcp_mode": wcp_mode
         }
 
