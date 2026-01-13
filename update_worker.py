@@ -5,7 +5,6 @@ import io
 import time
 
 REGION = 'us-east-1'
-MPC_FUNC_NAME = 'MPC_Controller'
 WORKER_FUNC_NAME = 'MPC_BusinessWorker'
 
 lmb = boto3.client('lambda', region_name=REGION)
@@ -29,18 +28,16 @@ def zip_function(folder, extra_dirs=[]):
                     if file.endswith('.py') or file.endswith('.json'):
                         full = os.path.join(root, file)
                         # Archive path should include the directory name (e.g., src/mpc/...)
-                        # If d is .../src, we want arc to be src/...
-                        # os.path.relpath(full, base) will give src/...
                         arc = os.path.relpath(full, base)
                         z.write(full, arc)
     buf.seek(0)
     return buf.read()
 
-def update_function(func_name, lambda_folder):
-    print(f"Updating Lambda Code: {func_name}...")
+def update_worker():
+    print(f"Updating Worker Lambda Code: {WORKER_FUNC_NAME}...")
     
     # Path to lambda handler
-    lambda_dir = os.path.join(os.getcwd(), 'lambdas', lambda_folder)
+    lambda_dir = os.path.join(os.getcwd(), 'lambdas', 'business_worker')
     # Path to src
     src_dir = os.path.join(os.getcwd(), 'src')
     
@@ -48,29 +45,25 @@ def update_function(func_name, lambda_folder):
     
     try:
         lmb.update_function_code(
-            FunctionName=func_name,
+            FunctionName=WORKER_FUNC_NAME,
             ZipFile=zip_content
         )
-        print(f"Update for {func_name} initiated. Waiting for status...")
+        print("Update initiated. Waiting for status...")
         
         # Wait for update
         for i in range(30):
-            resp = lmb.get_function(FunctionName=func_name)
+            resp = lmb.get_function(FunctionName=WORKER_FUNC_NAME)
             status = resp['Configuration']['LastUpdateStatus']
             if status == 'Successful':
-                print(f"Update for {func_name} Successful!")
+                print("Update Successful!")
                 return
             elif status == 'Failed':
-                print(f"Update for {func_name} Failed: {resp['Configuration']['LastUpdateStatusReason']}")
+                print(f"Update Failed: {resp['Configuration']['LastUpdateStatusReason']}")
                 return
             time.sleep(1)
             
     except Exception as e:
-        print(f"Error updating lambda {func_name}: {e}")
-
-def update_lambda():
-    update_function(MPC_FUNC_NAME, 'mpc_controller')
-    update_function(WORKER_FUNC_NAME, 'business_worker')
+        print(f"Error updating lambda: {e}")
 
 if __name__ == '__main__':
-    update_lambda()
+    update_worker()

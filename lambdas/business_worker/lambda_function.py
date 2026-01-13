@@ -107,7 +107,9 @@ def lambda_handler(event, context):
         # --- Normal Execution Path ---
         
         # Base latency setup
-        base_latency = 0.1 # 100ms
+        # Use simulated_duration_ms from task if available (for Trace Replay), else default to 100ms
+        sim_duration = float(task.get('simulated_duration_ms', 100.0))
+        base_latency = sim_duration / 1000.0 # Convert to seconds
         
         # Handle "external_api" specific logic (e.g., call 3rd party)
         if mode == 'external_api':
