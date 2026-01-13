@@ -133,7 +133,8 @@ class TraceReplayer:
                 try:
                     future.result()
                 except Exception as e:
-                    print(f"[Thread Error] {e}")
+                    # print(f"[Thread Error] {e}") # Suppress flood
+                    pass
 
         output_path = os.path.join(self.output_dir, output_filename)
         print(f">>> 实验结束. 正在保存结果到 {output_path}...")
