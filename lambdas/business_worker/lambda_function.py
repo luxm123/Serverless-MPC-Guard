@@ -25,6 +25,15 @@ def get_queue_url():
         print("Queue not found")
         return None
 
+def burn_cpu(duration_sec):
+    """
+    Simulate CPU-bound processing to trigger real resource contention.
+    """
+    start = time.time()
+    # Busy loop
+    while time.time() - start < duration_sec:
+        _ = 999999 * 999999
+
 def lambda_handler(event, context):
     """
     Input:
@@ -152,9 +161,22 @@ def lambda_handler(event, context):
             jitter += 1.0 # Long tail
             
         # Apply penalty to TOTAL active time (base + jitter)
-        total_sleep = (base_latency + jitter) * penalty_factor + injected_delay
-        time.sleep(total_sleep)
-        print(f"Task {task.get('id')} processed. Mode: {mode}. Sleep: {total_sleep:.3f}s (Base: {base_latency}, Jitter: {jitter:.3f}, Pen: {penalty_factor:.2f})")
+        # We use burn_cpu to simulate real CPU contention (SQARTS-like)
+        active_duration = (base_latency + jitter) * penalty_factor
+        
+        # Injected delay (Cold start, etc) is passive sleep
+        passive_duration = injected_delay
+        
+        # 1. CPU Bound Work
+        if active_duration > 0:
+            burn_cpu(active_duration)
+            
+        # 2. IO/Wait Work
+        if passive_duration > 0:
+            time.sleep(passive_duration)
+            
+        total_duration = active_duration + passive_duration
+        print(f"Task {task.get('id')} processed. Mode: {mode}. Total: {total_duration:.3f}s (CPU: {active_duration:.3f}, Sleep: {passive_duration:.3f}, Pen: {penalty_factor:.2f})")
         
     duration = (time.time() - start_time) * 1000 # ms
     

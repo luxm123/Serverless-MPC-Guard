@@ -159,7 +159,7 @@ if __name__ == "__main__":
     RESULTS_DIR = os.path.join(SCRIPT_DIR, 'results')
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    THREAD_COUNT = 50  # 并发请求数
+    THREAD_COUNT = 200  # 并发请求数 (Increased to simulate high concurrency)
 
     # --- 运行实验 ---
     # 1. 初始化Replayer并加载一次数据
