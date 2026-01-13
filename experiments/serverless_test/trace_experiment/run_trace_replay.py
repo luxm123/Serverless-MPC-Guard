@@ -128,7 +128,12 @@ class TraceReplayer:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_num) as executor:
             futures = [executor.submit(self.run_request, i, row, strategy, wcp_mode, start_exp) for i, row in enumerate(self.trace_data)]
-            concurrent.futures.wait(futures)
+            # Check for exceptions in threads
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"[Thread Error] {e}")
 
         output_path = os.path.join(self.output_dir, output_filename)
         print(f">>> 实验结束. 正在保存结果到 {output_path}...")
