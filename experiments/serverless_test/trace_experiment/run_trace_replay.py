@@ -60,6 +60,7 @@ class TraceReplayer:
             prio = "standard"
         else:
             prio = "low"
+        qos_class = "Q1" if prio == "critical" else ("Q2" if prio == "standard" else "Q3")
 
         payload = {
             "metrics": {}, "priority": prio, "risk": {},
@@ -76,6 +77,11 @@ class TraceReplayer:
         ideal_duration = row['duration']
         controller_ok = True
         worker_ok = True
+        controller_should_shed = False
+        degrade_plan = None
+        admit_thr = None
+        pred_total_ms = None
+        worker_status = "unknown"
 
         try:
             start_t = time.time()
@@ -85,6 +91,10 @@ class TraceReplayer:
                 controller_resp = invoke_controller_lambda(payload, mode=wcp_mode, strategy=strategy)
                 if controller_resp and isinstance(controller_resp, dict):
                     decision = controller_resp.get('decision', {}) or {}
+                    controller_should_shed = bool(decision.get('shouldShed') or decision.get('should_shed') or False)
+                    degrade_plan = decision.get('degrade_plan')
+                    admit_thr = decision.get('admit_threshold_ms')
+                    pred_total_ms = decision.get('pred_total_latency_ms')
                 else:
                     controller_ok = False
 
@@ -92,6 +102,9 @@ class TraceReplayer:
             worker_result = invoke_worker_lambda(decision, task_payload, mode='auto', strategy=strategy)
             if worker_result is None:
                 worker_ok = False
+            else:
+                resp = worker_result.get('response', {}) or {}
+                worker_status = resp.get('status', 'unknown')
 
             end_t = time.time()
             e2e_latency = (end_t - start_t) * 1000.0
@@ -106,6 +119,11 @@ class TraceReplayer:
 
         success = controller_ok and worker_ok
 
+        slo_map = {"Q1": 30.0, "Q2": 200.0, "Q3": 2000.0}
+        slo_bound = slo_map.get(qos_class, 200.0)
+        met_slo = (e2e_latency <= slo_bound) and success
+        shed_by_worker = (worker_status == "degraded")
+
         self.results.append({
             "req_id": req_id,
             "trace_duration": ideal_duration,
@@ -115,7 +133,17 @@ class TraceReplayer:
             "strategy": strategy,
             "controller_ok": controller_ok,
             "worker_ok": worker_ok,
-            "success": success
+            "success": success,
+            "priority": prio,
+            "qos_class": qos_class,
+            "controller_should_shed": controller_should_shed,
+            "worker_status": worker_status,
+            "shed_by_worker": shed_by_worker,
+            "degrade_plan": degrade_plan,
+            "admit_thr_ms": admit_thr,
+            "pred_total_ms": pred_total_ms,
+            "met_slo": met_slo,
+            "slo_bound": slo_bound
         })
 
         if req_id % 50 == 0:  # 定期打印进度
@@ -159,6 +187,20 @@ class TraceReplayer:
             print(f"平均减速因子: {df_success['slowdown'].mean():.2f}")
             print(f"P99 减速因子: {df_success['slowdown'].quantile(0.99):.2f}")
             print(f"SLO 违约率: {violation_rate:.2f}%")
+            # QoS 维度评估
+            if 'qos_class' in df_success.columns:
+                for qos in ['Q1', 'Q2', 'Q3']:
+                    d = df_success[df_success['qos_class'] == qos]
+                    if len(d) == 0:
+                        continue
+                    shed_rate = (d['shed_by_worker'].sum() / len(d)) * 100
+                    ctrl_shed = (d['controller_should_shed'].sum() / len(d)) * 100
+                    met_slo_rate = (d['met_slo'].sum() / len(d)) * 100
+                    p50 = d['e2e_latency'].quantile(0.50)
+                    p90 = d['e2e_latency'].quantile(0.90)
+                    p99 = d['e2e_latency'].quantile(0.99)
+                    print(f"- {qos}: 数量={len(d)} | 满足SLO={met_slo_rate:.2f}% | 触发丢弃(控制器)={ctrl_shed:.2f}% | 实际丢弃(Worker)={shed_rate:.2f}%")
+                    print(f"       延迟(P50/P90/P99) = {p50:.1f}/{p90:.1f}/{p99:.1f} ms")
         print("==============================\n")
 
 
