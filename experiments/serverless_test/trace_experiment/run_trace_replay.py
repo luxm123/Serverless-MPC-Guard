@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import threading
+import copy
 import concurrent.futures
 import pandas as pd
 import numpy as np
@@ -37,6 +38,7 @@ class TraceReplayer:
         self.results = []
         self.thread_num = thread_num
         self.trace_data = []
+        self.raw_trace_data = []
         self.slo_violation_window = []
         self.lock = threading.Lock()
 
@@ -48,8 +50,27 @@ class TraceReplayer:
             sys.exit(1)  # 如果数据文件缺失，则终止程序
 
         print(f"[信息] 正在从 {self.trace_file} 加载轨迹...")
-        self.trace_data = pd.read_csv(self.trace_file).sort_values(by="timestamp").to_dict('records')
-        print(f"[信息] 已加载 {len(self.trace_data)} 个请求。")
+        self.raw_trace_data = pd.read_csv(self.trace_file).sort_values(by="timestamp").to_dict('records')
+        print(f"[信息] 已加载 {len(self.raw_trace_data)} 个请求 (Raw)。")
+
+    def inject_flash_crowd(self, peak_time=5.0, duration=1.0, requests=100):
+        """
+        Dynamically inject a flash crowd (burst of requests) into the current trace data.
+        This modifies self.trace_data in-memory without touching the source file.
+        """
+        print(f"[Info] Injecting flash crowd: {requests} requests at t={peak_time}s")
+        flash_crowd_data = []
+        for _ in range(requests):
+            # Generate random timestamp around peak_time (Gaussian distribution)
+            timestamp_ms = (peak_time + random.gauss(0, duration/4)) * 1000.0
+            flash_crowd_data.append({
+                "timestamp": max(0, timestamp_ms),
+                "duration": random.randint(30, 100) # Short tasks during flash crowd
+            })
+        
+        self.trace_data.extend(flash_crowd_data)
+        self.trace_data.sort(key=lambda x: x['timestamp'])
+        print(f"[Info] Trace data size increased to {len(self.trace_data)} requests.")
 
     def run_request(self, req_id, row, strategy, wcp_mode, start_exp):
         """
@@ -172,6 +193,18 @@ class TraceReplayer:
     def run_experiment(self, strategy, wcp_mode, output_filename):
         """为给定的策略运行一次完整的实验。"""
         print(f"\n>>> 开始实验: Strategy='{strategy}', Mode='{wcp_mode}', Threads={self.thread_num} <<<")
+        
+        # Reset trace data from raw source for every experiment to ensure consistency
+        if not hasattr(self, 'raw_trace_data') or not self.raw_trace_data:
+             # Fallback if load_trace wasn't called or failed
+             self.load_trace()
+        
+        # Deep copy to ensure fresh start for each run
+        self.trace_data = copy.deepcopy(self.raw_trace_data)
+        
+        # Inject flash crowd to simulate high concurrency
+        self.inject_flash_crowd(peak_time=5.0, requests=100)
+
         self.results = []  # 为新实验重置结果
         start_exp = time.time()
 
