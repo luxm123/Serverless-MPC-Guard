@@ -58,14 +58,15 @@ class TraceReplayer:
         Dynamically inject a flash crowd (burst of requests) into the current trace data.
         This modifies self.trace_data in-memory without touching the source file.
         """
-        print(f"[Info] Injecting flash crowd: {requests} requests at t={peak_time}s")
+        print(f"[Info] Injecting flash crowd (Q3 flood): {requests} requests at t={peak_time}s")
         flash_crowd_data = []
         for _ in range(requests):
             # Generate random timestamp around peak_time (Gaussian distribution)
             timestamp_ms = (peak_time + random.gauss(0, duration/4)) * 1000.0
             flash_crowd_data.append({
                 "timestamp": max(0, timestamp_ms),
-                "duration": random.randint(30, 100) # Short tasks during flash crowd
+                "duration": random.randint(30, 100),
+                "is_flash": True
             })
         
         self.trace_data.extend(flash_crowd_data)
@@ -76,14 +77,17 @@ class TraceReplayer:
         """
         执行单个请求。此函数由线程池并发调用。
         """
-        # Inject dynamic priority (simulating mixed workload)
-        r = random.random()
-        if r < 0.30:
-            prio = "critical"
-        elif r < 0.65:
-            prio = "standard"
-        else:
+        prio = None
+        if row.get('is_flash'):
             prio = "low"
+        else:
+            r = random.random()
+            if r < 0.30:
+                prio = "critical"
+            elif r < 0.65:
+                prio = "standard"
+            else:
+                prio = "low"
         qos_class = "Q1" if prio == "critical" else ("Q2" if prio == "standard" else "Q3")
 
         # Calculate current SLO violation rate (Client-side feedback)
@@ -177,6 +181,7 @@ class TraceReplayer:
             "success": success,
             "priority": prio,
             "qos_class": qos_class,
+            "is_flash": bool(row.get('is_flash', False)),
             "controller_should_shed": controller_should_shed,
             "worker_status": worker_status,
             "shed_by_worker": shed_by_worker,
@@ -249,10 +254,11 @@ class TraceReplayer:
                     shed_rate = (d['shed_by_worker'].sum() / len(d)) * 100
                     ctrl_shed = (d['controller_should_shed'].sum() / len(d)) * 100
                     met_slo_rate = (d['met_slo'].sum() / len(d)) * 100
+                    slo_violation_rate_q = 100.0 - met_slo_rate
                     p50 = d['e2e_latency'].quantile(0.50)
                     p90 = d['e2e_latency'].quantile(0.90)
                     p99 = d['e2e_latency'].quantile(0.99)
-                    print(f"- {qos}: 数量={len(d)} | 满足SLO={met_slo_rate:.2f}% | 触发丢弃(控制器)={ctrl_shed:.2f}% | 实际丢弃(Worker)={shed_rate:.2f}%")
+                    print(f"- {qos}: 数量={len(d)} | 满足SLO={met_slo_rate:.2f}% | 违约率={slo_violation_rate_q:.2f}% | 触发丢弃(控制器)={ctrl_shed:.2f}% | 实际丢弃(Worker)={shed_rate:.2f}%")
                     print(f"       延迟(P50/P90/P99) = {p50:.1f}/{p90:.1f}/{p99:.1f} ms")
         print("==============================\n")
 
@@ -283,7 +289,14 @@ if __name__ == "__main__":
         output_filename='results_baseline.csv'
     )
 
-    # 3. 运行你的MPC实验
+    # 3. 运行静态优先级实验
+    replayer.run_experiment(
+        strategy='static',
+        wcp_mode='baseline',
+        output_filename='results_static.csv'
+    )
+
+    # 4. 运行MPC实验
     replayer.run_experiment(
         strategy='mpc',
         wcp_mode='strict',
