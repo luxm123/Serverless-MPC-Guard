@@ -136,22 +136,26 @@ class TraceReplayer:
                     controller_ok = False
 
             task_payload = {"task_name": f"TraceReq-{req_id}", "simulated_duration_ms": ideal_duration}
-            worker_result = invoke_worker_lambda(decision, task_payload, mode='auto', strategy=strategy)
-            if worker_result is None:
-                worker_ok = False
+            if controller_should_shed:
+                worker_status = "shedded"
+                end_t = time.time()
+                e2e_latency = (end_t - start_t) * 1000.0
+                slowdown = e2e_latency / max(1.0, ideal_duration)
             else:
-                resp = worker_result.get('response', {}) or {}
-                worker_status = resp.get('status', 'unknown')
+                worker_result = invoke_worker_lambda(decision, task_payload, mode='auto', strategy=strategy)
+                if worker_result is None:
+                    worker_ok = False
+                else:
+                    resp = worker_result.get('response', {}) or {}
+                    worker_status = resp.get('status', 'unknown')
 
-            end_t = time.time()
-            e2e_latency = (end_t - start_t) * 1000.0
-            slowdown = e2e_latency / max(1.0, ideal_duration)
-            is_violation = (not controller_ok) or (not worker_ok) or (e2e_latency > (ideal_duration * 2.0))
+                end_t = time.time()
+                e2e_latency = (end_t - start_t) * 1000.0
+                slowdown = e2e_latency / max(1.0, ideal_duration)
 
         except Exception as e:
             controller_ok = False
             worker_ok = False
-            is_violation = True
             print(f"[错误] 请求 {req_id} 失败: {str(e)}")
 
         success = controller_ok and worker_ok
@@ -159,8 +163,15 @@ class TraceReplayer:
         # 更新 SLO 阈值以符合现实网络环境 (Network RTT ~170ms)
         slo_map = {"Q1": 300.0, "Q2": 800.0, "Q3": 2000.0}
         slo_bound = slo_map.get(qos_class, 2000.0)
-        met_slo = (e2e_latency <= slo_bound) and success
+        if controller_should_shed and worker_status == "shedded":
+            if qos_class in ["Q1", "Q2"]:
+                met_slo = False
+            else:
+                met_slo = True
+        else:
+            met_slo = (e2e_latency <= slo_bound) and success
         shed_by_worker = (worker_status == "degraded")
+        is_violation = not met_slo
 
         # Update Violation History
         violation_val = 1.0 if not met_slo else 0.0
