@@ -69,6 +69,8 @@ def lambda_handler(event, context):
             
     task = event.get('task', {})
     mode = event.get('mode', 'auto')
+    priority = task.get('priority', event.get('priority', 'standard'))
+    qos = "Q1" if priority in ["critical", "high"] else ("Q3" if priority == "low" else "Q2")
     
     start_time = time.time()
     status = "success"
@@ -81,8 +83,11 @@ def lambda_handler(event, context):
     elif mode == 'normal' or mode == 'external_api':
         should_shed = False
     else:
-        # 'auto' or default: rely on MPC decision
-        should_shed = decision.get('shouldShed', False)
+        raw_should_shed = decision.get('shouldShed', False)
+        if qos == "Q3":
+            should_shed = raw_should_shed
+        else:
+            should_shed = False
     
     # Execution Logic
     if should_shed:

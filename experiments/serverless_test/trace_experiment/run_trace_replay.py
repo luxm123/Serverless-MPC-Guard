@@ -136,7 +136,7 @@ class TraceReplayer:
                     controller_ok = False
 
             task_payload = {"task_name": f"TraceReq-{req_id}", "simulated_duration_ms": ideal_duration}
-            if controller_should_shed:
+            if controller_should_shed and qos_class == "Q3":
                 worker_status = "shedded"
                 end_t = time.time()
                 e2e_latency = (end_t - start_t) * 1000.0
@@ -169,8 +169,14 @@ class TraceReplayer:
             else:
                 met_slo = True
         else:
-            met_slo = (e2e_latency <= slo_bound) and success
-        shed_by_worker = (worker_status == "degraded")
+            if qos_class in ["Q1", "Q2"] and worker_status in ["degraded", "shedded"]:
+                met_slo = False
+            else:
+                met_slo = (e2e_latency <= slo_bound) and success
+        if qos_class == "Q3":
+            shed_by_worker = worker_status in ["degraded", "shedded"] or controller_should_shed
+        else:
+            shed_by_worker = worker_status == "degraded"
         is_violation = not met_slo
 
         # Update Violation History

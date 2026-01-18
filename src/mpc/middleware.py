@@ -234,11 +234,9 @@ class MPCMiddleware:
 
             pred_total_ms = float(pred_dict.get('p90', 0.0) or 0.0) + unc_p90 + queue_delay_ms
 
-            # --- Optimization: Proactive Gradient & Bulkhead Isolation ---
             should_shed_early = False
             shed_reason = "latency"
 
-            # 1. Gradient Control: Shed Q3 if latency is deteriorating (rising edge)
             p90_belief = float(state.get('p90_belief', 100.0))
             current_pred_p90 = float(pred_dict.get('p90', 0.0) or 0.0)
             latency_gradient = current_pred_p90 - p90_belief
@@ -247,17 +245,24 @@ class MPCMiddleware:
                 should_shed_early = True
                 shed_reason = "gradient_control"
 
-            # 2. Bulkhead Isolation: Virtual capacity reservation via Shadow Price
             current_price = float(state.get('shadow_price', 0.0))
             if not should_shed_early:
                 if current_price > 50.0 and qos == 'Q3':
                     should_shed_early = True
                     shed_reason = "bulkhead_q3"
-                elif current_price > 150.0 and qos == 'Q2':
+                elif current_price > 200.0 and qos == 'Q2':
                     should_shed_early = True
                     shed_reason = "bulkhead_q2"
 
-            if should_shed_early or (qos != 'Q1' and pred_total_ms > admit_thr):
+            shed_by_latency = False
+            if qos == 'Q3':
+                if pred_total_ms > admit_thr * 0.9:
+                    shed_by_latency = True
+            elif qos == 'Q2':
+                if pred_total_ms > admit_thr * 1.2:
+                    shed_by_latency = True
+
+            if should_shed_early or shed_by_latency:
                 degrade_plan = "store_to_sqs"
                 cl_val = None
                 try:
