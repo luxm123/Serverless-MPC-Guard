@@ -258,11 +258,8 @@ class MPCMiddleware:
             if qos == 'Q3':
                 if pred_total_ms > admit_thr * 0.9:
                     shed_by_latency = True
-            elif qos == 'Q2':
-                if pred_total_ms > admit_thr * 1.2:
-                    shed_by_latency = True
 
-            if should_shed_early or shed_by_latency:
+            if qos == 'Q3' and (should_shed_early or shed_by_latency):
                 degrade_plan = "store_to_sqs"
                 cl_val = None
                 try:
