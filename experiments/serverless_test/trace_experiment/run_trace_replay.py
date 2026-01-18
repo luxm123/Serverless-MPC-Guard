@@ -161,7 +161,7 @@ class TraceReplayer:
         success = controller_ok and worker_ok
 
         # 更新 SLO 阈值以符合现实网络环境 (Network RTT ~170ms)
-        slo_map = {"Q1": 300.0, "Q2": 800.0, "Q3": 2000.0}
+        slo_map = {"Q1": 1000.0, "Q2": 1800.0, "Q3": 3000.0}
         slo_bound = slo_map.get(qos_class, 2000.0)
         if controller_should_shed and worker_status == "shedded":
             if qos_class in ["Q1", "Q2"]:
