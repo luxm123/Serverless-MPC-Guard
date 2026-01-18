@@ -135,14 +135,24 @@ class TraceReplayer:
                 else:
                     controller_ok = False
 
-            task_payload = {"task_name": f"TraceReq-{req_id}", "simulated_duration_ms": ideal_duration}
+            task_payload = {
+                "task_name": f"TraceReq-{req_id}",
+                "simulated_duration_ms": ideal_duration,
+                "priority": prio
+            }
             if controller_should_shed and qos_class == "Q3":
                 worker_status = "shedded"
                 end_t = time.time()
                 e2e_latency = (end_t - start_t) * 1000.0
                 slowdown = e2e_latency / max(1.0, ideal_duration)
             else:
-                worker_result = invoke_worker_lambda(decision, task_payload, mode='auto', strategy=strategy)
+                worker_result = invoke_worker_lambda(
+                    decision,
+                    task_payload,
+                    mode='auto',
+                    strategy=strategy,
+                    priority=prio
+                )
                 if worker_result is None:
                     worker_ok = False
                 else:
