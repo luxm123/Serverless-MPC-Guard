@@ -40,6 +40,9 @@ class TraceReplayer:
         self.trace_data = []
         self.raw_trace_data = []
         self.slo_violation_window = []
+        self.latency_window = []
+        self.qos_violation_window = {'Q1': [], 'Q2': [], 'Q3': []}
+        self.qos_drop_window = {'Q1': [], 'Q2': [], 'Q3': []}
         self.lock = threading.Lock()
 
     def load_trace(self):
@@ -90,15 +93,52 @@ class TraceReplayer:
                 prio = "low"
         qos_class = "Q1" if prio == "critical" else ("Q2" if prio == "standard" else "Q3")
 
-        # Calculate current SLO violation rate (Client-side feedback)
         current_slo_violation_rate = 0.0
+        current_p90_latency = 100.0
+        q1_violation_rate = 0.0
+        q2_violation_rate = 0.0
+        q3_violation_rate = 0.0
+        q1_drop_rate = 0.0
+        q2_drop_rate = 0.0
+        q3_drop_rate = 0.0
         with self.lock:
             if self.slo_violation_window:
                 current_slo_violation_rate = sum(self.slo_violation_window) / len(self.slo_violation_window)
+            if self.latency_window:
+                sorted_lat = sorted(self.latency_window)
+                idx = int(len(sorted_lat) * 0.9)
+                if idx < len(sorted_lat):
+                    current_p90_latency = sorted_lat[idx]
+            q1_v = self.qos_violation_window.get('Q1') or []
+            q2_v = self.qos_violation_window.get('Q2') or []
+            q3_v = self.qos_violation_window.get('Q3') or []
+            q1_d = self.qos_drop_window.get('Q1') or []
+            q2_d = self.qos_drop_window.get('Q2') or []
+            q3_d = self.qos_drop_window.get('Q3') or []
+            if q1_v:
+                q1_violation_rate = sum(q1_v) / len(q1_v)
+            if q2_v:
+                q2_violation_rate = sum(q2_v) / len(q2_v)
+            if q3_v:
+                q3_violation_rate = sum(q3_v) / len(q3_v)
+            if q1_d:
+                q1_drop_rate = sum(q1_d) / len(q1_d)
+            if q2_d:
+                q2_drop_rate = sum(q2_d) / len(q2_d)
+            if q3_d:
+                q3_drop_rate = sum(q3_d) / len(q3_d)
 
         payload = {
             "metrics": {
-                "slo_violation_rate": current_slo_violation_rate
+                "slo_violation_rate": current_slo_violation_rate,
+                "p90": current_p90_latency,
+                "latency": current_p90_latency,
+                "q1_violation_rate": q1_violation_rate,
+                "q2_violation_rate": q2_violation_rate,
+                "q3_violation_rate": q3_violation_rate,
+                "q1_worker_drop_rate": q1_drop_rate,
+                "q2_worker_drop_rate": q2_drop_rate,
+                "q3_worker_drop_rate": q3_drop_rate
             }, 
             "priority": prio, "risk": {},
             "strategy": strategy, "wcp_mode": wcp_mode
@@ -189,12 +229,26 @@ class TraceReplayer:
             shed_by_worker = worker_status == "degraded"
         is_violation = not met_slo
 
-        # Update Violation History
         violation_val = 1.0 if not met_slo else 0.0
+        drop_val = 1.0 if shed_by_worker else 0.0
         with self.lock:
             self.slo_violation_window.append(violation_val)
             if len(self.slo_violation_window) > 100:
                 self.slo_violation_window.pop(0)
+            qos_violation_list = self.qos_violation_window.get(qos_class)
+            if qos_violation_list is not None:
+                qos_violation_list.append(violation_val)
+                if len(qos_violation_list) > 100:
+                    qos_violation_list.pop(0)
+            qos_drop_list = self.qos_drop_window.get(qos_class)
+            if qos_drop_list is not None:
+                qos_drop_list.append(drop_val)
+                if len(qos_drop_list) > 100:
+                    qos_drop_list.pop(0)
+            if worker_status != "shedded":
+                self.latency_window.append(e2e_latency)
+                if len(self.latency_window) > 50:
+                    self.latency_window.pop(0)
 
         self.results.append({
             "req_id": req_id,
@@ -310,18 +364,18 @@ if __name__ == "__main__":
     replayer.load_trace()
 
     # 2. 运行基线（Baseline）实验
-    replayer.run_experiment(
-        strategy='baseline',
-        wcp_mode='baseline',
-        output_filename='results_baseline.csv'
-    )
+    # replayer.run_experiment(
+    #     strategy='baseline',
+    #     wcp_mode='baseline',
+    #     output_filename='results_baseline.csv'
+    # )
 
     # 3. 运行静态优先级实验
-    replayer.run_experiment(
-        strategy='static',
-        wcp_mode='baseline',
-        output_filename='results_static.csv'
-    )
+    # replayer.run_experiment(
+    #     strategy='static',
+    #     wcp_mode='baseline',
+    #     output_filename='results_static.csv'
+    # )
 
     # 4. 运行MPC实验
     replayer.run_experiment(

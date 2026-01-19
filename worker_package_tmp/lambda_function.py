@@ -159,7 +159,7 @@ def lambda_handler(event, context):
         time.sleep(total_sleep)
         print(f"Task {task.get('id')} processed. Mode: {mode}. Sleep: {total_sleep:.3f}s (Base: {base_latency}, Jitter: {jitter:.3f}, Pen: {penalty_factor:.2f})")
         
-    duration = (time.time() - start_time) * 1000 # ms
+    duration = (time.time() - start_time) * 1000
     
     # --- POST-EXECUTION: Feedback Update ---
     # Update MPC state with ACTUAL metrics from this execution

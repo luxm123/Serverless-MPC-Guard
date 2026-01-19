@@ -119,7 +119,6 @@ class MPCMiddleware:
         if not metrics or 'p90' not in metrics:
              metrics = metrics.copy()
              metrics['p90'] = float(state.get('p90_belief', 100.0))
-             # Also assume CPU load correlates with p90 for now
              metrics['cpu_usage'] = 0.8 if metrics['p90'] > 500 else 0.2
         
         # Hydrate Controller
@@ -195,6 +194,13 @@ class MPCMiddleware:
         # System State
         qos_slo_map = {'Q1': 1000.0, 'Q2': 1800.0, 'Q3': 3000.0}
         slo_limit_ms = float(qos_slo_map.get(qos, float(event.get('slo_limit', state.get('slo_limit', 1000.0)))))
+        q1_violation_rate = float(metrics.get('q1_violation_rate', 0.0) or 0.0)
+        q2_violation_rate = float(metrics.get('q2_violation_rate', 0.0) or 0.0)
+        q3_violation_rate = float(metrics.get('q3_violation_rate', 0.0) or 0.0)
+        q1_drop_rate = float(metrics.get('q1_worker_drop_rate', 0.0) or 0.0)
+        q2_drop_rate = float(metrics.get('q2_worker_drop_rate', 0.0) or 0.0)
+        q3_drop_rate = float(metrics.get('q3_worker_drop_rate', 0.0) or 0.0)
+
         system_state = {
             'shadow_price': state.get('shadow_price', 0.0),
             'last_alloc': last_alloc,
@@ -206,6 +212,12 @@ class MPCMiddleware:
             'prio_cl_w_latency': state.get('prio_cl_w_latency', state.get('priority_weights', {}).get('prio_cl_w_latency', None)),
             'prio_cl_w_risk': state.get('prio_cl_w_risk', state.get('priority_weights', {}).get('prio_cl_w_risk', None)),
             'prio_cl_w_wait': state.get('prio_cl_w_wait', state.get('priority_weights', {}).get('prio_cl_w_wait', None)),
+            'q1_violation_rate': q1_violation_rate,
+            'q2_violation_rate': q2_violation_rate,
+            'q3_violation_rate': q3_violation_rate,
+            'q1_worker_drop_rate': q1_drop_rate,
+            'q2_worker_drop_rate': q2_drop_rate,
+            'q3_worker_drop_rate': q3_drop_rate,
         }
         system_state = {k: v for k, v in system_state.items() if v is not None}
 
@@ -244,6 +256,16 @@ class MPCMiddleware:
             if qos == 'Q3' and latency_gradient > 3.0 and current_pred_p90 > (slo_limit_ms * 0.5):
                 should_shed_early = True
                 shed_reason = "gradient_control"
+
+            if not should_shed_early and qos == 'Q3':
+                if (q1_drop_rate > 0.01 or q2_drop_rate > 0.01) or (q1_violation_rate > 0.1 or q2_violation_rate > 0.1):
+                    should_shed_early = True
+                    shed_reason = "protect_q1q2"
+
+            if not should_shed_early and qos == 'Q2':
+                if q1_drop_rate > 0.05 or q1_violation_rate > 0.2:
+                    should_shed_early = True
+                    shed_reason = "extreme_protect_q1"
 
             current_price = float(state.get('shadow_price', 0.0))
             if not should_shed_early:
