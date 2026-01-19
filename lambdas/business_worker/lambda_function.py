@@ -92,8 +92,21 @@ def lambda_handler(event, context):
         should_shed = False
     else:
         raw_should_shed = decision.get('shouldShed', False)
+        shed_reason = decision.get('shed_reason', '')
+
         if qos == "Q3":
             should_shed = raw_should_shed
+        elif qos == "Q2":
+            if raw_should_shed:
+                if shed_reason == "extreme_protect_q1":
+                     # Probabilistic shedding for Q2 to avoid "all or nothing"
+                     # Drop 50% of Q2s when in extreme protection mode
+                     should_shed = random.random() < 0.5 
+                else:
+                     # For other reasons (e.g. bulkhead_q2), respect the decision
+                     should_shed = True 
+            else:
+                should_shed = False
         else:
             should_shed = False
     
