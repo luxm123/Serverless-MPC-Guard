@@ -17,6 +17,18 @@ class Optimizer:
             w2 = float(state.get('opt_w2', w2))
             w3 = float(state.get('opt_w3', w3))
 
+        # --- MPC Priority Boosting ---
+        # Instead of hard-coding the output, we tune the objective function weights.
+        # For Q1 (Mission Critical), the cost of Violation (w3) and Tracking Error (w1)
+        # must significantly outweigh the Shadow Price (Cost).
+        if qos_class == 'Q1':
+            w1 *= 50.0  # Tracking error is critical
+            w3 *= 50.0  # Violation risk is unacceptable
+        elif qos_class == 'Q2':
+            w1 *= 2.0
+            w3 *= 2.0
+        # -----------------------------
+
         error = abs(y_ac - y_ref)
         waste = metrics.get('resource_waste', 0.0)
         is_viol = 1.0 if y_ac > y_ref else 0.0
