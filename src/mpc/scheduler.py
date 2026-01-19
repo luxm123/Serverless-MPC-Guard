@@ -6,7 +6,7 @@ class Scheduler:
         self.slo_limit = 500.0
         self.optimizer = optimizer
         
-    def decide_control_input(self, priority, wcp_constraints, system_state, ref_latency=None):
+    def decide_control_input(self, priority, wcp_constraints, system_state, ref_latency=None, qos_class=None):
         pred = wcp_constraints.get('pred', {})
         unc_raw = wcp_constraints.get('uncertainty', 0.0)
         queue_delay_ms = float(system_state.get('pred_queue_delay_ms', 0.0) or 0.0)
@@ -72,7 +72,8 @@ class Scheduler:
                 risks=risks,
                 tau=float(system_state.get('risk_tau', 1.0)),
                 ref_latency=ref_latency,
-                state=system_state
+                state=system_state,
+                qos_class=qos_class
             )
         max_delta = float(system_state.get('u_max_delta', 0.15))
         

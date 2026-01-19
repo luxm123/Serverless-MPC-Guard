@@ -123,7 +123,7 @@ class Optimizer:
             u_new = upper
         return u_new
 
-    def optimize_u(self, prev_u, pred_upper, slo_limit, price, eta=0.05, gamma=0.1, risk_comp=None, ku=None, risks=None, tau=1.0, ref_latency=None, state=None):
+    def optimize_u(self, prev_u, pred_upper, slo_limit, price, eta=0.05, gamma=0.1, risk_comp=None, ku=None, risks=None, tau=1.0, ref_latency=None, state=None, qos_class=None):
         """
         Gradient Descent Step for:
         min J(u) + (gamma/2)*||u||^2
@@ -132,6 +132,7 @@ class Optimizer:
         
         Args:
             ref_latency: Reference latency from trajectory generator (r_i)
+            qos_class: Service Class (Q1, Q2, Q3) for weight boosting
         """
         # Load adaptive weights
         w1 = self.default_w1
@@ -141,6 +142,18 @@ class Optimizer:
             w1 = float(state.get('opt_w1', w1))
             w2 = float(state.get('opt_w2', w2))
             w3 = float(state.get('opt_w3', w3))
+
+        # --- MPC Priority Boosting ---
+        # Instead of hard-coding the output, we tune the objective function weights.
+        # For Q1 (Mission Critical), the cost of Violation (w3) and Tracking Error (w1)
+        # must significantly outweigh the Shadow Price (Cost).
+        if qos_class == 'Q1':
+            w1 *= 50.0  # Tracking error is critical
+            w3 *= 50.0  # Violation risk is unacceptable
+        elif qos_class == 'Q2':
+            w1 *= 2.0
+            w3 *= 2.0
+        # -----------------------------
 
         # 1. Risk Gradient (Risk of violating SLO)
         base_risk = max(0.0, (pred_upper - slo_limit) / max(1.0, slo_limit))
