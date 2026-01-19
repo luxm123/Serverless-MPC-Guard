@@ -57,7 +57,7 @@ class Optimizer:
         w3_step_inc = float(state.get('opt_w3_step_inc', 50.0))
         w3_step_dec = float(state.get('opt_w3_step_dec', 0.95))
         w3_min = float(state.get('opt_w3_min', 5.0))
-        w3_max = float(state.get('opt_w3_max', 200.0))
+        w3_max = float(state.get('opt_w3_max', 2000.0))
         
         # 2. Adapt w2 (Waste Penalty) - Define params early
         w2_step_inc = float(state.get('opt_w2_step_inc', 10.0))
@@ -135,7 +135,7 @@ class Optimizer:
             u_new = upper
         return u_new
 
-    def optimize_u(self, prev_u, pred_upper, slo_limit, price, eta=0.05, gamma=0.1, risk_comp=None, ku=None, risks=None, tau=1.0, ref_latency=None, state=None, qos_class=None):
+    def optimize_u(self, prev_u, pred_upper, slo_limit, price, eta=0.05, gamma=0.1, risk_comp=None, ku=None, risks=None, tau=1.0, ref_latency=None, state=None, priority=0.5):
         """
         Gradient Descent Step for:
         min J(u) + (gamma/2)*||u||^2
@@ -144,7 +144,7 @@ class Optimizer:
         
         Args:
             ref_latency: Reference latency from trajectory generator (r_i)
-            qos_class: Service Class (Q1, Q2, Q3) for weight boosting
+            priority: Normalized priority score (0.0-1.0) for dynamic weight scaling
         """
         # Load adaptive weights
         w1 = self.default_w1
@@ -155,16 +155,16 @@ class Optimizer:
             w2 = float(state.get('opt_w2', w2))
             w3 = float(state.get('opt_w3', w3))
 
-        # --- MPC Priority Boosting ---
-        # Instead of hard-coding the output, we tune the objective function weights.
-        # For Q1 (Mission Critical), the cost of Violation (w3) and Tracking Error (w1)
-        # must significantly outweigh the Shadow Price (Cost).
-        if qos_class == 'Q1':
-            w1 *= 50.0  # Tracking error is critical
-            w3 *= 50.0  # Violation risk is unacceptable
-        elif qos_class == 'Q2':
-            w1 *= 2.0
-            w3 *= 2.0
+        # --- MPC Priority Scaling (Dynamic) ---
+        # Dynamically scale the cost of Risk (w3) and Tracking (w1) based on Priority.
+        # High priority tasks (Q1) have much higher 'Disutility' for violation.
+        # We use a quadratic scaling to differentiate strongly at the top.
+        # Factor ranges from 1.0 (P=0) to ~50.0 (P=1).
+        if priority is not None:
+            p_val = max(0.0, min(1.0, float(priority)))
+            factor = 1.0 + 49.0 * (p_val * p_val) 
+            w1 *= factor
+            w3 *= factor
         # -----------------------------
 
         # 1. Risk Gradient (Risk of violating SLO)
