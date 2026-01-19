@@ -129,7 +129,7 @@ class MPCMiddleware:
         # Note: We run WCP locally for prediction, but we don't save RLS state synchronously
         # to avoid high latency. RLS state changes are small and can be approximated or
         # pushed asynchronously.
-        pred_dict, uncertainty, debug_info = wcp_update(state, metrics, alpha=0.1)
+        pred_dict, uncertainty, debug_info = wcp_update(state, metrics, alpha=0.2)
         
         # MPC Constraints
         wcp_constraints = {'pred': pred_dict, 'uncertainty': uncertainty}
@@ -241,13 +241,13 @@ class MPCMiddleware:
             current_pred_p90 = float(pred_dict.get('p90', 0.0) or 0.0)
             latency_gradient = current_pred_p90 - p90_belief
             
-            if qos == 'Q3' and latency_gradient > 5.0 and current_pred_p90 > (slo_limit_ms * 0.6):
+            if qos == 'Q3' and latency_gradient > 3.0 and current_pred_p90 > (slo_limit_ms * 0.5):
                 should_shed_early = True
                 shed_reason = "gradient_control"
 
             current_price = float(state.get('shadow_price', 0.0))
             if not should_shed_early:
-                if current_price > 50.0 and qos == 'Q3':
+                if current_price > 20.0 and qos == 'Q3':
                     should_shed_early = True
                     shed_reason = "bulkhead_q3"
                 elif current_price > 200.0 and qos == 'Q2':
@@ -256,7 +256,7 @@ class MPCMiddleware:
 
             shed_by_latency = False
             if qos == 'Q3':
-                if pred_total_ms > admit_thr * 0.9:
+                if pred_total_ms > admit_thr * 0.8:
                     shed_by_latency = True
 
             if qos == 'Q3' and (should_shed_early or shed_by_latency):
