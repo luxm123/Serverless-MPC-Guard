@@ -201,6 +201,11 @@ class MPCMiddleware:
         q2_drop_rate = float(metrics.get('q2_worker_drop_rate', 0.0) or 0.0)
         q3_drop_rate = float(metrics.get('q3_worker_drop_rate', 0.0) or 0.0)
 
+        # --- CRITICAL FIX: Global Risk Sensitivity ---
+        # Ensure Shadow Price reacts to Q1 violations
+        raw_slo_violation = float(metrics.get('slo_violation_rate', 0.0) or 0.0)
+        metrics['slo_violation_rate'] = max(raw_slo_violation, q1_violation_rate)
+
         system_state = {
             'shadow_price': state.get('shadow_price', 0.0),
             'last_alloc': last_alloc,
@@ -263,9 +268,20 @@ class MPCMiddleware:
                     shed_reason = "protect_q1q2"
 
             if not should_shed_early and qos == 'Q2':
-                if q1_drop_rate > 0.05 or q1_violation_rate > 0.2:
-                    should_shed_early = True
-                    shed_reason = "extreme_protect_q1"
+                # Soft Shedding Ramp for Q2 (Protect Q1 without "Cliff")
+                # If Q1 violation is 10% -> 0% drop.
+                # If Q1 violation is 30% -> 100% drop.
+                # Slope = 5.0
+                if q1_violation_rate > 0.1:
+                    drop_prob = min(1.0, (q1_violation_rate - 0.1) * 5.0)
+                    if random.random() < drop_prob:
+                        should_shed_early = True
+                        shed_reason = f"soft_protect_q1_{drop_prob:.2f}"
+                
+                # Fallback: If Q1 is being dropped heavily, also shed Q2
+                if not should_shed_early and q1_drop_rate > 0.05:
+                     should_shed_early = True
+                     shed_reason = "extreme_protect_q1_drops"
 
             current_price = float(state.get('shadow_price', 0.0))
             if not should_shed_early:

@@ -1,4 +1,5 @@
 from src.wcp.risk import compute_risk
+import random
 
 class Scheduler:
     def __init__(self, optimizer=None):
@@ -121,8 +122,15 @@ class Scheduler:
             relax_factor = float(system_state.get('sched_relax_factor', 1.2))
             relaxed_limit = self.slo_limit * relax_factor
             if (ub_latency_total > relaxed_limit or composite > 0.0) and price > price_med:
-                should_shed = True
-                degrade_plan = "store_to_sqs_recovery"
+                # RED-like Probabilistic Shedding
+                # Price range [price_med, price_high] -> Prob [0.0, 1.0]
+                # This prevents binary on/off shedding and allows smooth degradation
+                denom = max(1.0, price_high - price_med)
+                prob = min(1.0, max(0.0, (price - price_med) / denom))
+                
+                if random.random() < prob:
+                    should_shed = True
+                    degrade_plan = "store_to_sqs_recovery"
         else:
             price_low = float(system_state.get('sched_price_low', 10.0))
             if (ub_latency_total > self.slo_limit or composite > 0.0) and price > price_low:
