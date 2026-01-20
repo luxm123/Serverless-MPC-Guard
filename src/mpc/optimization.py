@@ -22,8 +22,8 @@ class Optimizer:
         # For Q1 (Mission Critical), the cost of Violation (w3) and Tracking Error (w1)
         # must significantly outweigh the Shadow Price (Cost).
         if qos_class == 'Q1':
-            w1 *= 50.0  # Tracking error is critical
-            w3 *= 50.0  # Violation risk is unacceptable
+            # Remove artificial boost for Q1 to allow Shadow Price to work
+            is_fidelity_mode = True
         elif qos_class == 'Q2':
             w1 *= 2.0
             w3 *= 2.0
@@ -149,9 +149,16 @@ class Optimizer:
             w3 = float(state.get('opt_w3', w3))
 
         # --- MPC Priority Boosting (Explicit QoS) ---
+        # For Q1 (Mission Critical), we use Fidelity Scaling.
+        # u becomes 'Fidelity' (0.0-1.0).
+        # We want u to track 1.0 (w1) but DROP if Price is high.
+        # We do NOT want to artificially boost w3 (Risk) because standard Risk gradient
+        # assumes High u = Low Risk (Better Performance), which is FALSE for Fidelity.
+        is_fidelity_mode = False
         if qos_class == 'Q1':
-            w1 *= 100.0  # Increased from 50x (Mission Critical)
-            w3 *= 100.0  # Increased from 50x (Zero Violation Tolerance)
+            # w1 *= 5.0 # Moderate boost to tracking (prefer high fidelity if cheap)
+            # w3 *= 1.0 # Standard risk sensitivity
+            is_fidelity_mode = True
         elif qos_class == 'Q2':
             w1 *= 2.0
             w3 *= 2.0
@@ -184,9 +191,23 @@ class Optimizer:
             soft_risk = float(risk_comp)
             
         # d(Risk)/du approx -ku * Risk (assuming u reduces risk)
+        # Standard Mode (Admission): Higher u = Admit More = ? Actually u usually means Alloc.
+        # Standard: Higher u = More CPU = Lower Latency = Lower Risk. -> Grad is Negative.
+        
+        # Fidelity Mode (Q1): Higher u = More Work = Higher Latency = Higher Risk. -> Grad is Positive.
+        
         grad_risk = -1.0 * soft_risk
         if isinstance(ku, (int, float)):
             grad_risk = -float(ku) * soft_risk
+            
+        if is_fidelity_mode:
+            # INVERT GRADIENT: High u causes Risk.
+            # We want optimizer to reduce u when Risk is high.
+            # Descent: u_new = u - eta * grad.
+            # If grad is Positive (+Risk), u reduces. Correct.
+            grad_risk = 1.0 * soft_risk 
+            if isinstance(ku, (int, float)):
+                grad_risk = float(ku) * soft_risk
             
         # 2. Waste Gradient (Resource Usage)
         # J_waste = u^2 or just u. Let's assume J_waste ~ u (linear cost) or u^2.
@@ -207,6 +228,11 @@ class Optimizer:
             # If diff < 0 (too fast), we can reduce u -> grad should be positive.
             # grad = 2 * diff * (-1)
             grad_track = -1.0 * diff
+            
+            if is_fidelity_mode:
+                # Invert Tracking Gradient for Fidelity
+                # Too slow (diff > 0) -> Need LESS u -> grad should be Positive
+                grad_track = 1.0 * diff
         
         # Total Gradient
         # grad J = w1 * grad_track + w2 * grad_waste + w3 * grad_risk + price

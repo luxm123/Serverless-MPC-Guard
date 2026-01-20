@@ -160,8 +160,14 @@ def lambda_handler(event, context):
         # Apply Resource Allocation Penalty (Simulating resource limits)
         resource_alloc = float(event.get('resource_alloc', 1.0))
         penalty_factor = 1.0
-        if resource_alloc < 1.0:
-            # e.g., if alloc is 0.8, we are 20% slower? No, maybe more.
+        
+        # Check if we are in Q1 Fidelity Mode
+        # If event has 'fidelity_factor', it implies we are controlling duration explicitly.
+        # We should NOT apply the starvation penalty in this case, otherwise we negate the speedup.
+        is_fidelity_mode = (event.get('fidelity_factor', 1.0) < 1.0) or (qos == "Q1" and resource_alloc < 1.0 and decision.get('shouldShed', False))
+
+        if resource_alloc < 1.0 and not is_fidelity_mode:
+            # Only apply penalty for non-fidelity tasks (e.g. Q2/Q3 if they weren't shed)
             # Sim_utils used: exec_latency *= (1.0 + (1.0 - alloc))
             penalty_factor = 1.0 + (1.0 - resource_alloc)
             print(f"Resource Alloc: {resource_alloc:.2f} -> Penalty Factor: {penalty_factor:.2f}")
