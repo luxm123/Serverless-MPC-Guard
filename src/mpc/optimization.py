@@ -164,6 +164,11 @@ class Optimizer:
         # --------------------------------------------
 
         # 1. Risk Gradient (Risk of violating SLO)
+        # Formula: SLO_safe = SLO_target - C_{1-alpha} (Uncertainty Margin)
+        # Constraint: y_pred <= SLO_safe  <==>  y_pred + C_{1-alpha} <= SLO_target
+        # pred_upper represents (y_pred + C_{1-alpha}) i.e., the (1-alpha) quantile prediction.
+        
+        # We quantify violation as: max(0, (pred_upper - slo_limit) / slo_limit)
         base_risk = max(0.0, (pred_upper - slo_limit) / max(1.0, slo_limit))
         soft_risk = base_risk
         
