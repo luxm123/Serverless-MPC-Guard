@@ -230,6 +230,10 @@ class Optimizer:
 
         grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm)
         
+        # DEBUG: Verify Q1 Fidelity Logic
+        if is_fidelity_mode and abs(grad) > 0.1:
+             print(f"[MPC-OPT] Q1 Fidelity: Risk={soft_risk:.2f}, Grad={grad:.2f}, Price={price:.2f}, u_new={prev_u - eta * (grad + gamma * prev_u):.2f}")
+        
         # Update Step with Regularization (gamma * u)
         # u_new = u - eta * (grad + gamma * u)
         step = eta * (grad + gamma * prev_u)
