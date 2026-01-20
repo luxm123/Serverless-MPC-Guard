@@ -153,31 +153,13 @@ class MPCMiddleware:
             last_sync = float(_L1_CACHE.get('last_backlog_sync', 0) or 0)
             is_cache_fresh = (cached_val is not None) and (now - last_sync < ttl_s)
 
-            # CRITICAL FIX: Smart Sync Fetch for Q1
-            # User Concern: "Sync is slow".
-            # Solution: We ONLY sync if cache is stale (>2s). 
-            # With 0.5s timeout, we cap the risk. 
-            # In high QPS, this happens once every N requests (Amortized cost ~0).
-            force_sync = (qos == 'Q1') and (not is_cache_fresh)
+            # CRITICAL FIX: Removed blocking sync for Q1.
+            # User Feedback: "Sync is slow" / "Timeout".
+            # We must NOT block the main thread for SQS calls during high concurrency.
+            # Rely on Async Thread or Stale Cache.
+            force_sync = False # Disabled blocking sync
             
-            if force_sync:
-                try:
-                    r = sqs.get_queue_attributes(
-                        QueueUrl=MAIN_QUEUE_URL,
-                        AttributeNames=['ApproximateNumberOfMessages']
-                    )
-                    val = float(r.get('Attributes', {}).get('ApproximateNumberOfMessages', '0'))
-                    _L1_CACHE['last_backlog'] = val
-                    _L1_CACHE['last_backlog_sync'] = now
-                    queue_backlog = val
-                    backlog_source = 'sqs_sync_q1'
-                except Exception as e:
-                    print(f"Sync Backlog Fetch Warning (Timeout/Error): {e}")
-                    # Fallback to stale if Sync fails (Don't crash)
-                    if cached_val is not None:
-                        queue_backlog = cached_val
-                        backlog_source = 'sqs_cache_stale'
-            elif is_cache_fresh:
+            if is_cache_fresh:
                 # Cache Miss/Expired -> Trigger Async Update
                 if not _L1_CACHE.get('updating_backlog'):
                     _L1_CACHE['updating_backlog'] = True

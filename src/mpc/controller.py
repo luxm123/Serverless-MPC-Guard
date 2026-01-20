@@ -142,7 +142,8 @@ class MPCController:
         # Step 3: Scheduling Execution
         qos_class = task.get('qos_class', 'Q2')
         should_shed, plan, alloc = self.scheduler.decide_control_input(
-            priority, wcp_constraints, system_state, ref_latency=ref_latency, qos_class=qos_class
+            priority, wcp_constraints, system_state, ref_latency=ref_latency, qos_class=qos_class,
+            current_backlog=system_state.get('queue_backlog', 0.0)
         )
         
         # Step 4: Feedback Update (Persist Adaptive Params)

@@ -135,7 +135,7 @@ class Optimizer:
             u_new = upper
         return u_new
 
-    def optimize_u(self, prev_u, pred_upper, slo_limit, price, eta=0.05, gamma=0.1, risk_comp=None, ku=None, risks=None, tau=1.0, ref_latency=None, state=None, priority=0.5, qos_class=None):
+    def optimize_u(self, prev_u, pred_upper, slo_limit, price, eta=0.05, gamma=0.1, risk_comp=None, ku=None, risks=None, tau=1.0, ref_latency=None, state=None, priority=0.5, qos_class=None, current_backlog=None):
         """
         Gradient Descent Step for u (Admission Probability / Resource Alloc).
         """
@@ -236,24 +236,32 @@ class Optimizer:
              # If Price > 0 (Congestion), drop Fidelity to floor (0.01) immediately to clear queue.
              price_norm = max(0.1, price_norm / 100.0)
 
-        # 4. Congestion Gradient (Proportional Control)
-        # If Queue Delay is high, we MUST reduce u immediately, regardless of Price.
-        # Price is Integral (Accumulated Error), Queue is Proportional (Current State).
+        # 4. Congestion Gradient (Proportional Control using REAL-TIME Backlog)
+        # If Queue Backlog is high, we MUST reduce u immediately.
+        # Predicted delay is too slow (lagged). We use the backlog snapshot directly.
         grad_congestion = 0.0
-        if state:
-             q_delay = float(state.get('pred_queue_delay_ms', 0.0))
-             # If Delay > 200ms, start applying pressure.
-             # This ensures we react to queue buildup BEFORE it causes SLO violations.
-             if q_delay > 200.0:
-                 # Linear penalty: (Delay - 200) / 100
-                 # e.g., 500ms -> 3.0. With eta=0.05, u drops by 0.15 per step.
-                 grad_congestion = (q_delay - 200.0) / 100.0
+        
+        # Use passed current_backlog if available (from Middleware sync/cache)
+        # Fallback to state prediction if backlog is None (but that's less reliable)
+        backlog_val = 0.0
+        if current_backlog is not None:
+            backlog_val = float(current_backlog)
+        elif state:
+            # Fallback to whatever belief we have
+            backlog_val = float(state.get('queue_backlog_belief', 0.0))
+
+        if backlog_val > 5.0:
+             # Aggressive P-Control:
+             # If Backlog=100 (Flash Crowd), Grad=50.0. 
+             # u_new = u - 0.05 * 50 = u - 2.5 (Drops to 0 instantly).
+             # If Backlog=10 (Mild), Grad=5.0. u drops by 0.25.
+             grad_congestion = backlog_val * 0.5
 
         grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
         
         # DEBUG: Verify Q1 Fidelity Logic
         if is_fidelity_mode and abs(grad) > 0.1:
-             print(f"[MPC-OPT] Q1 Fidelity: Risk={soft_risk:.2f}, Queue={state.get('pred_queue_delay_ms',0):.0f}ms, Grad={grad:.2f} (Congest={grad_congestion:.2f}), Price={price:.2f}, u_new={prev_u - eta * (grad + gamma * prev_u):.2f}")
+             print(f"[MPC-OPT] Q1 Fidelity: Risk={soft_risk:.2f}, Backlog={backlog_val:.0f}, Grad={grad:.2f} (Congest={grad_congestion:.2f}), Price={price:.2f}, u_new={prev_u - eta * (grad + gamma * prev_u):.2f}")
         
         # Update Step with Regularization (gamma * u)
         # u_new = u - eta * (grad + gamma * u)

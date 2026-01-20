@@ -112,15 +112,24 @@ def lambda_handler(event, context):
             if alloc < 1.0:
                  event['fidelity_factor'] = fidelity
             
+            pred_queue_delay = float(decision.get('pred_queue_delay_ms', 0.0))
+
+            # CRITICAL OVERRIDE: Bang-Bang Control for Flash Crowds
+            # If queue is detected (>200ms), DROP fidelity immediately. Don't wait for Controller.
+            if pred_queue_delay > 200.0:
+                 fidelity = 0.05 
+                 event['fidelity_factor'] = fidelity
+                 print(f"[Q1 EMERGENCY] Queue {pred_queue_delay:.0f}ms > 200ms. FORCING Fidelity 5%.")
+
             if raw_should_shed:
                 # If Controller says SHED, we check if we can just degrade.
                 # Circuit Breaker: 
                 # 1. If alloc is extremely low (< 0.05), system is completely broken.
-                # 2. If queue delay is nearly exceeding SLO (e.g., > 800ms for 1000ms SLO), execution is futile.
-                pred_queue_delay = float(decision.get('pred_queue_delay_ms', 0.0))
+                # 2. If queue delay is HIGH (>300ms), better to shed than timeout.
                 
-                # Relaxed threshold: Allow Q1 to run even if queue is 500ms, as long as alloc drops to handle it.
-                if alloc < 0.05 or pred_queue_delay > 800.0:
+                # Revert to strict threshold: 300ms.
+                # User Feedback: "Not effective" -> We were allowing 1700ms latencies. Stop that.
+                if alloc < 0.05 or pred_queue_delay > 300.0:
                     should_shed = True
                     reason = "LowAlloc" if alloc < 0.05 else "HighQueue"
                     print(f"[Q1 Critical] System Saturated ({reason}: Alloc {alloc:.2f}, Queue {pred_queue_delay:.0f}ms). Force Shedding.")
