@@ -151,13 +151,12 @@ class Optimizer:
         # --- MPC Priority Boosting (Explicit QoS) ---
         # For Q1 (Mission Critical), we use Fidelity Scaling.
         # u becomes 'Fidelity' (0.0-1.0).
-        # We want u to track 1.0 (w1) but DROP if Price is high.
-        # We do NOT want to artificially boost w3 (Risk) because standard Risk gradient
-        # assumes High u = Low Risk (Better Performance), which is FALSE for Fidelity.
         is_fidelity_mode = False
         if qos_class == 'Q1':
-            # w1 *= 5.0 # Moderate boost to tracking (prefer high fidelity if cheap)
-            # w3 *= 1.0 # Standard risk sensitivity
+            # CRITICAL FIX: Q1 Fidelity Mode
+            # Q1 cannot shed, so it MUST degrade fidelity aggressively under load.
+            # We boost Price and Risk sensitivity significantly.
+            w3 *= 50.0  # Massive boost to Risk sensitivity
             is_fidelity_mode = True
         elif qos_class == 'Q2':
             w1 *= 2.0
@@ -187,60 +186,48 @@ class Optimizer:
                 soft_risk = mx
 
         if isinstance(risk_comp, (int, float)):
-            # If composite risk is provided directly (legacy)
             soft_risk = float(risk_comp)
             
-        # d(Risk)/du approx -ku * Risk (assuming u reduces risk)
-        # Standard Mode (Admission): Higher u = Admit More = ? Actually u usually means Alloc.
-        # Standard: Higher u = More CPU = Lower Latency = Lower Risk. -> Grad is Negative.
-        
-        # Fidelity Mode (Q1): Higher u = More Work = Higher Latency = Higher Risk. -> Grad is Positive.
-        
-        grad_risk = -1.0 * soft_risk
+        # CRITICAL FIX: Gradient Direction
+        # Current Architecture: u = Admission (Q2/Q3) or Fidelity (Q1).
+        # In BOTH cases, Higher u -> Higher Load/Latency -> Higher Risk.
+        # Therefore, d(Risk)/du is POSITIVE.
+        # To reduce Risk, we must reduce u. 
+        # Gradient Descent: u_new = u - eta * grad.
+        # So grad should be POSITIVE.
+        grad_risk = 1.0 * soft_risk 
         if isinstance(ku, (int, float)):
-            grad_risk = -float(ku) * soft_risk
-            
-        if is_fidelity_mode:
-            # INVERT GRADIENT: High u causes Risk.
-            # We want optimizer to reduce u when Risk is high.
-            # Descent: u_new = u - eta * grad.
-            # If grad is Positive (+Risk), u reduces. Correct.
-            grad_risk = 1.0 * soft_risk 
-            if isinstance(ku, (int, float)):
-                grad_risk = float(ku) * soft_risk
-            
-        # 2. Waste Gradient (Resource Usage)
-        # J_waste = u^2 or just u. Let's assume J_waste ~ u (linear cost) or u^2.
-        # Here we use prev_u as gradient of (1/2)u^2, or 1.0 for linear.
-        # Implementation uses prev_u, implying Waste ~ u^2/2
-        grad_waste = prev_u 
+             grad_risk = float(ku) * soft_risk
+
+        # 2. Utility Gradient (Was 'Waste')
+        # We want to MAXIMIZE u (Full Fidelity / Full Admission).
+        # J_utility = -u (Minimize negative u)
+        # d(J)/du = -1.0
+        # This provides a constant pressure to increase u back to 1.0 when Risk is low.
+        grad_waste = -1.0 
         
-        # 3. Tracking Error Gradient (New: Align with J(ti, y_ref, y_act))
+        # 3. Tracking Error Gradient
         # J_track = (y_pred - y_ref)^2
-        # d(J_track)/du = 2 * (y_pred - y_ref) * dy_pred/du
-        # Approx dy_pred/du ~ -k (latency drops as u increases)
+        # y_pred increases with u.
+        # If y_pred > y_ref (Too Slow), diff > 0.
+        # We need LESS u.
+        # grad should be POSITIVE.
         grad_track = 0.0
         if ref_latency is not None:
-            # y_pred is approx pred_upper (conservative) or we can estimate mean. 
-            # Let's use pred_upper for safety.
             diff = pred_upper - ref_latency
-            # If diff > 0 (too slow), we need more u -> grad should be negative.
-            # If diff < 0 (too fast), we can reduce u -> grad should be positive.
-            # grad = 2 * diff * (-1)
-            grad_track = -1.0 * diff
-            
-            if is_fidelity_mode:
-                # Invert Tracking Gradient for Fidelity
-                # Too slow (diff > 0) -> Need LESS u -> grad should be Positive
-                grad_track = 1.0 * diff
+            # Positive diff (Too slow) -> Positive grad -> Reduce u
+            grad_track = 1.0 * diff
         
         # Total Gradient
-        # grad J = w1 * grad_track + w2 * grad_waste + w3 * grad_risk + price
-        # Price Normalization Factor
+        # grad J = w1 * grad_track + w3 * grad_risk + w2 * grad_utility + price
         price_norm = 100.0
         if state:
              price_norm = float(state.get('opt_price_norm', 100.0))
         
+        # Boost Price Sensitivity for Q1 Fidelity Mode
+        if is_fidelity_mode:
+             price_norm = max(1.0, price_norm / 20.0) # 20x Sensitivity
+
         grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm)
         
         # Update Step with Regularization (gamma * u)
