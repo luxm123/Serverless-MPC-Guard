@@ -287,6 +287,15 @@ class TraceReplayer:
         
         # Deep copy to ensure fresh start for each run
         self.trace_data = copy.deepcopy(self.raw_trace_data)
+
+        # --- OPTIONAL: LOAD REDUCTION ---
+        # If the dataset is too aggressive (physical overload), reduce the load here.
+        # Set load_factor < 1.0 to drop requests randomly.
+        load_factor = 0.7  # <--- 70% Load: Reduce intensity to avoid physical limit
+        if load_factor < 1.0:
+            print(f"[Info] Applying Load Factor {load_factor}. Dropping {100*(1-load_factor):.1f}% of requests.")
+            self.trace_data = [x for x in self.trace_data if random.random() < load_factor]
+        # --------------------------------
         
         # Inject flash crowd to simulate high concurrency
         self.inject_flash_crowd(peak_time=5.0, requests=100)
