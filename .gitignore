@@ -6,3 +6,5 @@ venv/
 .DS_Store
 .idea/
 .vscode/
+
+experiments/serverless_test/trace_experiment/results/*.csv
