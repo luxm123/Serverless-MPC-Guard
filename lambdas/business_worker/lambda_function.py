@@ -98,30 +98,28 @@ def lambda_handler(event, context):
             should_shed = raw_should_shed
         elif qos == "Q2":
             should_shed = raw_should_shed
-            # Probabilistic shedding for Q2 (Reduces oscillation)
-            if should_shed and random.random() > 0.5:
-                should_shed = False
+            # Removed hardcoded 50% check; rely on Scheduler's probabilistic RED logic.
         elif qos == "Q1":
-            # Q1 Mission Critical: NEVER SHED, but DEGRADE (Fidelity Scaling)
-            should_shed = False
+            # Q1 Mission Critical: Prefer Degradation (Fidelity Scaling) over Shedding
+            # BUT allow shedding if system is overwhelmed even at min fidelity.
             
             # Use MPC allocation (u) as Fidelity Factor
-            # u=1.0 -> 100% Duration, u=0.1 -> 10% Duration
             alloc = float(event.get('resource_alloc', 1.0))
+            fidelity = max(0.01, min(1.0, alloc))
             
-            # If system is stressed (should_shed flag from Controller), enforce degradation
             if raw_should_shed:
-                # Map u to fidelity:
-                # If u is very low (e.g. 0.1), we run fast.
-                # If u is high (e.g. 0.9), we run normally.
-                fidelity = max(0.01, min(1.0, alloc))
-                
-                # Apply fidelity scaling to active_duration later
-                # We store it in task or event to apply before burn_cpu
-                event['fidelity_factor'] = fidelity
-                print(f"[Q1 Protection] Overload detected. Scaling Fidelity to {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
-        else:
-            should_shed = False
+                # If Controller says SHED, we check if we can just degrade.
+                # Circuit Breaker: If alloc is extremely low (< 0.05) and we are still told to shed,
+                # it means the system is saturated even with minimal service. We MUST shed Q1.
+                if alloc < 0.05:
+                    should_shed = True
+                    print(f"[Q1 Critical] System Saturated (Alloc {alloc:.2f} < 0.05). Force Shedding.")
+                else:
+                    should_shed = False
+                    event['fidelity_factor'] = fidelity
+                    print(f"[Q1 Protection] Overload detected. Scaling Fidelity to {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
+            else:
+                should_shed = False
     
     # Execution Logic
     if should_shed:
