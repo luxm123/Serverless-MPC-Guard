@@ -236,11 +236,24 @@ class Optimizer:
              # If Price > 0 (Congestion), drop Fidelity to floor (0.01) immediately to clear queue.
              price_norm = max(0.1, price_norm / 100.0)
 
-        grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm)
+        # 4. Congestion Gradient (Proportional Control)
+        # If Queue Delay is high, we MUST reduce u immediately, regardless of Price.
+        # Price is Integral (Accumulated Error), Queue is Proportional (Current State).
+        grad_congestion = 0.0
+        if state:
+             q_delay = float(state.get('pred_queue_delay_ms', 0.0))
+             # If Delay > 200ms, start applying pressure.
+             # This ensures we react to queue buildup BEFORE it causes SLO violations.
+             if q_delay > 200.0:
+                 # Linear penalty: (Delay - 200) / 100
+                 # e.g., 500ms -> 3.0. With eta=0.05, u drops by 0.15 per step.
+                 grad_congestion = (q_delay - 200.0) / 100.0
+
+        grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
         
         # DEBUG: Verify Q1 Fidelity Logic
         if is_fidelity_mode and abs(grad) > 0.1:
-             print(f"[MPC-OPT] Q1 Fidelity: Risk={soft_risk:.2f}, Grad={grad:.2f}, Price={price:.2f}, u_new={prev_u - eta * (grad + gamma * prev_u):.2f}")
+             print(f"[MPC-OPT] Q1 Fidelity: Risk={soft_risk:.2f}, Queue={state.get('pred_queue_delay_ms',0):.0f}ms, Grad={grad:.2f} (Congest={grad_congestion:.2f}), Price={price:.2f}, u_new={prev_u - eta * (grad + gamma * prev_u):.2f}")
         
         # Update Step with Regularization (gamma * u)
         # u_new = u - eta * (grad + gamma * u)

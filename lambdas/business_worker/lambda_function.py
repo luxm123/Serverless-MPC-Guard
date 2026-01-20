@@ -115,13 +115,14 @@ def lambda_handler(event, context):
             if raw_should_shed:
                 # If Controller says SHED, we check if we can just degrade.
                 # Circuit Breaker: 
-                # 1. If alloc is very low (< 0.15), system is too saturated to sustain Q1.
-                # 2. If queue delay is already eating up most of the SLO budget (> 300ms), execution is futile.
+                # 1. If alloc is extremely low (< 0.05), system is completely broken.
+                # 2. If queue delay is nearly exceeding SLO (e.g., > 800ms for 1000ms SLO), execution is futile.
                 pred_queue_delay = float(decision.get('pred_queue_delay_ms', 0.0))
                 
-                if alloc < 0.15 or pred_queue_delay > 300.0:
+                # Relaxed threshold: Allow Q1 to run even if queue is 500ms, as long as alloc drops to handle it.
+                if alloc < 0.05 or pred_queue_delay > 800.0:
                     should_shed = True
-                    reason = "LowAlloc" if alloc < 0.15 else "HighQueue"
+                    reason = "LowAlloc" if alloc < 0.05 else "HighQueue"
                     print(f"[Q1 Critical] System Saturated ({reason}: Alloc {alloc:.2f}, Queue {pred_queue_delay:.0f}ms). Force Shedding.")
                 else:
                     should_shed = False

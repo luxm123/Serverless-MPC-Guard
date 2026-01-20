@@ -29,7 +29,14 @@ dynamodb = boto3.client(
         retries={'max_attempts': 2, 'mode': 'standard'},
     ),
 )
-sqs = boto3.client('sqs')
+sqs = boto3.client(
+    'sqs',
+    config=Config(
+        connect_timeout=0.5,
+        read_timeout=0.5,
+        retries={'max_attempts': 1}
+    )
+)
 
 TABLE_NAME = 'MPC_State'
 UPDATE_QUEUE_URL = os.environ.get('MPC_UPDATE_QUEUE_URL') # Optional: For async updates
@@ -141,10 +148,36 @@ class MPCMiddleware:
         if queue_backlog is None and MAIN_QUEUE_URL:
             now = time.time()
             ttl_s = float(state.get('queue_backlog_ttl_s', 2.0) or 2.0)
-            if _L1_CACHE.get('last_backlog') is not None and (now - float(_L1_CACHE.get('last_backlog_sync', 0) or 0)) < ttl_s:
-                queue_backlog = _L1_CACHE.get('last_backlog')
-                backlog_source = 'sqs_cache'
-            else:
+            
+            cached_val = _L1_CACHE.get('last_backlog')
+            last_sync = float(_L1_CACHE.get('last_backlog_sync', 0) or 0)
+            is_cache_fresh = (cached_val is not None) and (now - last_sync < ttl_s)
+
+            # CRITICAL FIX: Smart Sync Fetch for Q1
+            # User Concern: "Sync is slow".
+            # Solution: We ONLY sync if cache is stale (>2s). 
+            # With 0.5s timeout, we cap the risk. 
+            # In high QPS, this happens once every N requests (Amortized cost ~0).
+            force_sync = (qos == 'Q1') and (not is_cache_fresh)
+            
+            if force_sync:
+                try:
+                    r = sqs.get_queue_attributes(
+                        QueueUrl=MAIN_QUEUE_URL,
+                        AttributeNames=['ApproximateNumberOfMessages']
+                    )
+                    val = float(r.get('Attributes', {}).get('ApproximateNumberOfMessages', '0'))
+                    _L1_CACHE['last_backlog'] = val
+                    _L1_CACHE['last_backlog_sync'] = now
+                    queue_backlog = val
+                    backlog_source = 'sqs_sync_q1'
+                except Exception as e:
+                    print(f"Sync Backlog Fetch Warning (Timeout/Error): {e}")
+                    # Fallback to stale if Sync fails (Don't crash)
+                    if cached_val is not None:
+                        queue_backlog = cached_val
+                        backlog_source = 'sqs_cache_stale'
+            elif is_cache_fresh:
                 # Cache Miss/Expired -> Trigger Async Update
                 if not _L1_CACHE.get('updating_backlog'):
                     _L1_CACHE['updating_backlog'] = True
