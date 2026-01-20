@@ -231,7 +231,10 @@ class Optimizer:
         
         # Boost Price Sensitivity for Q1 Fidelity Mode
         if is_fidelity_mode:
-             price_norm = max(1.0, price_norm / 20.0) # 20x Sensitivity
+             # CRITICAL TUNING: Drastically increase sensitivity (100x)
+             # We want "Bang-Bang" control behavior for Fidelity:
+             # If Price > 0 (Congestion), drop Fidelity to floor (0.01) immediately to clear queue.
+             price_norm = max(0.1, price_norm / 100.0)
 
         grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm)
         
