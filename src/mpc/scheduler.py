@@ -73,6 +73,7 @@ class Scheduler:
                 tau=float(system_state.get('risk_tau', 1.0)),
                 ref_latency=ref_latency,
                 state=system_state,
+                priority=priority,
                 qos_class=qos_class
             )
         max_delta = float(system_state.get('u_max_delta', 0.15))

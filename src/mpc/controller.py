@@ -30,7 +30,7 @@ class MPCController:
             'queue_backlog_ttl_s': 2.0,
             'buffer_servers_default': 1.0,
             # Optimizer thresholds
-            'opt_w3_step_inc': 50.0, 'opt_w3_step_dec': 0.95, 'opt_w3_min': 5.0, 'opt_w3_max': 200.0,
+            'opt_w3_step_inc': 50.0, 'opt_w3_step_dec': 0.95, 'opt_w3_min': 5.0, 'opt_w3_max': 2000.0,
             'opt_waste_stable_thr': 0.05, 'opt_waste_tense_thr': 0.2, 'opt_viol_tense_thr': 0.1,
             'opt_stable_thr': 3, 'opt_w3_relax_mul': 0.7, 'opt_w2_relax_mul': 0.9,
             'opt_w2_step_inc': 10.0, 'opt_w2_step_dec': 0.98, 'opt_w2_min': 0.5, 'opt_w2_max': 50.0,

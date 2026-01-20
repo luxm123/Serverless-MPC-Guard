@@ -135,16 +135,9 @@ class Optimizer:
             u_new = upper
         return u_new
 
-    def optimize_u(self, prev_u, pred_upper, slo_limit, price, eta=0.05, gamma=0.1, risk_comp=None, ku=None, risks=None, tau=1.0, ref_latency=None, state=None, priority=0.5):
+    def optimize_u(self, prev_u, pred_upper, slo_limit, price, eta=0.05, gamma=0.1, risk_comp=None, ku=None, risks=None, tau=1.0, ref_latency=None, state=None, priority=0.5, qos_class=None):
         """
-        Gradient Descent Step for:
-        min J(u) + (gamma/2)*||u||^2
-        
-        J = w1 * TrackingError + w2 * Waste + w3 * Risk + PricePenalty
-        
-        Args:
-            ref_latency: Reference latency from trajectory generator (r_i)
-            priority: Normalized priority score (0.0-1.0) for dynamic weight scaling
+        Gradient Descent Step for u (Admission Probability / Resource Alloc).
         """
         # Load adaptive weights
         w1 = self.default_w1
@@ -155,17 +148,14 @@ class Optimizer:
             w2 = float(state.get('opt_w2', w2))
             w3 = float(state.get('opt_w3', w3))
 
-        # --- MPC Priority Scaling (Dynamic) ---
-        # Dynamically scale the cost of Risk (w3) and Tracking (w1) based on Priority.
-        # High priority tasks (Q1) have much higher 'Disutility' for violation.
-        # We use a quadratic scaling to differentiate strongly at the top.
-        # Factor ranges from 1.0 (P=0) to ~50.0 (P=1).
-        if priority is not None:
-            p_val = max(0.0, min(1.0, float(priority)))
-            factor = 1.0 + 49.0 * (p_val * p_val) 
-            w1 *= factor
-            w3 *= factor
-        # -----------------------------
+        # --- MPC Priority Boosting (Explicit QoS) ---
+        if qos_class == 'Q1':
+            w1 *= 100.0  # Increased from 50x (Mission Critical)
+            w3 *= 100.0  # Increased from 50x (Zero Violation Tolerance)
+        elif qos_class == 'Q2':
+            w1 *= 2.0
+            w3 *= 2.0
+        # --------------------------------------------
 
         # 1. Risk Gradient (Risk of violating SLO)
         base_risk = max(0.0, (pred_upper - slo_limit) / max(1.0, slo_limit))

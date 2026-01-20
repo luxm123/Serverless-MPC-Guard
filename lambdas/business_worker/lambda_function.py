@@ -98,6 +98,28 @@ def lambda_handler(event, context):
             should_shed = raw_should_shed
         elif qos == "Q2":
             should_shed = raw_should_shed
+            # Probabilistic shedding for Q2 (Reduces oscillation)
+            if should_shed and random.random() > 0.5:
+                should_shed = False
+        elif qos == "Q1":
+            # Q1 Mission Critical: NEVER SHED, but DEGRADE (Fidelity Scaling)
+            should_shed = False
+            
+            # Use MPC allocation (u) as Fidelity Factor
+            # u=1.0 -> 100% Duration, u=0.1 -> 10% Duration
+            alloc = float(event.get('resource_alloc', 1.0))
+            
+            # If system is stressed (should_shed flag from Controller), enforce degradation
+            if raw_should_shed:
+                # Map u to fidelity:
+                # If u is very low (e.g. 0.1), we run fast.
+                # If u is high (e.g. 0.9), we run normally.
+                fidelity = max(0.01, min(1.0, alloc))
+                
+                # Apply fidelity scaling to active_duration later
+                # We store it in task or event to apply before burn_cpu
+                event['fidelity_factor'] = fidelity
+                print(f"[Q1 Protection] Overload detected. Scaling Fidelity to {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
         else:
             should_shed = False
     
@@ -171,6 +193,14 @@ def lambda_handler(event, context):
         # Apply penalty to TOTAL active time (base + jitter)
         # We use burn_cpu to simulate real CPU contention (SQARTS-like)
         active_duration = (base_latency + jitter) * penalty_factor
+        
+        # --- Q1 Fidelity Scaling Application ---
+        fidelity = event.get('fidelity_factor', 1.0)
+        if fidelity < 1.0:
+            original_duration = active_duration
+            active_duration *= fidelity
+            print(f"[Fidelity Scaling] Duration: {original_duration:.3f}s -> {active_duration:.3f}s (Factor: {fidelity:.2f})")
+        # ---------------------------------------
         
         # Injected delay (Cold start, etc) is passive sleep
         passive_duration = injected_delay
