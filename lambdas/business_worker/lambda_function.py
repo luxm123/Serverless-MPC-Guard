@@ -120,8 +120,12 @@ def lambda_handler(event, context):
                     print(f"[Q1 Critical] System Saturated ({reason}: Alloc {alloc:.2f}, Queue {pred_queue_delay:.0f}ms). Force Shedding.")
                 else:
                     should_shed = False
+                    # CRITICAL FIX: Always apply Fidelity Scaling if Alloc < 1.0
+                    # Even if we don't shed, we must honor the Controller's low alloc by reducing work (Fidelity),
+                    # NOT by slowing down (Penalty).
                     event['fidelity_factor'] = fidelity
-                    print(f"[Q1 Protection] Overload detected. Scaling Fidelity to {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
+                    if fidelity < 1.0:
+                        print(f"[Q1 Fidelity] Active Scaling: {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
             else:
                 should_shed = False
     

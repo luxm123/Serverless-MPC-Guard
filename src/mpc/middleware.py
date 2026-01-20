@@ -184,12 +184,22 @@ class MPCMiddleware:
         if base_service_ms <= 0.0:
             base_service_ms = float(pred_dict.get('p90', 100.0) or 100.0)
         eff_alloc = max(0.1, last_alloc)
-        eff_service_ms = base_service_ms / eff_alloc
-        queue_delay_model = str(state.get('queue_delay_model', 'backlog_linear') or 'backlog_linear').strip().lower()
-        if queue_delay_model == 'backlog_linear':
-            queue_delay_ms = (queue_backlog * eff_service_ms) / servers
+        
+        # CRITICAL FIX: Service Time Model Alignment
+        # Q1 uses Fidelity Scaling (Lower Alloc = Faster Service)
+        # Q2/Q3 uses Throttling (Lower Alloc = Slower Service)
+        if qos == 'Q1':
+            # Fidelity Model: service_time scales linearly with alloc (fidelity)
+            # Matches lambda_function.py: active_duration *= fidelity
+            eff_service_ms = base_service_ms * eff_alloc
         else:
-            queue_delay_ms = (queue_backlog * eff_service_ms) / servers
+            # Throttling Model: service_time increases with penalty
+            # Matches lambda_function.py: penalty_factor = 1.0 + (1.0 - alloc)
+            # Note: This is a linear penalty (max 2x), not hyperbolic (1/alloc).
+            eff_service_ms = base_service_ms * (2.0 - eff_alloc)
+
+        queue_delay_model = str(state.get('queue_delay_model', 'backlog_linear') or 'backlog_linear').strip().lower()
+        queue_delay_ms = (queue_backlog * eff_service_ms) / servers
         
         # System State
         qos_slo_map = {'Q1': 1000.0, 'Q2': 1800.0, 'Q3': 3000.0}
