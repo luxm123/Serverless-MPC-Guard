@@ -152,8 +152,14 @@ def lambda_handler(event, context):
         # --- Fault Tolerance Path ---
         print(f"Task {task.get('id')} shed (Mode: {mode}). Sending to Recovery Queue.")
         
-        # Optimization: Don't send Q3 (Flash Crowd) to Recovery Queue to avoid SQS bottleneck
-        if qos != "Q3":
+        # Optimization: Don't send Q3 (Flash Crowd) OR if System is Critical (Backlog > 40)
+        # to Recovery Queue to avoid SQS bottleneck.
+        is_critical = False
+        if 'metrics' in event and isinstance(event.get('metrics'), dict):
+             if float(event['metrics'].get('queue_backlog', 0)) > 40.0:
+                 is_critical = True
+
+        if qos != "Q3" and not is_critical:
             q_url = get_queue_url()
             if q_url:
                 try:
@@ -169,7 +175,10 @@ def lambda_handler(event, context):
                 except Exception as e:
                     print(f"[Worker] SQS Send Failed: {e}")
         else:
-             print(f"[Worker] Q3 Task Shed - Skipping Recovery Queue for Speed.")
+             if is_critical:
+                 print(f"[Worker] CRITICAL OVERLOAD (Backlog > 40). Emergency Drop (Skip SQS).")
+             else:
+                 print(f"[Worker] Q3 Task Shed - Skipping Recovery Queue for Speed.")
 
         status = "shedded"
         # Shedding is fast
