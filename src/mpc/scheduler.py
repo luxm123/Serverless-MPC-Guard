@@ -99,10 +99,18 @@ class Scheduler:
                 max_delta *= 0.8
             
         delta = resource_alloc - prev_u
+        
+        # DEBUG: Trace clamping
+        if current_backlog is not None and current_backlog > 10.0:
+            print(f"[MPC-SCHED-DEBUG] Pre-Clamp: u_opt={resource_alloc:.4f}, prev={prev_u:.4f}, delta={delta:.4f}, max_delta={max_delta}")
+
         if delta > max_delta:
             resource_alloc = prev_u + max_delta
         elif delta < -max_delta:
             resource_alloc = prev_u - max_delta
+            
+        # CRITICAL FIX: Ensure resource_alloc does not exceed 1.0 or drop below 0.0
+        resource_alloc = max(0.01, min(1.0, resource_alloc))
         
         # Priority-based Shedding Logic
         prio_high_thr = float(system_state.get('sched_prio_high_thr', 0.8))
