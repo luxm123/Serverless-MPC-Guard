@@ -43,6 +43,7 @@ class TraceReplayer:
         self.latency_window = []
         self.qos_violation_window = {'Q1': [], 'Q2': [], 'Q3': []}
         self.qos_drop_window = {'Q1': [], 'Q2': [], 'Q3': []}
+        self.pending_requests = 0  # Global counter for client-side queue depth
         self.lock = threading.Lock()
 
     def load_trace(self):
@@ -101,7 +102,10 @@ class TraceReplayer:
         q1_drop_rate = 0.0
         q2_drop_rate = 0.0
         q3_drop_rate = 0.0
+        current_backlog = 0
         with self.lock:
+            self.pending_requests += 1
+            current_backlog = self.pending_requests
             if self.slo_violation_window:
                 current_slo_violation_rate = sum(self.slo_violation_window) / len(self.slo_violation_window)
             if self.latency_window:
@@ -130,6 +134,7 @@ class TraceReplayer:
 
         payload = {
             "metrics": {
+                "queue_backlog": current_backlog,  # Real-time Client-Side Injection
                 "slo_violation_rate": current_slo_violation_rate,
                 "p90": current_p90_latency,
                 "latency": current_p90_latency,
@@ -207,6 +212,9 @@ class TraceReplayer:
             controller_ok = False
             worker_ok = False
             print(f"[错误] 请求 {req_id} 失败: {str(e)}")
+        finally:
+            with self.lock:
+                self.pending_requests -= 1
 
         success = controller_ok and worker_ok
 

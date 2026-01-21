@@ -140,40 +140,61 @@ class MPCMiddleware:
         # MPC Constraints
         wcp_constraints = {'pred': pred_dict, 'uncertainty': uncertainty}
 
-        queue_backlog = metrics.get('queue_backlog', metrics.get('queue', None))
-        backlog_source = 'metrics'
-        if queue_backlog is None:
-            queue_backlog = state.get('queue_backlog_belief', None)
-            backlog_source = 'state'
-        if queue_backlog is None and MAIN_QUEUE_URL:
-            now = time.time()
-            ttl_s = float(state.get('queue_backlog_ttl_s', 2.0) or 2.0)
-            
-            cached_val = _L1_CACHE.get('last_backlog')
-            last_sync = float(_L1_CACHE.get('last_backlog_sync', 0) or 0)
-            is_cache_fresh = (cached_val is not None) and (now - last_sync < ttl_s)
+        # PRIORITY: Use "queue_backlog" from metrics (Client-Side Injection) if available.
+        # This allows run_trace_replay.py (or Load Balancer) to inject REAL-TIME depth.
+        # This is 100x faster than polling SQS.
+        client_backlog = float(metrics.get('queue_backlog', -1.0))
+        queue_backlog = None
+        backlog_source = 'unknown'
 
-            # CRITICAL FIX: Removed blocking sync for Q1.
-            # User Feedback: "Sync is slow" / "Timeout".
-            # We must NOT block the main thread for SQS calls during high concurrency.
-            # Rely on Async Thread or Stale Cache.
-            force_sync = False # Disabled blocking sync
+        if client_backlog >= 0.0:
+            queue_backlog = client_backlog
+            backlog_source = 'client_injected'
+            # Optional: Update L1 Cache so subsequent calls might benefit?
+            # Actually, let's keep cache fresh with this latest truth.
+            _L1_CACHE['last_backlog'] = queue_backlog
+            _L1_CACHE['last_backlog_sync'] = time.time()
+        else:
+            # Fallback to SQS / Cache / State
+            queue_backlog = metrics.get('queue', None)
+            backlog_source = 'metrics_legacy'
             
-            if is_cache_fresh:
-                # Cache Miss/Expired -> Trigger Async Update
-                if not _L1_CACHE.get('updating_backlog'):
-                    _L1_CACHE['updating_backlog'] = True
-                    t = threading.Thread(target=self._fetch_backlog_async)
-                    t.daemon = True
-                    t.start()
+            if queue_backlog is None:
+                queue_backlog = state.get('queue_backlog_belief', None)
+                backlog_source = 'state'
+
+            if queue_backlog is None and MAIN_QUEUE_URL:
+                now = time.time()
+                ttl_s = float(state.get('queue_backlog_ttl_s', 2.0) or 2.0)
                 
-                # Use Stale Data (Fail-Soft)
-                if _L1_CACHE.get('last_backlog') is not None:
-                    queue_backlog = _L1_CACHE.get('last_backlog')
-                    backlog_source = 'sqs_stale'
+                cached_val = _L1_CACHE.get('last_backlog')
+                last_sync = float(_L1_CACHE.get('last_backlog_sync', 0) or 0)
+                is_cache_fresh = (cached_val is not None) and (now - last_sync < ttl_s)
+
+                # CRITICAL FIX: Removed blocking sync for Q1.
+                # User Feedback: "Sync is slow" / "Timeout".
+                # We must NOT block the main thread for SQS calls during high concurrency.
+                # Rely on Async Thread or Stale Cache.
+                
+                if is_cache_fresh:
+                    # Cache Hit
+                    queue_backlog = cached_val
+                    backlog_source = 'sqs_cache'
                 else:
-                    queue_backlog = 0.0 # Cold start
-                    backlog_source = 'default_cold'
+                    # Cache Miss/Expired -> Trigger Async Update
+                    if not _L1_CACHE.get('updating_backlog'):
+                        _L1_CACHE['updating_backlog'] = True
+                        t = threading.Thread(target=self._fetch_backlog_async)
+                        t.daemon = True
+                        t.start()
+                    
+                    # Use Stale Data (Fail-Soft)
+                    if cached_val is not None:
+                        queue_backlog = cached_val
+                        backlog_source = 'sqs_stale'
+                    else:
+                        queue_backlog = 0.0 # Cold start
+                        backlog_source = 'default_cold'
         queue_backlog = float(queue_backlog or 0.0)
 
         unc_p90 = 0.0
@@ -239,6 +260,7 @@ class MPCMiddleware:
             'u_max_delta': state.get('u_max_delta', 0.15),
             'slo_limit': slo_limit_ms,
             'pred_queue_delay_ms': queue_delay_ms,
+            'queue_backlog': queue_backlog,
             'prio_cl_w_latency': state.get('prio_cl_w_latency', state.get('priority_weights', {}).get('prio_cl_w_latency', None)),
             'prio_cl_w_risk': state.get('prio_cl_w_risk', state.get('priority_weights', {}).get('prio_cl_w_risk', None)),
             'prio_cl_w_wait': state.get('prio_cl_w_wait', state.get('priority_weights', {}).get('prio_cl_w_wait', None)),
