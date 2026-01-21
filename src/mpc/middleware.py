@@ -421,7 +421,7 @@ class MPCMiddleware:
         
         # CRITICAL FIX: Persist state immediately if fidelity drops (Optimization Active)
         # or randomly (Heartbeat). This ensures other containers learn about the panic mode.
-        if new_alloc < 0.9 or random.random() < 0.1:
+        if abs(new_alloc - last_alloc) > 0.01 or new_alloc < 0.95 or random.random() < 0.1:
             self._async_save_state(state, version)
 
         decision_out = result['decision']
@@ -509,26 +509,26 @@ class MPCMiddleware:
 
     def _async_save_state(self, params, version):
         """
-        Write to DynamoDB. In a real middleware, this would be put on a queue.
-        Here we do a quick synchronous write but only 10% of time.
+        Directly update DynamoDB to persist Fidelity/ShadowPrice.
+        CRITICAL FIX for Distributed Amnesia (Flapping).
         """
         try:
-            if UPDATE_QUEUE_URL:
-                sqs.send_message(
-                    QueueUrl=UPDATE_QUEUE_URL,
-                    MessageBody=json.dumps(
-                        {
-                            'type': 'save_state',
-                            'state_id': self.state_id,
-                            'last_alloc': float(params.get('last_alloc', 1.0)),
-                            'shadow_price': float(params.get('shadow_price', 0.0)),
-                            'version': int(version + 1),
-                            'ts': time.time(),
-                        }
-                    ),
-                )
+            # We use update_item to modify nested fields without overwriting the whole item (weights etc)
+            dynamodb.update_item(
+                TableName=TABLE_NAME,
+                Key={'id': {'S': self.state_id}},
+                UpdateExpression="SET params.last_alloc = :la, params.shadow_price = :sp, shadow_price = :sp_top, params.p90_belief = :p90, version = :v, last_updated = :t",
+                ExpressionAttributeValues={
+                    ':la': {'N': str(float(params.get('last_alloc', 1.0)))},
+                    ':sp': {'N': str(float(params.get('shadow_price', 0.0)))},
+                    ':sp_top': {'N': str(float(params.get('shadow_price', 0.0)))},
+                    ':p90': {'N': str(float(params.get('p90_belief', 100.0)))},
+                    ':v': {'N': str(int(version + 1))},
+                    ':t': {'N': str(time.time())}
+                }
+            )
         except Exception as e:
-            print(f"Async Write Error: {e}")
+            print(f"[Middleware] State Save Error: {e}")
 
     def _hydrate_controller(self, state):
         weights = state.get('optimizer_weights', {})
