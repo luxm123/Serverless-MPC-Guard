@@ -243,6 +243,22 @@ class MPCMiddleware:
         queue_delay_model = str(state.get('queue_delay_model', 'backlog_linear') or 'backlog_linear').strip().lower()
         queue_delay_ms = (queue_backlog * eff_service_ms) / servers
         
+        # --- CRITICAL FIX: Hybrid Latency Prediction ---
+        # WCP Model (RLS) might be stale (trained on Capacity=50).
+        # It incorrectly predicts High Latency when Backlog is High, ignoring the new Capacity=200/300.
+        # Serverless Ideal: Latency should be constant (Service Time) if Concurrency scales with Backlog.
+        # We trust the Analytic Model (Queue Theory) when WCP is hallucinating congestion.
+        
+        analytic_latency = queue_delay_ms + eff_service_ms
+        wcp_latency = float(pred_dict.get('p90', 100.0) or 100.0)
+        
+        if wcp_latency > 2.0 * analytic_latency + 100.0:
+            if random.random() < 0.05:
+                print(f"[Middleware] Stale WCP Model Override: WCP={wcp_latency:.1f}ms -> Analytic={analytic_latency:.1f}ms (Backlog={queue_backlog}, Servers={servers})")
+            pred_dict['p90'] = analytic_latency
+            # Reset uncertainty to avoid double penalizing
+            uncertainty = 50.0 
+            
         # System State
         qos_slo_map = {'Q1': 1000.0, 'Q2': 1800.0, 'Q3': 3000.0}
         slo_limit_ms = float(qos_slo_map.get(qos, float(event.get('slo_limit', state.get('slo_limit', 1000.0)))))
