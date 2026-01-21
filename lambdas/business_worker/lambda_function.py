@@ -216,13 +216,9 @@ def lambda_handler(event, context):
         elif fault_type == 'latency':
             injected_delay = float(task.get('injected_delay_ms', 0)) / 1000.0
             
-        # Add Jitter
-        # REMOVED: Jitter was masking experimental results.
-        jitter = 0.0
-            
-        # Apply penalty to TOTAL active time (base + jitter)
+        # Apply penalty to TOTAL active time
         # We use burn_cpu to simulate real CPU contention (SQARTS-like)
-        active_duration = (base_latency + jitter) * penalty_factor
+        active_duration = base_latency * penalty_factor
         
         # --- Q1 Fidelity Scaling Application ---
         fidelity = event.get('fidelity_factor', 1.0)
