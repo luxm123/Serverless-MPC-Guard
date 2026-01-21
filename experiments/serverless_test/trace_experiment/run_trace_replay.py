@@ -226,7 +226,12 @@ class TraceReplayer:
                         if worker_backlog > 10 or fidelity < 1.0:
                              print(f"   [Protection Active v2] Backlog: {worker_backlog} | Fidelity: {fidelity:.2f}")
                              if opt_debug:
-                                 print(f"       [MPC-GRAD] Total: {opt_debug.get('grad_total'):.2f} | Congestion: {opt_debug.get('g_cong'):.2f} | Track: {opt_debug.get('g_track'):.2f} | Margin: {opt_debug.get('margin'):.2f}")
+                                 # Safely get values with defaults to avoid NoneType formatting errors
+                                 g_tot = opt_debug.get('grad_total', 0.0) or 0.0
+                                 g_cong = opt_debug.get('g_cong', 0.0) or 0.0
+                                 g_track = opt_debug.get('g_track', 0.0) or 0.0
+                                 margin_val = opt_debug.get('margin', 0.0) or 0.0
+                                 print(f"       [MPC-GRAD] Total: {g_tot:.2f} | Congestion: {g_cong:.2f} | Track: {g_track:.2f} | Margin: {margin_val:.2f}")
 
 
                 end_t = time.time()
