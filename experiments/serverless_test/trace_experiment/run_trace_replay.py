@@ -198,7 +198,8 @@ class TraceReplayer:
                     task_payload,
                     mode='auto',
                     strategy=strategy,
-                    priority=prio
+                    priority=prio,
+                    metrics=payload['metrics']  # CRITICAL: Pass metrics (backlog) to Worker
                 )
                 if worker_result is None:
                     worker_ok = False

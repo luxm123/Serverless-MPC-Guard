@@ -305,15 +305,14 @@ class MPCMiddleware:
             current_pred_p90 = float(pred_dict.get('p90', 0.0) or 0.0)
             latency_gradient = current_pred_p90 - p90_belief
             
-            if qos == 'Q3' and latency_gradient > 3.0 and current_pred_p90 > (slo_limit_ms * 0.5):
-                should_shed_early = True
-                shed_reason = "gradient_control"
-
             # CRITICAL: If Backlog is saturated (>40), Drop Q3 immediately.
             # This is a Circuit Breaker to protect Q1 when Optimizer is converging.
             if qos == 'Q3' and queue_backlog > 40.0:
-                 should_shed_early = True
-                 shed_reason = "backlog_saturation"
+                should_shed_early = True
+                shed_reason = "backlog_saturation"
+            elif qos == 'Q3' and latency_gradient > 3.0 and current_pred_p90 > (slo_limit_ms * 0.5):
+                should_shed_early = True
+                shed_reason = "gradient_control"
 
             if not should_shed_early and qos == 'Q3':
                 if (q1_drop_rate > 0.01 or q2_drop_rate > 0.01) or (q1_violation_rate > 0.1 or q2_violation_rate > 0.1):
