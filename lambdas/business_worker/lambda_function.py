@@ -137,11 +137,11 @@ def lambda_handler(event, context):
                 if alloc < 0.05 or pred_queue_delay > 800.0:
                     should_shed = True
                     reason = "LowAlloc" if alloc < 0.05 else "HighQueue"
-                print(f"[Q1 Critical] System Saturated ({reason}: Alloc {alloc:.2f}, Queue {pred_queue_delay:.0f}ms). Force Shedding.")
-            else:
-                should_shed = False
-                # Ensure Fidelity is applied even if not shedding
-                print(f"[Q1 Protection] Overload detected. Scaling Fidelity to {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
+                    print(f"[Q1 Critical] System Saturated ({reason}: Alloc {alloc:.2f}, Queue {pred_queue_delay:.0f}ms). Force Shedding.")
+                else:
+                    should_shed = False
+                    # Ensure Fidelity is applied even if not shedding
+                    print(f"[Q1 Protection] Overload detected. Scaling Fidelity to {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
             else:
                 should_shed = False
                 # Ensure Fidelity is applied even if not shedding
