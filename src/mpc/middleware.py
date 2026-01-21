@@ -154,6 +154,9 @@ class MPCMiddleware:
             # Actually, let's keep cache fresh with this latest truth.
             _L1_CACHE['last_backlog'] = queue_backlog
             _L1_CACHE['last_backlog_sync'] = time.time()
+            # DEBUG: Verify we are seeing the high backlog
+            if queue_backlog > 10:
+                print(f"[Middleware] HIGH BACKLOG DETECTED: {queue_backlog} (Source: {backlog_source})")
         else:
             # Fallback to SQS / Cache / State
             queue_backlog = metrics.get('queue', None)
