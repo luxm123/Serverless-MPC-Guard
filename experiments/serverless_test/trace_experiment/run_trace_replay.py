@@ -341,14 +341,14 @@ class TraceReplayer:
         # --- OPTIONAL: LOAD REDUCTION ---
         # If the dataset is too aggressive (physical overload), reduce the load here.
         # Set load_factor < 1.0 to drop requests randomly.
-        load_factor = 0.4  # <--- 40% Load: Reduce intensity to allow recovery observation
+        load_factor = 0.8  # <--- 80% Load: Increased to stress test the new 200 capacity
         if load_factor < 1.0:
             print(f"[Info] Applying Load Factor {load_factor}. Dropping {100*(1-load_factor):.1f}% of requests.")
             self.trace_data = [x for x in self.trace_data if random.random() < load_factor]
         # --------------------------------
         
         # Inject flash crowd to simulate high concurrency
-        self.inject_flash_crowd(peak_time=5.0, requests=50)
+        self.inject_flash_crowd(peak_time=5.0, requests=100)
 
         self.results = []  # 为新实验重置结果
         start_exp = time.time()
@@ -415,7 +415,7 @@ if __name__ == "__main__":
     RESULTS_DIR = os.path.join(SCRIPT_DIR, 'results')
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    THREAD_COUNT = 50  # 降低并发，避免瞬间打死 Lambda 冷启动
+    THREAD_COUNT = 200  # Increased to 200 to match Serverless Capacity (was 50)
 
     # --- 运行实验 ---
     # 1. 初始化Replayer并加载一次数据
