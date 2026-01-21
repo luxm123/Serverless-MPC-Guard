@@ -283,6 +283,18 @@ class Optimizer:
 
         grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
         
+        # DEBUG: Capture components in state for visibility
+        if state is not None:
+            state['opt_debug'] = {
+                'grad_total': grad,
+                'g_track': w1 * grad_track,
+                'g_risk': w3 * grad_risk,
+                'g_cong': grad_congestion,
+                'g_price': price / price_norm,
+                'backlog': backlog_val,
+                'margin': margin
+            }
+        
         # Update Step with Regularization (gamma * u)
         # u_new = u - eta * (grad + gamma * u)
         step = eta * (grad + gamma * prev_u)

@@ -447,6 +447,10 @@ class MPCMiddleware:
             'qos_class': qos,
         }
         dbg = debug_info or {}
+        # DEBUG: Inject optimization internals if available
+        if 'opt_debug' in state:
+            dbg['opt_debug'] = state['opt_debug']
+
         dbg.update(
             {
                 'pred_queue_delay_ms': queue_delay_ms,

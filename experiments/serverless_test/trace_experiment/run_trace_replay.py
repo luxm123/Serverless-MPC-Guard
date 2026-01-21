@@ -222,8 +222,12 @@ class TraceReplayer:
                         # Debug Visibility: Show protection activation
                         worker_backlog = dbg.get('raw_backlog_seen', -1)
                         fidelity = dbg.get('fidelity_applied', 1.0)
+                        opt_debug = dbg.get('opt_debug')
                         if worker_backlog > 10 or fidelity < 1.0:
                              print(f"   [Protection Active] Backlog: {worker_backlog} | Fidelity: {fidelity:.2f}")
+                             if opt_debug:
+                                 print(f"       [MPC-GRAD] Total: {opt_debug.get('grad_total'):.2f} | Congestion: {opt_debug.get('g_cong'):.2f} | Track: {opt_debug.get('g_track'):.2f} | Margin: {opt_debug.get('margin'):.2f}")
+
 
                 end_t = time.time()
                 e2e_latency = (end_t - start_t) * 1000.0
