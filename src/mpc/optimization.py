@@ -277,34 +277,26 @@ class Optimizer:
             grad_congestion *= 50.0 # Massive boost (e.g. 200 -> 10000)
         
         # If margin is negative or very low (Overloaded), force shedding immediately.
-        # Relaxed threshold: Backlog >= 45 (Margin <= 5) -> PANIC MODE.
-        if margin <= 5.0:
+        # Relaxed threshold: Backlog >= 48 (Margin <= 2) -> PANIC MODE.
+        if margin <= 2.0:
             # Must exceed max possible tracking error (approx 5000)
             grad_congestion += 5000.0 + abs(margin) * 100.0
             
-            # --- CRITICAL FIX: SATURATION OVERRIDE ---
-            # If the queue is saturated (Margin <= 5), we CANNOT rely on small gradient steps.
-            # We must force immediate shedding/degradation to recover the system.
-            # This bypasses the learning rate and previous state (prev_u).
-            u_new = 0.01
+            # --- CRITICAL FIX: SATURATION OVERRIDE REMOVED ---
+            # We trust the Log-Barrier Gradient to push u down naturally.
+            # No more hard-coded u=0.01 override here.
             
             # Ensure debug info is captured before returning
             if state is not None:
                 if 'opt_debug' not in state:
                     state['opt_debug'] = {}
                 state['opt_debug'].update({
-                    'override': True,
+                    'override': False,
                     'margin': margin,
                     'backlog': backlog_val,
-                    'reason': 'saturation_margin_le_5',
-                    'grad_total': 999.9, # Fake value to indicate Override in logs
-                    'g_cong': 999.9,
-                    'g_track': 0.0
+                    'reason': 'high_congestion_grad',
+                    'g_cong': grad_congestion
                 })
-            
-            # Skip standard update logic
-            print(f"[MPC-OPT] SATURATION OVERRIDE! Backlog={backlog_val:.1f} (Margin={margin:.1f}). Forcing u=0.01.")
-            return u_new
 
         grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
         
