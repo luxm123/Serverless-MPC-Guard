@@ -169,7 +169,9 @@ class TraceReplayer:
             start_t = time.time()
 
             decision = {}
-            if strategy != 'baseline':
+            # OPTIMIZATION: For 'mpc' (Integrated), skip external controller call.
+            # The Worker runs middleware internally, saving ~200ms RTT.
+            if strategy != 'baseline' and strategy != 'mpc':
                 controller_resp = invoke_controller_lambda(payload, mode=wcp_mode, strategy=strategy)
                 if controller_resp and isinstance(controller_resp, dict):
                     decision = controller_resp.get('decision', {}) or {}

@@ -159,13 +159,20 @@ class MPCController:
         if 'metrics' in system_state:
              self.update_feedback(system_state['metrics'], system_state)
         
+        # Calculate predicted delay for Worker Circuit Breaker
+        q_backlog = float(system_state.get('queue_backlog', 0.0))
+        avg_svc = float(system_state.get('avg_service_ms', 100.0))
+        pred_delay = q_backlog * avg_svc
+
         return {
             'decision': {
                 'should_shed': should_shed,
                 'degrade_plan': plan,
                 'resource_alloc': alloc,
                 'congestion_price': system_state.get('congestion_price', 0.0),
-                'shadow_price': system_state.get('shadow_price', 0.0)
+                'shadow_price': system_state.get('shadow_price', 0.0),
+                'pred_queue_delay_ms': pred_delay,
+                'queue_backlog': q_backlog
             },
             'meta': {
                 'priority': priority,
