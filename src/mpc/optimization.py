@@ -54,7 +54,7 @@ class Optimizer:
         waste_rate = metrics.get('resource_waste_rate', 0.0)
         
         # 1. Adapt w3 (SLO Penalty)
-        w3_step_inc = float(state.get('opt_w3_step_inc', 50.0))
+        w3_step_inc = float(state.get('opt_w3_step_inc', 20.0))
         w3_step_dec = float(state.get('opt_w3_step_dec', 0.95))
         w3_min = float(state.get('opt_w3_min', 5.0))
         w3_max = float(state.get('opt_w3_max', 2000.0))

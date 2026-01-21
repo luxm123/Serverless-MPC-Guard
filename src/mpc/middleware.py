@@ -18,7 +18,7 @@ _L1_CACHE = {
     'last_backlog_sync': 0,
     'updating_backlog': False
 }
-CACHE_TTL = 5.0 # seconds. Refresh from DB if older than this.
+CACHE_TTL = 0.5 # seconds. Refresh from DB if older than this.
 
 # AWS Clients
 dynamodb = boto3.client(
