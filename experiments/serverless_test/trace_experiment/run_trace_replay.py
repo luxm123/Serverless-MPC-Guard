@@ -231,14 +231,16 @@ class TraceReplayer:
                                  if opt_debug.get('override'):
                                      reason = opt_debug.get('reason', 'unknown')
                                      margin_val = opt_debug.get('margin', 0.0)
-                                     print(f"       [MPC-OVERRIDE] Reason: {reason} | Margin: {margin_val:.2f} | Force u=0.01")
+                                     shed_decision = dbg.get('shouldShed', False)
+                                     print(f"       [MPC-OVERRIDE] Reason: {reason} | Margin: {margin_val:.2f} | Force u=0.01 | Shed: {shed_decision}")
                                  else:
                                      # Safely get values with defaults to avoid NoneType formatting errors
                                      g_tot = opt_debug.get('grad_total', 0.0) or 0.0
                                      g_cong = opt_debug.get('g_cong', 0.0) or 0.0
                                      g_track = opt_debug.get('g_track', 0.0) or 0.0
                                      margin_val = opt_debug.get('margin', 0.0) or 0.0
-                                     print(f"       [MPC-GRAD] Total: {g_tot:.2f} | Congestion: {g_cong:.2f} | Track: {g_track:.2f} | Margin: {margin_val:.2f}")
+                                     shed_decision = dbg.get('shouldShed', False)
+                                     print(f"       [MPC-GRAD] Total: {g_tot:.2f} | Congestion: {g_cong:.2f} | Track: {g_track:.2f} | Margin: {margin_val:.2f} | Shed: {shed_decision}")
 
 
                 end_t = time.time()
@@ -321,7 +323,7 @@ class TraceReplayer:
         })
 
         if req_id % 50 == 0:  # 定期打印进度
-            print(f"[{strategy}] Req {req_id}: Ideal={ideal_duration}ms -> Actual={e2e_latency:.1f}ms (Slowdown={slowdown:.2f})")
+            print(f"[{strategy}] Req {req_id}: Ideal={ideal_duration}ms -> Actual={e2e_latency:.1f}ms (Status={worker_status}, Slowdown={slowdown:.2f})")
 
     def run_experiment(self, strategy, wcp_mode, output_filename):
         """为给定的策略运行一次完整的实验。"""

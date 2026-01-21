@@ -9,7 +9,8 @@ except ImportError:
     print("MPC Middleware not found. Integrated mode disabled.")
     _MIDDLEWARE = None
 
-sqs = boto3.client('sqs')
+from botocore.config import Config
+sqs = boto3.client('sqs', config=Config(connect_timeout=0.5, read_timeout=0.5, retries={'max_attempts': 1}))
 RECOVERY_QUEUE_URL = None # Will be populated via env var or discovery
 
 def get_queue_url():
@@ -150,17 +151,26 @@ def lambda_handler(event, context):
     if should_shed:
         # --- Fault Tolerance Path ---
         print(f"Task {task.get('id')} shed (Mode: {mode}). Sending to Recovery Queue.")
-        q_url = get_queue_url()
-        if q_url:
-            sqs.send_message(
-                QueueUrl=q_url,
-                MessageBody=json.dumps({
-                    'task': task,
-                    'original_intent': decision.get('degrade_plan'),
-                    'timestamp': time.time(),
-                    'reason': f'mpc_shedding_mode_{mode}'
-                })
-            )
+        
+        # Optimization: Don't send Q3 (Flash Crowd) to Recovery Queue to avoid SQS bottleneck
+        if qos != "Q3":
+            q_url = get_queue_url()
+            if q_url:
+                try:
+                    sqs.send_message(
+                        QueueUrl=q_url,
+                        MessageBody=json.dumps({
+                            'task': task,
+                            'original_intent': decision.get('degrade_plan'),
+                            'timestamp': time.time(),
+                            'reason': f'mpc_shedding_mode_{mode}'
+                        })
+                    )
+                except Exception as e:
+                    print(f"[Worker] SQS Send Failed: {e}")
+        else:
+             print(f"[Worker] Q3 Task Shed - Skipping Recovery Queue for Speed.")
+
         status = "shedded"
         # Shedding is fast
         time.sleep(0.05) 
