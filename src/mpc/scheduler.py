@@ -160,6 +160,17 @@ class Scheduler:
                 should_shed = True
                 degrade_plan = "store_to_sqs"
         
+        # CRITICAL FIX: Link MPC Optimization (u) to Actuation (Shedding)
+        # For Q2/Q3, u represents Admission Probability.
+        # For Q1, u represents Fidelity (handled in Worker).
+        if qos_class != 'Q1':
+            # Probabilistic Shedding based on u
+            # If u=0.01, we shed 99% of requests.
+            if random.random() > resource_alloc:
+                should_shed = True
+                if not degrade_plan:
+                    degrade_plan = "store_to_sqs" if qos_class == 'Q3' else "store_to_sqs_recovery"
+
         if current_backlog is not None and current_backlog > 5.0:
              print(f"[MPC-SCHED] Decision: Backlog={current_backlog:.1f}, u={resource_alloc:.4f}, Shed={should_shed}, Delta={resource_alloc-prev_u:.4f}")
                 
