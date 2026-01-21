@@ -224,7 +224,7 @@ class TraceReplayer:
                         fidelity = dbg.get('fidelity_applied', 1.0)
                         opt_debug = dbg.get('opt_debug')
                         if worker_backlog > 10 or fidelity < 1.0:
-                             print(f"   [Protection Active] Backlog: {worker_backlog} | Fidelity: {fidelity:.2f}")
+                             print(f"   [Protection Active v2] Backlog: {worker_backlog} | Fidelity: {fidelity:.2f}")
                              if opt_debug:
                                  print(f"       [MPC-GRAD] Total: {opt_debug.get('grad_total'):.2f} | Congestion: {opt_debug.get('g_cong'):.2f} | Track: {opt_debug.get('g_track'):.2f} | Margin: {opt_debug.get('margin'):.2f}")
 

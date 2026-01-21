@@ -448,8 +448,8 @@ class MPCMiddleware:
         }
         dbg = debug_info or {}
         # DEBUG: Inject optimization internals if available
-        if 'opt_debug' in state:
-            dbg['opt_debug'] = state['opt_debug']
+        if 'opt_debug' in system_state:
+            dbg['opt_debug'] = system_state['opt_debug']
 
         dbg.update(
             {
