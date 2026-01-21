@@ -141,24 +141,8 @@ class Scheduler:
             if price > price_high and (ub_latency_total > self.slo_limit or composite > 0.0):
                 should_shed = True
                 degrade_plan = "store_to_sqs_recovery"
-        elif priority >= prio_med_thr:
-            relax_factor = float(system_state.get('sched_relax_factor', 1.2))
-            relaxed_limit = self.slo_limit * relax_factor
-            if (ub_latency_total > relaxed_limit or composite > 0.0) and price > price_med:
-                # RED-like Probabilistic Shedding
-                # Price range [price_med, price_high] -> Prob [0.0, 1.0]
-                # This prevents binary on/off shedding and allows smooth degradation
-                denom = max(1.0, price_high - price_med)
-                prob = min(1.0, max(0.0, (price - price_med) / denom))
-                
-                if random.random() < prob:
-                    should_shed = True
-                    degrade_plan = "store_to_sqs_recovery"
-        else:
-            price_low = float(system_state.get('sched_price_low', 10.0))
-            if (ub_latency_total > self.slo_limit or composite > 0.0) and price > price_low:
-                should_shed = True
-                degrade_plan = "store_to_sqs"
+        # Q2/Q3 Shedding is now handled by the MPC 'u' (resource_alloc) below.
+        # Removed redundant heuristic price-based shedding for Q2/Q3 to avoid interference.
         
         # CRITICAL FIX: Link MPC Optimization (u) to Actuation (Shedding)
         # For Q2/Q3, u represents Admission Probability.

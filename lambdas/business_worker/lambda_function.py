@@ -133,10 +133,24 @@ def lambda_handler(event, context):
                 
                 # Revert to strict threshold: 800ms (SLO is 1000ms).
                 # Previous 300ms was too aggressive given 440ms base latency.
-                if alloc < 0.05 or pred_queue_delay > 800.0:
+                
+                # CRITICAL FIX: Q1 should NOT shed just because alloc is low (Panic Mode u=0.01).
+                # Q1 uses Fidelity Scaling to survive. Only shed Q1 if Queue is physically full (>800ms).
+                # Q2/Q3 should shed if alloc is low to save resources for Q1.
+                
+                should_force_shed = False
+                if qos == "Q1":
+                    if pred_queue_delay > 800.0:
+                        should_force_shed = True
+                        reason = "HighQueue"
+                else:
+                    if alloc < 0.05 or pred_queue_delay > 800.0:
+                        should_force_shed = True
+                        reason = "LowAlloc" if alloc < 0.05 else "HighQueue"
+
+                if should_force_shed:
                     should_shed = True
-                    reason = "LowAlloc" if alloc < 0.05 else "HighQueue"
-                    print(f"[Q1 Critical] System Saturated ({reason}: Alloc {alloc:.2f}, Queue {pred_queue_delay:.0f}ms). Force Shedding.")
+                    print(f"[{qos} Critical] System Saturated ({reason}: Alloc {alloc:.2f}, Queue {pred_queue_delay:.0f}ms). Force Shedding.")
                 else:
                     should_shed = False
                     # Ensure Fidelity is applied even if not shedding

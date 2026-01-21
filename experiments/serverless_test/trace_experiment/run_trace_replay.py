@@ -275,7 +275,8 @@ class TraceReplayer:
         if qos_class == "Q3":
             shed_by_worker = worker_status in ["degraded", "shedded"] or controller_should_shed
         else:
-            shed_by_worker = worker_status == "degraded"
+            # FIX: Q1/Q2 shedding should count as shed_by_worker too
+            shed_by_worker = worker_status in ["degraded", "shedded"]
         is_violation = not met_slo
 
         violation_val = 1.0 if not met_slo else 0.0
@@ -340,14 +341,14 @@ class TraceReplayer:
         # --- OPTIONAL: LOAD REDUCTION ---
         # If the dataset is too aggressive (physical overload), reduce the load here.
         # Set load_factor < 1.0 to drop requests randomly.
-        load_factor = 0.7  # <--- 70% Load: Reduce intensity to avoid physical limit
+        load_factor = 0.4  # <--- 40% Load: Reduce intensity to allow recovery observation
         if load_factor < 1.0:
             print(f"[Info] Applying Load Factor {load_factor}. Dropping {100*(1-load_factor):.1f}% of requests.")
             self.trace_data = [x for x in self.trace_data if random.random() < load_factor]
         # --------------------------------
         
         # Inject flash crowd to simulate high concurrency
-        self.inject_flash_crowd(peak_time=5.0, requests=100)
+        self.inject_flash_crowd(peak_time=5.0, requests=50)
 
         self.results = []  # 为新实验重置结果
         start_exp = time.time()
