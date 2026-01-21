@@ -276,18 +276,25 @@ class Optimizer:
         if margin < 10.0:
             grad_congestion *= 50.0 # Massive boost (e.g. 200 -> 10000)
         
-        # If margin is negative (Overloaded), add linear penalty to keep pushing
-        if margin <= 0:
+        # If margin is negative or very low (Overloaded), force shedding immediately.
+        # Relaxed threshold: Backlog >= 45 (Margin <= 5) -> PANIC MODE.
+        if margin <= 5.0:
             # Must exceed max possible tracking error (approx 5000)
             grad_congestion += 5000.0 + abs(margin) * 100.0
             
             # --- CRITICAL FIX: SATURATION OVERRIDE ---
-            # If the queue is saturated (Margin <= 0), we CANNOT rely on small gradient steps.
-            # We must force immediate shedding/degradation to recover the system.
-            # This bypasses the learning rate and previous state (prev_u).
             u_new = 0.01
-            if state is not None and 'opt_debug' in state:
-                state['opt_debug']['override'] = True
+            
+            # Ensure debug info is captured before returning
+            if state is not None:
+                if 'opt_debug' not in state:
+                    state['opt_debug'] = {}
+                state['opt_debug'].update({
+                    'override': True,
+                    'margin': margin,
+                    'backlog': backlog_val,
+                    'reason': 'saturation_margin_le_5'
+                })
             
             # Skip standard update logic
             print(f"[MPC-OPT] SATURATION OVERRIDE! Backlog={backlog_val:.1f} (Margin={margin:.1f}). Forcing u=0.01.")
