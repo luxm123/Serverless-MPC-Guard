@@ -48,6 +48,7 @@ class TraceReplayer:
 
     def load_trace(self):
         """从指定的CSV文件加载轨迹数据。"""
+        print(f"[Info] Trace Replayer v2.1 (Concurrency Injection Enabled)")
         if not os.path.exists(self.trace_file):
             print(f"[致命错误] 轨迹文件不存在: '{self.trace_file}'")
             print("请确认文件路径是否正确。")
@@ -139,7 +140,7 @@ class TraceReplayer:
         payload = {
             "metrics": {
                 "queue_backlog": current_backlog,  # Real-time Client-Side Injection
-                "concurrency": max(1, current_backlog), # Simulate Ideal Serverless Scaling (1 req = 1 server)
+                "concurrency": max(1, current_backlog), # Simulate Ideal Serverless Scaling (1 request = 1 worker)
                 "slo_violation_rate": current_slo_violation_rate,
                 "p90": current_p90_latency,
                 "latency": current_p90_latency,
