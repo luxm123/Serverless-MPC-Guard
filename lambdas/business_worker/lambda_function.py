@@ -248,6 +248,12 @@ def lambda_handler(event, context):
     # --- POST-EXECUTION: Feedback Update ---
     # Update MPC state with ACTUAL metrics from this execution
     # Enable feedback for both integrated and external MPC modes
+    
+    # Inject visibility into debug info
+    if 'metrics' in event and isinstance(event.get('metrics'), dict):
+         mpc_debug['raw_backlog_seen'] = float(event['metrics'].get('queue_backlog', 0))
+    mpc_debug['fidelity_applied'] = event.get('fidelity_factor', 1.0)
+
     if (strategy == 'mpc_integrated' or strategy == 'mpc') and _MIDDLEWARE:
         try:
             # Calculate CPU usage ratio (Active CPU time / Total Wall time)

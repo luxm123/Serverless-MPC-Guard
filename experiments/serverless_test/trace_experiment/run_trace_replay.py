@@ -219,6 +219,12 @@ class TraceReplayer:
                         admit_thr = dbg.get('admit_threshold_ms')
                         pred_total_ms = dbg.get('pred_total_latency_ms')
 
+                        # Debug Visibility: Show protection activation
+                        worker_backlog = dbg.get('raw_backlog_seen', -1)
+                        fidelity = dbg.get('fidelity_applied', 1.0)
+                        if worker_backlog > 10 or fidelity < 1.0:
+                             print(f"   [Protection Active] Backlog: {worker_backlog} | Fidelity: {fidelity:.2f}")
+
                 end_t = time.time()
                 e2e_latency = (end_t - start_t) * 1000.0
                 slowdown = e2e_latency / max(1.0, ideal_duration)

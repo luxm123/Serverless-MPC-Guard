@@ -4,22 +4,30 @@ import time
 import os
 from botocore.config import Config
 
+_GLOBAL_LAMBDA_CLIENT = None
+
 def get_lambda_client():
     """
-    Returns a boto3 lambda client configured with adaptive retries
-    to handle 'Rate Exceeded' and throttling errors gracefully.
+    Returns a cached global boto3 lambda client configured with adaptive retries
+    and high connection pool size to handle concurrency.
     """
+    global _GLOBAL_LAMBDA_CLIENT
+    if _GLOBAL_LAMBDA_CLIENT:
+        return _GLOBAL_LAMBDA_CLIENT
+        
     config = Config(
         retries = {
             'max_attempts': 50,
             'mode': 'adaptive'
         },
         connect_timeout=15,
-        read_timeout=60
+        read_timeout=60,
+        max_pool_connections=100  # Support 100 concurrent threads
     )
-    return boto3.client('lambda', 
+    _GLOBAL_LAMBDA_CLIENT = boto3.client('lambda', 
                        region_name=os.environ.get('AWS_REGION','us-east-1'),
                        config=config)
+    return _GLOBAL_LAMBDA_CLIENT
 
 def find_state_machine_arn():
     sfn = boto3.client('stepfunctions', region_name=os.environ.get('AWS_REGION','us-east-1'))

@@ -197,6 +197,9 @@ class MPCMiddleware:
                         backlog_source = 'default_cold'
         queue_backlog = float(queue_backlog or 0.0)
 
+        # CRITICAL FIX: Update metrics with resolved backlog so Shadow Price sees it
+        metrics['queue_backlog'] = queue_backlog
+
         unc_p90 = 0.0
         if isinstance(uncertainty, dict):
             unc_p90 = float(uncertainty.get('p90', 0.0) or 0.0)
