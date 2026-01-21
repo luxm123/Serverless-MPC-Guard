@@ -120,8 +120,8 @@ def lambda_handler(event, context):
             if 'metrics' in event and isinstance(event.get('metrics'), dict):
                 raw_backlog = float(event['metrics'].get('queue_backlog', 0))
             
-            # Circuit Breaker: If Backlog > 40 (near capacity) OR Predicted Delay > 200ms
-            if raw_backlog > 40.0 or pred_queue_delay > 200.0:
+            # Circuit Breaker: If Backlog > 10 (20% capacity) OR Predicted Delay > 200ms
+            if raw_backlog > 10.0 or pred_queue_delay > 200.0:
                  fidelity = 0.05 
                  event['fidelity_factor'] = fidelity
                  print(f"[Q1 EMERGENCY] Backlog {raw_backlog:.0f} / Queue {pred_queue_delay:.0f}ms. FORCING Fidelity 5%.")
@@ -217,9 +217,8 @@ def lambda_handler(event, context):
             injected_delay = float(task.get('injected_delay_ms', 0)) / 1000.0
             
         # Add Jitter
-        jitter = random.uniform(0, 0.5) 
-        if random.random() < 0.1: 
-            jitter += 1.0 # Long tail
+        # REMOVED: Jitter was masking experimental results.
+        jitter = 0.0
             
         # Apply penalty to TOTAL active time (base + jitter)
         # We use burn_cpu to simulate real CPU contention (SQARTS-like)
