@@ -253,22 +253,27 @@ class Optimizer:
         capacity = 50.0 
         margin = capacity - backlog_val
         
-        if margin < 10.0:
-            # As margin drops from 10 to 0, gradient shoots up.
-            # safe_margin avoids division by zero.
-            safe_margin = max(0.1, margin)
-            
-            # Barrier Strength (mu)
-            mu = 50.0 
-            
-            # Gradient Direction: Higher u -> Higher Backlog -> Lower Margin
-            # We want to reduce u to increase Margin.
-            # d(Cost)/du is POSITIVE (force u down).
-            grad_congestion = mu / safe_margin
-            
-            # If margin is negative (Overloaded), add linear penalty to keep pushing
-            if margin <= 0:
-                grad_congestion += 100.0 + abs(margin) * 10.0
+        # Log-Barrier Gradient: grad = mu / (margin)
+        # Active across the entire range to provide smooth feedback.
+        # As margin shrinks (Backlog increases), gradient grows hyperbolically.
+        
+        safe_margin = max(0.1, margin)
+        
+        # Barrier Strength (mu)
+        # mu=20 ensures that at Backlog=10 (Margin=40), grad=0.5 (Weak)
+        # at Backlog=30 (Margin=20), grad=1.0 (Moderate)
+        # at Backlog=45 (Margin=5), grad=4.0 (Strong)
+        # at Backlog=49 (Margin=1), grad=20.0 (Emergency)
+        mu = 20.0 
+        
+        # Gradient Direction: Higher u -> Higher Backlog -> Lower Margin
+        # We want to reduce u to increase Margin.
+        # d(Cost)/du is POSITIVE (force u down).
+        grad_congestion = mu / safe_margin
+        
+        # If margin is negative (Overloaded), add linear penalty to keep pushing
+        if margin <= 0:
+            grad_congestion += 100.0 + abs(margin) * 10.0
 
         grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
         

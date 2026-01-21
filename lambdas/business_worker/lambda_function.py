@@ -122,11 +122,8 @@ def lambda_handler(event, context):
                 print(f"[DEBUG] Received raw_backlog from run_trace_replay.py: {raw_backlog}")
 
             # Circuit Breaker: If Backlog > 5 (10% capacity) OR Predicted Delay > 300ms
-            if raw_backlog > 5.0 or pred_queue_delay > 300.0:
-                 fidelity = 0.05 
-                 event['fidelity_factor'] = fidelity
-                 print(f"[Q1 EMERGENCY] Backlog {raw_backlog:.0f} / Queue {pred_queue_delay:.0f}ms. FORCING Fidelity 5%.")
-
+            # REMOVED: Dynamic MPC now handles this via grad_congestion.
+            
             if raw_should_shed:
                 # If Controller says SHED, we check if we can just degrade.
                 # Circuit Breaker: 
