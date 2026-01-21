@@ -224,8 +224,8 @@ class TraceReplayer:
                         fidelity = dbg.get('fidelity_applied', 1.0)
                         alloc = dbg.get('resource_alloc', 1.0)
                         opt_debug = dbg.get('opt_debug')
-                        if worker_backlog > 10 or fidelity < 1.0:
-                             print(f"   [Protection Active v2] Backlog: {worker_backlog} | Fidelity: {fidelity:.2f} | Alloc: {alloc:.2f}")
+                        if worker_backlog > 10 or fidelity < 1.0 or controller_should_shed:
+                             print(f"   [Protection Active v2] QoS: {qos_class} | Backlog: {worker_backlog} | Fidelity: {fidelity:.2f} | Alloc: {alloc:.2f}")
                              if opt_debug:
                                  # Check for Override
                                  if opt_debug.get('override'):
