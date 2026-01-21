@@ -114,12 +114,17 @@ def lambda_handler(event, context):
             
             pred_queue_delay = float(decision.get('pred_queue_delay_ms', 0.0))
 
-            # CRITICAL OVERRIDE: Bang-Bang Control for Flash Crowds
-            # If queue is detected (>200ms), DROP fidelity immediately. Don't wait for Controller.
-            if pred_queue_delay > 200.0:
+            # CRITICAL OVERRIDE: Bang-Bang Control for Flash Crowds (Circuit Breaker)
+            # Use raw backlog if available (fastest signal), else fallback to predicted delay.
+            raw_backlog = 0.0
+            if 'metrics' in event and isinstance(event.get('metrics'), dict):
+                raw_backlog = float(event['metrics'].get('queue_backlog', 0))
+            
+            # Circuit Breaker: If Backlog > 40 (near capacity) OR Predicted Delay > 200ms
+            if raw_backlog > 40.0 or pred_queue_delay > 200.0:
                  fidelity = 0.05 
                  event['fidelity_factor'] = fidelity
-                 print(f"[Q1 EMERGENCY] Queue {pred_queue_delay:.0f}ms > 200ms. FORCING Fidelity 5%.")
+                 print(f"[Q1 EMERGENCY] Backlog {raw_backlog:.0f} / Queue {pred_queue_delay:.0f}ms. FORCING Fidelity 5%.")
 
             if raw_should_shed:
                 # If Controller says SHED, we check if we can just degrade.

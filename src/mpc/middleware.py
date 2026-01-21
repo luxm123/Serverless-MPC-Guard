@@ -309,6 +309,12 @@ class MPCMiddleware:
                 should_shed_early = True
                 shed_reason = "gradient_control"
 
+            # CRITICAL: If Backlog is saturated (>40), Drop Q3 immediately.
+            # This is a Circuit Breaker to protect Q1 when Optimizer is converging.
+            if qos == 'Q3' and queue_backlog > 40.0:
+                 should_shed_early = True
+                 shed_reason = "backlog_saturation"
+
             if not should_shed_early and qos == 'Q3':
                 if (q1_drop_rate > 0.01 or q2_drop_rate > 0.01) or (q1_violation_rate > 0.1 or q2_violation_rate > 0.1):
                     should_shed_early = True

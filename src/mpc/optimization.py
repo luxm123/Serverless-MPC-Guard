@@ -236,26 +236,39 @@ class Optimizer:
              # If Price > 0 (Congestion), drop Fidelity to floor (0.01) immediately to clear queue.
              price_norm = max(0.1, price_norm / 100.0)
 
-        # 4. Congestion Gradient (Proportional Control using REAL-TIME Backlog)
-        # If Queue Backlog is high, we MUST reduce u immediately.
-        # Predicted delay is too slow (lagged). We use the backlog snapshot directly.
-        grad_congestion = 0.0
+        # 4. Barrier Method for Queue Capacity Constraint (Scientific Approach)
+        # Instead of heuristic 'if backlog > 40', we use a Log-Barrier Function.
+        # Constraint: g(u) = Capacity - Backlog(u) >= 0
+        # Barrier Cost: B(u) = -mu * log(Capacity - Backlog)
+        # Gradient: dB/du -> Infinity as Backlog -> Capacity.
         
-        # Use passed current_backlog if available (from Middleware sync/cache)
-        # Fallback to state prediction if backlog is None (but that's less reliable)
+        grad_congestion = 0.0
         backlog_val = 0.0
         if current_backlog is not None:
             backlog_val = float(current_backlog)
         elif state:
-            # Fallback to whatever belief we have
             backlog_val = float(state.get('queue_backlog_belief', 0.0))
 
-        if backlog_val > 5.0:
-             # Aggressive P-Control:
-             # If Backlog=100 (Flash Crowd), Grad=50.0. 
-             # u_new = u - 0.05 * 50 = u - 2.5 (Drops to 0 instantly).
-             # If Backlog=10 (Mild), Grad=5.0. u drops by 0.25.
-             grad_congestion = backlog_val * 0.5
+        # Soft Capacity Limit (e.g., 50 concurrency -> 40 backlog buffer)
+        capacity = 50.0 
+        margin = capacity - backlog_val
+        
+        if margin < 10.0:
+            # As margin drops from 10 to 0, gradient shoots up.
+            # safe_margin avoids division by zero.
+            safe_margin = max(0.1, margin)
+            
+            # Barrier Strength (mu)
+            mu = 50.0 
+            
+            # Gradient Direction: Higher u -> Higher Backlog -> Lower Margin
+            # We want to reduce u to increase Margin.
+            # d(Cost)/du is POSITIVE (force u down).
+            grad_congestion = mu / safe_margin
+            
+            # If margin is negative (Overloaded), add linear penalty to keep pushing
+            if margin <= 0:
+                grad_congestion += 100.0 + abs(margin) * 10.0
 
         grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
         
