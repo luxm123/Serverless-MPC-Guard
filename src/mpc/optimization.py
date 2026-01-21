@@ -262,8 +262,6 @@ class Optimizer:
         # Barrier Strength (mu)
         # mu=20 ensures that at Backlog=10 (Margin=40), grad=0.5 (Weak)
         # at Backlog=30 (Margin=20), grad=1.0 (Moderate)
-        # at Backlog=45 (Margin=5), grad=4.0 (Strong)
-        # at Backlog=49 (Margin=1), grad=20.0 (Emergency)
         mu = 20.0 
         
         # Gradient Direction: Higher u -> Higher Backlog -> Lower Margin
@@ -271,19 +269,28 @@ class Optimizer:
         # d(Cost)/du is POSITIVE (force u down).
         grad_congestion = mu / safe_margin
         
+        # CRITICAL FIX: Exponentially boost penalty as we near capacity.
+        # This solves the "Model Mismatch" problem where a bad latency model (predicting low latency)
+        # generates a strong negative gradient (to increase u) that overwhelms the congestion gradient.
+        # We ensure that when Backlog > 40 (Margin < 10), congestion DOMINATES.
+        if margin < 10.0:
+            grad_congestion *= 50.0 # Massive boost (e.g. 200 -> 10000)
+        
         # If margin is negative (Overloaded), add linear penalty to keep pushing
         if margin <= 0:
-            grad_congestion += 100.0 + abs(margin) * 10.0
+            # Must exceed max possible tracking error (approx 5000)
+            grad_congestion += 5000.0 + abs(margin) * 100.0
 
         grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
-        
-        # DEBUG: Verify Q1 Fidelity Logic
-        if is_fidelity_mode and abs(grad) > 0.1:
-             print(f"[MPC-OPT] Q1 Fidelity: Risk={soft_risk:.2f}, Backlog={backlog_val:.0f}, Grad={grad:.2f} (Congest={grad_congestion:.2f}), Price={price:.2f}, u_new={prev_u - eta * (grad + gamma * prev_u):.2f}")
         
         # Update Step with Regularization (gamma * u)
         # u_new = u - eta * (grad + gamma * u)
         step = eta * (grad + gamma * prev_u)
+
+        # DEBUG: Enhanced logging to diagnose Model Mismatch
+        # Only print if there's significant action or high backlog
+        if backlog_val > 5.0 or abs(grad) > 0.1:
+             print(f"[MPC-OPT] Backlog={backlog_val:.1f} | Grads -> Track: {w1*grad_track:.2f}, Risk: {w3*grad_risk:.2f}, Congest: {grad_congestion:.2f}, Price: {price/price_norm:.2f} | Total: {grad:.2f} | u: {prev_u:.2f}->{prev_u - step:.2f}")
         u_new = prev_u - step
         
         # Projection to Feasible Set U (Box constraints [0, 1])
