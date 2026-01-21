@@ -119,9 +119,10 @@ def lambda_handler(event, context):
             raw_backlog = 0.0
             if 'metrics' in event and isinstance(event.get('metrics'), dict):
                 raw_backlog = float(event['metrics'].get('queue_backlog', 0))
-            
-            # Circuit Breaker: If Backlog > 40 (80% capacity) OR Predicted Delay > 800ms
-            if raw_backlog > 40.0 or pred_queue_delay > 800.0:
+                print(f"[DEBUG] Received raw_backlog from run_trace_replay.py: {raw_backlog}")
+
+            # Circuit Breaker: If Backlog > 10 (20% capacity) OR Predicted Delay > 300ms
+            if raw_backlog > 10.0 or pred_queue_delay > 300.0:
                  fidelity = 0.05 
                  event['fidelity_factor'] = fidelity
                  print(f"[Q1 EMERGENCY] Backlog {raw_backlog:.0f} / Queue {pred_queue_delay:.0f}ms. FORCING Fidelity 5%.")

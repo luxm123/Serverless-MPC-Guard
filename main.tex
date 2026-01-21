@@ -1,0 +1,555 @@
+\documentclass[journal]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algorithmicx}
+\usepackage{algpseudocode}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{relsize} 
+\usepackage{caption}
+\captionsetup{font=small, skip=6pt}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{Serverless-MPC-Guard: Risk-Aware Multi-Level Overload Protection Framework for Serverless Microservices}
+
+\author{Author Name\textsuperscript{1}
+\IEEEauthorblockA{\textsuperscript{1}Affiliation, City, Country -- E-mail: author@university.edu.cn}
+\IEEEauthorblockA{Member, IEEE}
+}
+
+\maketitle
+
+\begin{abstract}
+Serverless computing offers flexible elastic scaling capabilities, but ensuring Service Level Objectives (SLOs) remains a critical challenge under high dynamic load scenarios. Existing reactive concurrency control mechanisms suffer from response lag, while forward-looking schemes relying on point prediction struggle to characterize the stochastic nature of the load, easily leading to overload or resource waste. This paper proposes a risk-aware multi-level overload protection framework, Serverless-MPC-Guard, aiming to address the trade-off between differentiated performance assurance and resource efficiency. First, the framework employs weighted conformal prediction (WCP) to generate robust confidence intervals for the assumption of distributionlessness, accurately quantifying demand uncertainty under non-stationary load changes. Second, the admission control and concurrency allocation problem is modeled as a chance-constrained optimization problem, solved using an online dual gradient descent algorithm. The controller uses shadow prices as dynamic feedback signals and combines "virtual partition" technology to adaptively adjust constraint violation penalty coefficients in real time, prioritizing critical QoS during high-risk periods and maximizing system throughput during stable load periods. Experimental results based on the Amazon Web Services platform show that, compared with advanced baseline solutions, this solution can significantly reduce tail latency and SLO default rates for critical business operations, effectively verifying the robustness and superiority of this mechanism.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Serverless Computing, FaaS, SLO Guarantee, Model Predictive Control, Weighted Conformal Prediction, Shadow Pricing, Resource Isolation
+\end{IEEEkeywords}
+
+\section{INTRODUCTION}
+\textbf{\relsize{+5}S}\kern-0.15em\textbf{ERVERLESS} (FaaS), as an emerging cloud computing paradigm, has fundamentally changed the way cloud-native applications are built. With its extreme elasticity and scalability, and pay-as-you-go economic model, serverless architecture (FaaS) has gradually expanded from its initial background task processing to supporting core online business and interactive microservices. In this architecture, developers only need to focus on business logic, while the cumbersome infrastructure operation and maintenance are managed by the cloud platform. This "decoupling" of operations and maintenance enables enterprises to iterate products and deliver features at an unprecedented speed.
+
+However, while serverless computing performs excellently in general scenarios, it still faces significant challenges when applied to latency-sensitive microservice scenarios. Existing mainstream FaaS platforms (such as AWS Lambda and Google Cloud Functions) typically employ a "best-effort" resource scheduling strategy. For complex microservice call chains, performance fluctuations in individual functions are often amplified by the chain, leading to uncontrollable end-to-end latency. Despite extensive research on the cold start problem, maintaining strict Service Level Objectives (SLOs) remains a significant challenge during hot starts due to multi-tenant resource contention, opaque scheduling mechanisms, and the random bursts of load. Existing solutions primarily rely on rule-based reactive autoscaling, which often suffers from latency—SLO violations typically occur by the time abnormal metrics are detected. At the other extreme is static over-provisioning, which clearly contradicts the cost-reduction goals of serverless computing.
+
+How to ensure both strict SLOs for critical business operations and efficient resource utilization in a black-box FaaS environment is a critical technical bottleneck that academia and industry urgently need to overcome.
+
+To address this, we propose Serverless-MPC-Guard, a lightweight intelligent governance framework for serverless microservices. Its core design goal is to achieve millisecond-level performance prediction and proactive congestion control through application-layer middleware without modifying the underlying runtime. Unlike traditional solutions that rely on lagging monitoring metrics, Serverless-MPC-Guard introduces Model Predictive Control (MPC) from control theory. It models the resource scheduling problem of microservice systems as a multi-objective optimization problem, finding the optimal solution that satisfies SLO and cost under complex dynamic loads through a closed-loop "prediction-decision-control" chain.
+
+Serverless-MPC-Guard employs a novel layered governance architecture, embedding intelligent middleware at function entry points to take over traffic admission and resource allocation decisions. First, given the high volatility of serverless loads, traditional threshold-based scaling strategies often fail. We designed a load predictor based on Weighted Conformal Prediction (WCP), which captures short-term trends and periodic characteristics of traffic, providing accurate future state estimates for the MPC controller. This allows the system to shift from "post-event remediation" to "pre-event prevention."
+
+Second, in multi-tenant and mixed load scenarios, different services have vastly different sensitivities to latency. Existing FaaS platforms lack fine-grained Quality of Service (QoS) differentiation mechanisms. Serverless-MPC-Guard designs a virtual bulkhead mechanism based on "shadow pricing." It uses an online dual gradient descent algorithm to solve the resource allocation optimization problem in real time, calculating the implicit cost of resources (i.e., shadow price), and then dynamically adjusts the admission thresholds for different priority traffic (Q1/critical business, Q2/standard business, Q3/best-effort). When the system load approaches saturation, a price signal automatically triggers degraded processing for low-priority requests, thus building a logical resource isolation wall for critical business and ensuring that core SLOs are not disturbed.
+
+Furthermore, to cope with instantaneous latency degradation caused by sudden traffic surges, we integrated gradient control logic into the MPC framework. By monitoring the rate of change of the latency gradient in real time, the system can accurately identify performance degradation trends before the P90 latency reaches the SLO threshold and immediately initiate defensive flow control measures.
+
+We comprehensively evaluated Serverless-MPC-Guard using the AWS Lambda platform, the open-source microservice benchmark suite DeathStarBench, and simulated mixed production workloads. Experimental results show that Serverless-MPC-Guard significantly improves system robustness compared to the default auto-scaling mechanism and static configuration scheme.
+
+The main contributions of this paper are as follows:
+
+$\bullet$ We propose Serverless-MPC-Guard, introducing Model Predictive Control (MPC) into the framework of serverless application layer governance, achieving fine-grained SLO guarantees in a black-box FaaS environment.
+
+$\bullet$ We designed a collaborative mechanism of "dual gradient solving - shadow price feedback - virtual partition isolation." This mechanism uses an online dual gradient descent algorithm to calculate the implicit cost of resources in real time, driving the virtual partition to dynamically adjust the admission threshold. This achieves logical isolation of different QoS services within a shared resource pool, effectively solving the resource contention problem under high concurrency.
+
+$\bullet$ A hybrid decision-making algorithm combining WCP prediction and gradient control is proposed, which can reduce the tail latency of high-priority services by XX\% and keep the SLO violation rate below X\% while maintaining low CPU overhead (the resulting additional latency is negligible).
+
+\section{BACKGROUND AND MOTIVATION}
+\subsection{Technical Background: Serverless Computing}
+Serverless computing reshapes the way cloud applications are deployed through the Function as a Service (FaaS) model. In this model, developers encapsulate application logic as stateless functions, which are triggered by events (such as HTTP requests and queued messages). Cloud providers (such as AWS Lambda and Google Cloud Functions) are responsible for the underlying resource allocation, container scheduling, and automatic scaling. Developers do not need to worry about the operational details of the infrastructure and can focus on implementing the business logic.
+
+For microservice architectures, this model means extremely high elasticity. A typical serverless microservice application consists of multiple interdependent functions that interact through synchronous calls (RPC) or asynchronous message queues. Platforms typically manage resource pools through concurrency limits and instance reuse (Warm/Cold Start) mechanisms. When a request arrives, if an idle warm instance exists, the request is processed immediately; otherwise, the platform needs to start a new instance, which typically introduces a latency of hundreds of milliseconds. To maintain high performance, modern FaaS platforms typically reuse warm instances to handle subsequent requests, thereby reducing latency overhead from cold starts and improving user experience.
+
+\subsection{SLO Risks}
+While FaaS simplifies operations, it introduces significant performance risks in high-concurrency and mixed-load scenarios, especially for latency-sensitive microservices. We model these risks as two categories of Service Level Objective (SLO) violation threats:
+
+$\bullet$ \textbf{Queueing Delay Risk:} Because cloud vendors typically set a hard limit on the number of concurrent instances for a single tenant or function, when burst traffic exceeds the concurrency limit, excess requests are forced into a waiting queue. This queuing latency grows exponentially and is a major cause of tail latency (P99) deterioration. Even if the average latency is within a reasonable range, extreme latency in some requests can still lead to SLO violations.
+
+$\bullet$ \textbf{Noisy Neighbor Risk:} In serverless environments, business logic with different priorities (such as core transactions and backend logs) often share the same function resource pool. Due to the lack of application-layer priority awareness mechanisms, low-value request flows (QoS-Low) may instantly exhaust all available concurrency quotas, causing high-value requests (QoS-High) to be rejected or timed out due to resource scarcity. This "denial of service" does not originate from external attacks but stems from internal resource contention, posing a serious threat to the stability of core business operations.
+
+\subsection{Limitations of Existing Solutions}
+Existing solutions have inherent limitations in addressing the above risks and cannot meet the stringent SLO requirements of microservices: Platform-level autoscaling lag: Existing autoscaling mechanisms (such as AWS Target Tracking) primarily rely on aggregated metrics (such as average CPU utilization). The collection and decision-making of these metrics often involve delays of minutes. Faced with sudden, second-level traffic surges, platforms can only mitigate the impact through reactive scaling, by which time SLO violations have already occurred, rendering proactive risk control impossible.
+
+Retry Storms: Traditional client-side retries often backfire in serverless environments. When congestion occurs, indiscriminate retries further exacerbate queuing pressure on the FaaS platform, leading to a positive feedback loop of congestion collapse, worsening existing performance issues.
+
+Cost Inefficiency of Static Resource Reservation: While provisioned concurrency can mitigate cold starts and queuing, this requires developers to accurately predict peak traffic. For the highly uncertain workloads of modern microservices, static reservations often result in significant resource over-provisioning, violating the pay-as-you-go economic principle of serverless and significantly increasing operational costs.
+
+\subsection{Core Challenges}
+Based on the above analysis, achieving efficient performance governance in a black-box FaaS runtime environment faces the following three core challenges:
+
+1) \textbf{How to achieve millisecond-level load awareness without underlying monitoring permissions?} The FaaS platform shields the underlying container's OS metrics, and the application layer can only obtain sparse request-level data. The primary challenge is how to utilize limited observation data to reconstruct the system state in real time and predict microsecond-level load change trends, providing accurate basis for subsequent governance decisions.
+
+2) \textbf{How to build logical isolation boundaries within a shared resource pool?} Without control over physical CPU scheduling and network bandwidth, how to simulate strong isolation at the application layer using a software-defined approach to prevent low-priority services from encroaching on core service resources and ensure the SLO stability of critical services is a core requirement for achieving differentiated service quality assurance.
+
+3) \textbf{How to minimize control overhead while ensuring SLO?} Introducing middleware governance inevitably increases additional computational latency. The key prerequisite for realizing a lightweight governance framework is to complete complex optimization solutions (such as MPC calculations) within an extremely limited function execution time budget (usually only a few milliseconds) and ensure that the governance mechanism itself does not become a new performance bottleneck.
+
+\section{System Overview of Serverless-MPC-Guard}
+\label{ch:system-overview}
+
+This Section provides an overview of the overall design of
+Serverless-MPC-Guard, laying the groundwork for the mechanisms
+and algorithms discussed in subsequent Sections. Our focus is on
+a scenario where multiple microservice requests with varying
+priorities arrive simultaneously on a shared serverless
+computing platform. The platform only provides coarse-grained
+concurrency quotas based on tenant/service clusters and black-box
+auto-scaling. In this environment, queuing backlogs and resource
+contention can easily lead to significant degradation in tail
+latency (e.g., P99), making it difficult to reliably guarantee
+the SLO (Service Level Objective) for high-value requests.
+
+
+\begin{figure*}[t!] 
+  \centering
+  \includegraphics[width=0.95\textwidth, keepaspectratio]{fig/serverless-mpc-guard-arch.png}
+  \caption{Overall architecture of Serverless-MPC-Guard. The controller is deployed as a bypass layer on top of a black-box serverless platform.}
+  \label{fig:serverless-arch}
+\end{figure*}
+
+The design goal of Serverless-MPC-Guard is to implement a
+lightweight control layer at the application layer without
+modifying the underlying FaaS platform. As illustrated in
+Figure~\ref{fig:serverless-arch}, external requests first enter
+the system via the API Gateway and are then distributed to
+multiple worker nodes with control logic. Each node contains a
+Serverless-MPC Engine, a logical queuing structure divided by
+QoS, request-level metric logs, and several business function
+containers. The Gateway is responsible for load balancing among
+nodes, while the internal request acceptance, queuing,
+degradation, and dropping decisions are entirely controlled by
+Serverless-MPC-Guard, without altering the interface of the
+business functions themselves.
+
+This architecture forms a closed-loop control process. When a
+request arrives, the MPC Engine decides whether to accept the
+request and place it in the corresponding logical queue based on
+the current QoS level and historical state, or reject some low-priority calls under overload. Accepted requests are then
+executed in business containers along either a normal or a
+degraded path. After execution, the runtime library collects
+end-to-end latency and SLO indicators, compresses them into
+feedback signals, and sends them back to the MPC Engine. Using
+these signals, Serverless-MPC-Guard updates its internal WCP
+state and shadow prices, and makes new admission and degradation
+decisions for subsequent requests. Subsequent Sections elaborate
+on QoS-aware runtime strategies, online state estimation, and
+the model predictive controller built on top of this architecture.
+
+\section{Serverless Runtime QoS Isolation}
+\label{sec:qos-isolation}
+
+This section formalizes the runtime behavior of Serverless-MPC-Guard at the system level. It provides a QoS-aware abstraction on top of the underlying FaaS platform and defines the variables that subsequent sections will use for WCP-based state estimation and MPC control.
+
+We consider a discrete-time control loop indexed by
+$t = 0, 1, 2, \dots$, where each time step corresponds to a short
+control cycle (e.g., 100\,ms). At each cycle, the runtime observes
+aggregate metrics from stateless worker functions and applies
+QoS-aware admission and execution decisions without introducing any
+centralized request buffer.
+
+\subsection{QoS Classification and Logical Queuing Model}
+\label{subsec:qos-model}
+
+At the application layer, Serverless-MPC-Guard groups requests into
+three QoS classes $\mathcal{K} = \{1,2,3\}$, corresponding to Q1, Q2,
+and Q3 respectively:
+
+\begin{itemize}
+  \item $k = 1$ (Q1): latency-critical services with the strictest
+        SLO on tail latency and availability.
+  \item $k = 2$ (Q2): important services with moderate sensitivity to
+        latency and limited tolerance to degradation.
+  \item $k = 3$ (Q3): best-effort services that may be degraded or
+        proactively dropped under extreme load.
+\end{itemize}
+
+Each external request passes through a lightweight API gateway that
+attaches metadata including tenant identifier, service identifier, QoS
+tag, and target SLO threshold $\tau_k$ (e.g., an end-to-end P99
+latency cap). The middleware normalizes this information into an
+internal task descriptor
+\[
+  x_t^{(i)} = \bigl(k, \text{tenant}, \text{service}, \tau_k, \dots\bigr),
+\]
+which serves as one of the controller's inputs.
+
+Within a single worker node, Serverless-MPC-Guard maintains logical
+queues $Q_t^{(k)}$ for the three QoS classes. These queues share the
+same underlying pool of stateless function instances and abstract the
+capacity-constrained, multi-tenant nature of the FaaS platform. At
+time $t$, the incoming request rate for QoS class $k$ is denoted by
+$a_t^{(k)}$. An admission decision $\alpha_t^{(k)} \in [0,1]$ is
+applied, resulting in an effective accepted rate
+\[
+  \tilde{a}_t^{(k)} = \alpha_t^{(k)} a_t^{(k)}
+\]
+into the logical queue $Q_t^{(k)}$.
+
+The platform allocates a total concurrent capacity $B_t$ at each node.
+Serverless-MPC-Guard further distributes this capacity across QoS
+classes by assigning a per-class concurrency allocation $C_t^{(k)}$
+that satisfies
+\[
+  \sum_{k \in \mathcal{K}} C_t^{(k)} \le B_t,
+  \qquad
+  C_t^{(k)} \ge 0.
+\]
+Intuitively, $C_t^{(k)}$ limits how many requests of class $k$ can be
+served in parallel in that control cycle.
+
+For each completed request, the runtime records the end-to-end latency
+$L(r)$ and a binary indicator of whether the SLO was violated. Over a
+sliding window of $W$ control cycles, the empirical SLO violation rate
+for class $k$ is defined as
+\begin{equation}
+  \hat{p}_t^{(k)}
+  =
+  \frac{1}{N_t^{(k)}}
+  \sum_{r \in \mathcal{R}_t^{(k)}} \mathbf{1}\{L(r) > \tau_k\},
+  \label{eq:slo-violation-rate}
+\end{equation}
+where $\mathcal{R}_t^{(k)}$ is the set of completed class-$k$
+requests in the current window and $N_t^{(k)} = |\mathcal{R}_t^{(k)}|$.
+This quantity will be used both as an evaluation metric and as input
+to the WCP-based risk estimation in Section~\ref{sec:wcp-estimation}.
+
+\subsection{QoS-aware Admission and Degradation Strategy}
+\label{subsec:qos-admission}
+
+Based on the logical queuing abstraction above, Serverless-MPC-Guard
+implements QoS-aware governance through two levels of decision
+making: admission control and execution mode selection.
+
+\paragraph{Admission control.}
+Admission control determines which requests are allowed to enter the
+serverless system. The decision variable $\alpha_t^{(k)}$ encodes the
+fraction of incoming class-$k$ traffic that is admitted at interval
+$t$. In normal conditions, the runtime keeps $\alpha_t^{(1)}$ close to
+$1$ and allows near-full admission for Q1; Q2 admission is adjusted
+moderately based on resource pressure; Q3 admission is most flexible
+and can be reduced aggressively under overload. This implements the
+simple policy of ``Q1 priority, Q2 second, Q3 lowest''.
+
+\paragraph{Execution mode and degradation.}
+For already accepted Q3 requests, Serverless-MPC-Guard further chooses
+an execution mode: normal execution, degraded execution (e.g., calling
+a cheaper model or skipping optional work), or proactive dropping.
+This decision is driven by a risk signal derived from WCP-based tail
+latency estimation and SLO violation statistics.
+
+Rather than expressing these decisions solely through formulas, we
+summarize the runtime behavior as a procedural algorithm. This matches
+the structure of the actual system implementation and makes the
+interaction between QoS classes more transparent.
+
+\begin{algorithm}[!htbp]
+  \caption{QoS-aware Admission and Execution with Fidelity Scaling}
+  \label{alg:qos-runtime}
+  \begin{algorithmic}[1]
+    \Require QoS classes $\mathcal{K} = \{Q1,Q2,Q3\}$,
+             SLO targets $\{\tau_k\}_{k\in\mathcal{K}}$,
+             Q1 fidelity threshold $u_{\text{th}} = 0.05$,
+             Backlog limit $Q_{\max} = 10$
+    \State Observe tail-latency $\hat{y}_t$ and backlog $q_t$
+    \For{each arriving request $i$ in interval $t$}
+      \State Read QoS class $k$
+      \If{$k = Q1$} \Comment{Mission Critical}
+        \State Calculate fidelity $u_t$ from MPC module
+        \If{$q_t > Q_{\max}$ \textbf{or} $\hat{y}_t > 300\text{ms}$} \Comment{Circuit Breaker}
+          \State Force $u_t \leftarrow u_{\text{th}}$ (Bang-Bang Control)
+          \State \textbf{Execute} in Min-Fidelity Mode
+        \Else
+          \State \textbf{Execute} with Fidelity $u_t$
+        \EndIf
+      \ElsIf{$k = Q2$} \Comment{Standard}
+        \State Calculate drop prob $p$ from shadow price
+        \If{rand() $< p$ \textbf{or} $q_t \gg Q_{\max}$}
+          \State \textbf{Reject} (Shedding)
+        \Else
+          \State \textbf{Execute} Normal Mode
+        \EndIf
+      \Else \Comment{Best Effort (Q3)}
+        \If{$q_t > Q_{\max}$} \Comment{Early Shedding}
+           \State \textbf{Reject} immediately
+        \EndIf
+      \EndIf
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+The algorithm captures the behavior actually implemented in our
+prototype: high-priority QoS classes are shielded from both admission
+cuts and proactive drops, whereas Q3 carries most of the burden under
+flash crowds.
+
+\subsection{Metrics Used in Evaluation}
+\label{subsec:qos-metrics}
+
+To connect the model with the experimental results, we summarize the
+main metrics used in later sections:
+
+\begin{itemize}
+  \item \textbf{SLO violation rate.}
+        For each QoS class $k$, the SLO default rate reported in the
+        experiments is precisely $\hat{p}_t^{(k)}$ in
+        \eqref{eq:slo-violation-rate}, evaluated over the duration of
+        the experiment.
+  \item \textbf{Degrade ratio for Q3.}
+        Let $d_t^{(i)} \in \{0,1\}$ indicate whether Q3 request $i$
+        in interval $t$ was served in a degraded mode. The overall
+        downgrade ratio is
+        \begin{equation}
+          \text{DegradeRatio}^{(3)}
+          =
+          \frac{\sum_{t,i} d_t^{(i)}}
+               {\text{number of accepted Q3 requests}}.
+          \label{eq:q3-degrade-ratio}
+        \end{equation}
+  \item \textbf{Shed ratio for Q3.}
+        Let $s_t^{(i)} \in \{0,1\}$ indicate whether Q3 request $i$
+        was proactively dropped by the runtime. The Q3 shed ratio is
+        \begin{equation}
+          \text{ShedRatio}^{(3)}
+          =
+          \frac{\sum_{t,i} s_t^{(i)}}
+               {\text{number of accepted Q3 requests}}.
+          \label{eq:q3-shed-ratio}
+        \end{equation}
+  \item \textbf{Tail-latency statistics.}
+        P99 latency for each QoS class is computed directly from the
+        empirical distribution of $L(r)$ over the corresponding set
+        of completed requests.
+\end{itemize}
+
+In this way, Serverless-MPC-Guard forms a self-consistent QoS-aware abstraction on top of the black-box FaaS runtime. The following sections build on this abstraction: Section~\ref{sec:wcp-estimation} uses WCP to obtain risk-aware tail-latency estimates, and Section~\ref{sec:mpc-controller} designs an MPC controller that leverages these estimates to trade off SLO protection against resource cost.
+
+\section{Online WCP State Estimation}
+\label{sec:wcp-estimation}
+
+This section presents how Serverless-MPC-Guard performs online
+state estimation under the constraints of a fully serverless
+environment. We first introduce a serverless-aware architecture for
+weighted conformal prediction (WCP), and then describe how the
+controller turns aggregated latency measurements into a scalar
+feedback signal for the MPC controller given in
+Section~\ref{sec:mpc-controller}.
+
+\subsection{Serverless-aware Architecture}
+\label{subsec:wcp-architecture}
+
+Serverless platforms such as AWS Lambda expose a fundamentally
+different execution model from traditional monolithic services. Worker
+functions are stateless, can be created or destroyed at any time, and
+are isolated from one another. This rules out any centralized request
+buffer or long-lived in-memory state at the worker layer. As a
+consequence, the state estimation mechanism must be implemented purely
+in the control plane and rely only on lightweight summaries exported
+by the platform.
+
+Figure~\ref{fig:wcp-robustification} summarizes the proposed design.
+The right part represents the serverless system and its model-based
+controller, implemented as a Lambda function. At each control
+interval the controller receives a small set of aggregate metrics from
+the worker layer, such as per-class tail latency and SLO violation
+counts. The blue block on the left is the WCP module. It maintains a
+short history of these metrics and produces a risk-aware estimate of
+future tail latency, which is then used to tighten constraints and
+adjust the controller's reference signals.
+
+Crucially, the WCP module operates on \emph{aggregated measurements}
+instead of raw requests. The sliding ``buffer'' it maintains is a
+logical window of per-interval statistics stored in the controller
+state (or an external key--value store), not a queue of pending
+invocations. Its memory footprint is constant in the number of
+intervals and independent of the total request volume, which preserves
+the stateless and autoscaling properties of serverless workers while
+still providing the controller with a rich enough state for robust
+decision making.
+
+\begin{figure}[htbp]  
+\centering
+\includegraphics[width=\columnwidth]{fig/wcp-state-estimation.png}  
+\caption{WCP-based robustification of the serverless MPC controller. The WCP module maintains only a short history of aggregate latency statistics in the control plane, without introducing any centralized request buffer.}
+\label{fig:wcp-robustification}  
+\end{figure}
+
+\subsection{WCP-based Tail-latency Model}
+\label{subsec:wcp-tail-model}
+
+We focus on the $p$-quantile tail latency of each QoS class, measured
+over short control intervals (e.g., one or a few seconds). At the end
+of interval $t$, the serverless platform exports an aggregate
+tail-latency summary $y_t$ for each class. This can be implemented
+using built-in metrics (such as CloudWatch percentiles) or a
+lightweight aggregation Lambda that runs independently of the
+application logic.
+
+The WCP module keeps a sliding history
+\(
+\mathcal{B}_t = (y_{t-n+1}, \dots, y_t)
+\)
+of the most recent $n$ \emph{interval summaries}. This is a logical
+buffer of scalar statistics stored in the controller state, not a
+buffer of individual requests or payloads. Therefore, its memory
+footprint scales only with the window length $n$ and does not violate
+the stateless design of worker functions.
+
+To emphasize recent behavior and handle non-stationarity, WCP assigns
+larger weights to newer elements in $\mathcal{B}_t$ and forms the
+online tail-latency estimate $\hat{q}_t$ as
+\begin{equation}
+  \hat{q}_t = \sum_{i=1}^{n} w_{t,i}\, y_{t-n+i},
+  \qquad
+  \sum_{i=1}^{n} w_{t,i} = 1,\; w_{t,i} \ge 0,
+  \label{eq:wcp-quantile}
+\end{equation}
+where $w_{t,i}$ are normalized importance weights. We implement the
+weights using an exponential decay
+\begin{equation}
+  w_{t,i}
+  = \frac{\exp\bigl(-\lambda (n-i)\bigr)}
+         {\sum_{j=1}^{n} \exp\bigl(-\lambda (n-j)\bigr)},
+  \qquad \lambda > 0,
+  \label{eq:exp-weights}
+\end{equation}
+where $\lambda$ controls how fast old intervals are down-weighted.
+This form captures distribution shifts in a simple and
+implementation-friendly way and can be updated online with constant
+time and space per interval.
+
+We compute the weighted quantile of the sliding window using Eq. (\ref{eq:wcp-quantile}) and (\ref{eq:exp-weights}).
+
+\subsection{SLO Risk Metric and Feedback Signal}
+\label{subsec:slo-risk-feedback}
+
+Let $\tau$ denote the SLO target for the tail latency of a given QoS
+class (e.g., $\tau = 1000\,$ms for Q1). Based on the WCP estimate
+$\hat{q}_t$ in \eqref{eq:wcp-quantile}, we define a normalized SLO
+risk metric
+\begin{equation}
+  r_t = \max\!\left(0,\;
+        \frac{\hat{q}_t - \tau}{\tau}\right).
+  \label{eq:slo-risk}
+\end{equation}
+Here $r_t = 0$ means the estimated tail latency is within the SLO,
+while $r_t > 0$ quantifies the relative violation level. This scalar
+quantity is convenient to combine across QoS classes and over time,
+and it naturally reflects the asymmetric penalty of SLO violations.
+
+The MPC controller does not operate directly on $r_t$, but on a
+shadow price signal $\pi_t$ that trades off SLO risk against resource
+cost. We adopt the Online Dual Gradient Descent method with integral effect, which can automatically memorize historical SLO violations and eliminate steady-state errors. We use the following update rule
+\begin{equation}
+  \pi_{t+1} = \left[ \pi_t + \eta \cdot r_t \right]_+
+  \label{eq:shadow-price}
+\end{equation}
+where $\eta > 0$ is a tunable learning rate parameter, and the operator $[\cdot]_+$ denotes projection onto the non-negative orthant (i.e., taking the non-negative value). A larger $\eta$ makes the controller react more aggressively to SLO risk, while a smaller $\eta$ yields smoother behavior. The resulting
+$\pi_t$ is fed into the optimization problem described in
+Section~\ref{sec:mpc-controller} to adapt admission and degradation
+decisions in a way that is both serverless-friendly and
+distribution-robust.
+
+\section{MPC Controller Design} 
+\label{sec:mpc-controller} 
+
+This section presents the formulation of the online resource management problem and the design of the Model Predictive Controller (MPC). We adopt a control-theoretic approach, modeling the serverless provisioning task as a constrained stochastic optimization problem solved via an online primal-dual gradient method. 
+
+\subsection{Problem Formulation} 
+Consider a discrete-time system indexed by $t$. At each control interval $t$, the controller observes the system state, which includes the WCP-estimated tail latency $\hat{y}_t$ derived in Section V. Let $u_t \in \mathcal{U}$ denote the control action (e.g., resource allocation factor), where $\mathcal{U} = [u_{\min}, u_{\max}]$ represents the feasible control set. 
+
+Our primary objective is to minimize the resource cost $C(u_t)$ while ensuring that the tail latency satisfies the Service Level Objective (SLO) target $\bar{y}$. The optimization problem is formulated as follows: 
+
+\begin{equation} 
+\label{eq:primal} 
+\begin{aligned} 
+& \underset{u_t \in \mathcal{U}}{\text{minimize}} 
+& & C(u_t) \\ 
+& \text{subject to} 
+& & \hat{y}_t(u_t) \leq \bar{y} 
+\end{aligned} 
+\end{equation} 
+where $C(\cdot)$ is a strictly increasing convex function representing resource consumption, and $\hat{y}_t(\cdot)$ models the latency response. 
+
+\subsection{Lagrangian Relaxation and Shadow Prices} 
+To address the inequality constraint in (\ref{eq:primal}) within a low-latency online setting, we employ Lagrangian relaxation. The Lagrangian function $\mathcal{L}(u_t, \lambda_t)$ is defined as: 
+
+\begin{equation} 
+\label{eq:lagrangian} 
+\mathcal{L}(u_t, \lambda_t) = C(u_t) + \lambda_t \left( \hat{y}_t(u_t) - \bar{y} \right) 
+\end{equation} 
+
+Here, $\lambda_t \ge 0$ is the \textbf{dual variable}, corresponding to the Lagrange multiplier of the SLO constraint. In economic terms, $\lambda_t$ is interpreted as the \textit{shadow price} of the SLO violation. It quantifies the marginal cost of enforcing the latency constraint: a higher $\lambda_t$ implies a stronger penalty for violations, incentivizing the controller to increase resource allocation despite the higher cost. 
+
+\subsection{Online Primal-Dual Algorithm} 
+We propose an online primal-dual algorithm to solve (\ref{eq:primal}) continuously. As illustrated in Figure \ref{fig:mpc_architecture}, the system operates in a closed feedback loop where the primal and dual variables are updated simultaneously based on real-time measurements.
+
+% --- Figure Placeholder Start ---
+\begin{figure}[htbp]
+\centering
+% TODO: Insert the MPC architecture diagram here.
+% Ideally, this figure should show:
+% 1. Input: Latency Measurement (y_hat)
+% 2. Controller Block: Dual Update (lambda) -> Primal Update (u)
+% 3. Output: Control Action (u) applied to the Worker Layer
+\includegraphics[width=0.9\linewidth]{figures/mpc_architecture_placeholder.pdf} 
+\caption{Overview of the Online Primal-Dual MPC Framework. The controller receives latency feedback $\hat{y}_t$ and dynamically updates the shadow price $\lambda_t$ and resource allocation $u_t$ to balance cost minimization with SLO guarantees.}
+\label{fig:mpc_architecture}
+\end{figure}
+% --- Figure Placeholder End ---
+
+Unlike traditional methods that solve to convergence at each step, our approach performs single-step updates, ensuring computational efficiency ($O(1)$ complexity) suitable for serverless execution. 
+
+\subsubsection{Dual Update (Shadow Price Dynamics)} 
+The shadow price is updated via projected subgradient ascent: 
+\begin{equation} 
+\label{eq:dual_update} 
+\lambda_{t+1} = \mathcal{P}_{\mathbb{R}_+} \left[ \lambda_t + \alpha \cdot \left( \hat{y}_t - \bar{y} \right) \right] 
+\end{equation} 
+where $\alpha > 0$ is the dual step size, and $\mathcal{P}_{\mathbb{R}_+}$ denotes projection onto the non-negative orthant. This update integrates the history of SLO violations, allowing $\lambda_t$ to adaptively scale the penalty based on system performance. 
+
+\subsubsection{Primal Update with Barrier Function}
+To strictly enforce queue capacity limits without hard thresholds, we introduce a Log-Barrier term into the cost function. The modified gradient update is:
+
+\begin{equation}
+u_{t+1} = u_t - \eta \left( \nabla C(u_t) + \lambda_t \nabla \hat{y}_t + \nabla B(u_t) \right)
+\end{equation}
+
+where $B(u_t)$ is the barrier function defined as:
+\begin{equation}
+B(u_t) = -\mu \ln(C_{\max} - \text{Backlog}(u_t))
+\end{equation}
+Here, $\mu$ is the barrier strength. As the backlog approaches the system capacity $C_{\max}$, the gradient $\nabla B(u_t)$ approaches infinity, forcibly reducing the admission/fidelity factor $u_t$ to prevent buffer overflow.
+
+\subsubsection{Hybrid Control Strategy}
+While the gradient-based updates provide smooth adaptation, they may react too slowly to extreme flash crowds (e.g., 10x load in 1s). To address this, we integrate a \textbf{"Circuit Breaker"} mechanism (as shown in Algorithm \ref{alg:qos-runtime}) with the MPC controller.
+\begin{itemize}
+    \item \textbf{Soft Constraint (Barrier):} When backlog approaches capacity (e.g., 80\%), the barrier function $B(u_t)$ steeply increases the cost, naturally pushing the optimizer to reduce fidelity.
+    \item \textbf{Hard Constraint (Bang-Bang):} If the backlog exceeds a critical safety threshold (e.g., $Q_{\max}$), the controller bypasses the gradient step and immediately switches to a pre-calculated "Minimum Viable Fidelity" ($u_{\text{th}}$). This hybrid approach combines the optimality of MPC with the responsiveness of rule-based protection.
+\end{itemize}
+
+The complete control logic, which interleaves these primal and dual updates in a real-time loop, is summarized in Algorithm \ref{alg:mpc}.
+
+\begin{algorithm}[!htbp]  
+  \caption{Online Primal-Dual MPC}
+  \label{alg:mpc}
+  \begin{algorithmic}[1]
+    \Require SLO target $\bar{y}$, step sizes $\alpha$, $\eta$
+    \State \textbf{Initialize:} $u_0 \leftarrow u_{\min}$, $\lambda_0 \leftarrow 0$
+    \For{each control interval $t=1,2,\dots$}
+      \State \textbf{Measurement:} Observe latency $\hat{y}_t$ from WCP
+      \State \textbf{Dual Update:}
+      \State \quad $\lambda_{t+1} \leftarrow \max(0, \lambda_t + \alpha (\hat{y}_t - \bar{y}))$
+      \State \textbf{Gradient Estimation:}
+      \State \quad $g_t \leftarrow \nabla c(u_t) + \lambda_{t+1} \nabla \hat{y}_t(u_t)$
+      \State \textbf{Primal Update:}
+      \State \quad $u_{t+1} \leftarrow \operatorname{clip}\left(u_t - \eta \cdot g_t, u_{\min}, u_{\max}\right)$
+      \State \textbf{Actuation:} Apply $u_{t+1}$ to worker layer
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+\end{document}
