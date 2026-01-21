@@ -419,7 +419,9 @@ class MPCMiddleware:
         # To make it robust, we can write to DB with probability p=0.1 (sampling)
         # or if state changed significantly.
         
-        if random.random() < 0.1:
+        # CRITICAL FIX: Persist state immediately if fidelity drops (Optimization Active)
+        # or randomly (Heartbeat). This ensures other containers learn about the panic mode.
+        if new_alloc < 0.9 or random.random() < 0.1:
             self._async_save_state(state, version)
 
         decision_out = result['decision']

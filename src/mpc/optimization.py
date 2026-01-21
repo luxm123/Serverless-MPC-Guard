@@ -280,6 +280,18 @@ class Optimizer:
         if margin <= 0:
             # Must exceed max possible tracking error (approx 5000)
             grad_congestion += 5000.0 + abs(margin) * 100.0
+            
+            # --- CRITICAL FIX: SATURATION OVERRIDE ---
+            # If the queue is saturated (Margin <= 0), we CANNOT rely on small gradient steps.
+            # We must force immediate shedding/degradation to recover the system.
+            # This bypasses the learning rate and previous state (prev_u).
+            u_new = 0.01
+            if state is not None and 'opt_debug' in state:
+                state['opt_debug']['override'] = True
+            
+            # Skip standard update logic
+            print(f"[MPC-OPT] SATURATION OVERRIDE! Backlog={backlog_val:.1f} (Margin={margin:.1f}). Forcing u=0.01.")
+            return u_new
 
         grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
         
