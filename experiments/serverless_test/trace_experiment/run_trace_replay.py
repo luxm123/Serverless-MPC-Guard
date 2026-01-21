@@ -139,6 +139,7 @@ class TraceReplayer:
         payload = {
             "metrics": {
                 "queue_backlog": current_backlog,  # Real-time Client-Side Injection
+                "concurrency": max(1, current_backlog), # Simulate Ideal Serverless Scaling (1 req = 1 server)
                 "slo_violation_rate": current_slo_violation_rate,
                 "p90": current_p90_latency,
                 "latency": current_p90_latency,

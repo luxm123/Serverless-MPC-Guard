@@ -250,9 +250,10 @@ class Optimizer:
             backlog_val = float(state.get('queue_backlog_belief', 0.0))
 
         # Soft Capacity Limit (Relaxed for Serverless Scalability)
-        # Previously 50.0, which collided with client thread pool size (50), causing constant panic.
-        # Serverless can easily handle 200+ concurrency.
-        capacity = 200.0 
+        # We set this to 300.0 (Client Threads + Buffer) to avoid a mathematical singularity (Division by Zero)
+        # when the client is fully saturated (200 threads).
+        # At Backlog=200, Margin=100, keeping the gradient stable.
+        capacity = 300.0 
         margin = capacity - backlog_val
         
         # Log-Barrier Gradient: grad = mu / (margin)
