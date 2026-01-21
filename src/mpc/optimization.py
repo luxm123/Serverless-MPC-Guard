@@ -283,6 +283,9 @@ class Optimizer:
             grad_congestion += 5000.0 + abs(margin) * 100.0
             
             # --- CRITICAL FIX: SATURATION OVERRIDE ---
+            # If the queue is saturated (Margin <= 5), we CANNOT rely on small gradient steps.
+            # We must force immediate shedding/degradation to recover the system.
+            # This bypasses the learning rate and previous state (prev_u).
             u_new = 0.01
             
             # Ensure debug info is captured before returning
