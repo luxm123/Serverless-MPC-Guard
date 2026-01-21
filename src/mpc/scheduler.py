@@ -79,15 +79,23 @@ class Scheduler:
             )
         max_delta = float(system_state.get('u_max_delta', 0.15))
         
-        # Adaptive delta based on price (Dynamic Bands)
+        # CRITICAL FIX: Emergency Bypass for High Backlog
+        # If backlog is high (>10), disable stability clamps to allow immediate fidelity drop.
+        is_emergency = False
+        if current_backlog is not None and current_backlog > 10.0:
+            is_emergency = True
+            max_delta = 1.0 # Allow full swing (0.0 to 1.0)
+        
+        # Adaptive delta based on price (Dynamic Bands) - Only if NOT emergency
         # We use the same 'bands' logic as optimization or simple thresholds from state
         price_high = float(system_state.get('sched_price_high', 200.0))
         price_med = float(system_state.get('sched_price_med', 50.0))
         
-        if price >= price_high:
-            max_delta *= 0.5
-        elif price >= price_med:
-            max_delta *= 0.8
+        if not is_emergency:
+            if price >= price_high:
+                max_delta *= 0.5
+            elif price >= price_med:
+                max_delta *= 0.8
             
         delta = resource_alloc - prev_u
         if delta > max_delta:
