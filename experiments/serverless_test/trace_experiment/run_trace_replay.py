@@ -106,6 +106,10 @@ class TraceReplayer:
         with self.lock:
             self.pending_requests += 1
             current_backlog = self.pending_requests
+            # Debug log to verify if 40 is a good threshold
+            if current_backlog > 40 and req_id % 100 == 0:
+                 print(f"[Warning] High Client-Side Backlog: {current_backlog}/{self.thread_num}")
+
             if self.slo_violation_window:
                 current_slo_violation_rate = sum(self.slo_violation_window) / len(self.slo_violation_window)
             if self.latency_window:
@@ -206,6 +210,14 @@ class TraceReplayer:
                 else:
                     resp = worker_result.get('response', {}) or {}
                     worker_status = resp.get('status', 'unknown')
+                    
+                    # Update controller decision from Worker's internal MPC debug info
+                    if strategy in ['mpc', 'mpc_integrated']:
+                        dbg = resp.get('debug', {})
+                        controller_should_shed = bool(dbg.get('shouldShed', False))
+                        degrade_plan = dbg.get('degrade_plan')
+                        admit_thr = dbg.get('admit_threshold_ms')
+                        pred_total_ms = dbg.get('pred_total_latency_ms')
 
                 end_t = time.time()
                 e2e_latency = (end_t - start_t) * 1000.0

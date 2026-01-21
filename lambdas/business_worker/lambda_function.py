@@ -120,8 +120,8 @@ def lambda_handler(event, context):
             if 'metrics' in event and isinstance(event.get('metrics'), dict):
                 raw_backlog = float(event['metrics'].get('queue_backlog', 0))
             
-            # Circuit Breaker: If Backlog > 10 (20% capacity) OR Predicted Delay > 200ms
-            if raw_backlog > 10.0 or pred_queue_delay > 200.0:
+            # Circuit Breaker: If Backlog > 40 (80% capacity) OR Predicted Delay > 800ms
+            if raw_backlog > 40.0 or pred_queue_delay > 800.0:
                  fidelity = 0.05 
                  event['fidelity_factor'] = fidelity
                  print(f"[Q1 EMERGENCY] Backlog {raw_backlog:.0f} / Queue {pred_queue_delay:.0f}ms. FORCING Fidelity 5%.")
@@ -130,18 +130,18 @@ def lambda_handler(event, context):
                 # If Controller says SHED, we check if we can just degrade.
                 # Circuit Breaker: 
                 # 1. If alloc is extremely low (< 0.05), system is completely broken.
-                # 2. If queue delay is HIGH (>300ms), better to shed than timeout.
+                # 2. If queue delay is HIGH (>800ms), better to shed than timeout.
                 
-                # Revert to strict threshold: 300ms.
-                # User Feedback: "Not effective" -> We were allowing 1700ms latencies. Stop that.
-                if alloc < 0.05 or pred_queue_delay > 300.0:
+                # Revert to strict threshold: 800ms (SLO is 1000ms).
+                # Previous 300ms was too aggressive given 440ms base latency.
+                if alloc < 0.05 or pred_queue_delay > 800.0:
                     should_shed = True
                     reason = "LowAlloc" if alloc < 0.05 else "HighQueue"
-                    print(f"[Q1 Critical] System Saturated ({reason}: Alloc {alloc:.2f}, Queue {pred_queue_delay:.0f}ms). Force Shedding.")
-                else:
-                    should_shed = False
-                    # Fidelity factor is already set above
-                    print(f"[Q1 Protection] Overload detected. Scaling Fidelity to {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
+                print(f"[Q1 Critical] System Saturated ({reason}: Alloc {alloc:.2f}, Queue {pred_queue_delay:.0f}ms). Force Shedding.")
+            else:
+                should_shed = False
+                # Ensure Fidelity is applied even if not shedding
+                print(f"[Q1 Protection] Overload detected. Scaling Fidelity to {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
             else:
                 should_shed = False
                 # Ensure Fidelity is applied even if not shedding
@@ -163,7 +163,7 @@ def lambda_handler(event, context):
                     'reason': f'mpc_shedding_mode_{mode}'
                 })
             )
-        status = "degraded"
+        status = "shedded"
         # Shedding is fast
         time.sleep(0.05) 
         
