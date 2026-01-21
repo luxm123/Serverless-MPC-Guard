@@ -85,6 +85,7 @@ class Scheduler:
         if current_backlog is not None and current_backlog > 10.0:
             is_emergency = True
             max_delta = 1.0 # Allow full swing (0.0 to 1.0)
+            print(f"[MPC-SCHED] EMERGENCY BYPASS: Backlog={current_backlog} > 10.0. Forcing max_delta=1.0 to allow rapid drop.")
         
         # Adaptive delta based on price (Dynamic Bands) - Only if NOT emergency
         # We use the same 'bands' logic as optimization or simple thresholds from state
@@ -147,5 +148,8 @@ class Scheduler:
             if (ub_latency_total > self.slo_limit or composite > 0.0) and price > price_low:
                 should_shed = True
                 degrade_plan = "store_to_sqs"
+        
+        if current_backlog is not None and current_backlog > 5.0:
+             print(f"[MPC-SCHED] Decision: Backlog={current_backlog:.1f}, u={resource_alloc:.4f}, Shed={should_shed}, Delta={resource_alloc-prev_u:.4f}")
                 
         return should_shed, degrade_plan, resource_alloc
