@@ -222,9 +222,10 @@ class TraceReplayer:
                         # Debug Visibility: Show protection activation
                         worker_backlog = dbg.get('raw_backlog_seen', -1)
                         fidelity = dbg.get('fidelity_applied', 1.0)
+                        alloc = dbg.get('resource_alloc', 1.0)
                         opt_debug = dbg.get('opt_debug')
                         if worker_backlog > 10 or fidelity < 1.0:
-                             print(f"   [Protection Active v2] Backlog: {worker_backlog} | Fidelity: {fidelity:.2f}")
+                             print(f"   [Protection Active v2] Backlog: {worker_backlog} | Fidelity: {fidelity:.2f} | Alloc: {alloc:.2f}")
                              if opt_debug:
                                  # Safely get values with defaults to avoid NoneType formatting errors
                                  g_tot = opt_debug.get('grad_total', 0.0) or 0.0

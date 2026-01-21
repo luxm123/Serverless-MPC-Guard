@@ -87,16 +87,19 @@ class Scheduler:
             max_delta = 1.0 # Allow full swing (0.0 to 1.0)
             print(f"[MPC-SCHED] EMERGENCY BYPASS: Backlog={current_backlog} > 10.0. Forcing max_delta=1.0 to allow rapid drop.")
         
-        # Adaptive delta based on price (Dynamic Bands) - Only if NOT emergency
-        # We use the same 'bands' logic as optimization or simple thresholds from state
+        # Adaptive delta based on price (Dynamic Bands)
+        # CRITICAL FIX: Inverted logic. 
+        # Original: High price -> Smaller delta (prevent oscillation).
+        # New: High price -> Larger delta (panic drop).
+        # This allows the system to react aggressively to congestion without waiting for state sync.
         price_high = float(system_state.get('sched_price_high', 200.0))
         price_med = float(system_state.get('sched_price_med', 50.0))
         
         if not is_emergency:
             if price >= price_high:
-                max_delta *= 0.5
+                max_delta *= 2.0 # Allow 2x faster drop
             elif price >= price_med:
-                max_delta *= 0.8
+                max_delta *= 1.5 # Allow 1.5x faster drop
             
         delta = resource_alloc - prev_u
         
