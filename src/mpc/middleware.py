@@ -527,6 +527,7 @@ class MPCMiddleware:
                     ':t': {'N': str(time.time())}
                 }
             )
+            print(f"[Middleware] State Saved to DB: ID={self.state_id}, Alloc={params.get('last_alloc', 1.0)}")
         except Exception as e:
             print(f"[Middleware] State Save Error: {e}")
 

@@ -296,7 +296,10 @@ class Optimizer:
                     'override': True,
                     'margin': margin,
                     'backlog': backlog_val,
-                    'reason': 'saturation_margin_le_5'
+                    'reason': 'saturation_margin_le_5',
+                    'grad_total': 999.9, # Fake value to indicate Override in logs
+                    'g_cong': 999.9,
+                    'g_track': 0.0
                 })
             
             # Skip standard update logic

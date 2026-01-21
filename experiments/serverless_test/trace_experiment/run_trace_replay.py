@@ -227,12 +227,18 @@ class TraceReplayer:
                         if worker_backlog > 10 or fidelity < 1.0:
                              print(f"   [Protection Active v2] Backlog: {worker_backlog} | Fidelity: {fidelity:.2f} | Alloc: {alloc:.2f}")
                              if opt_debug:
-                                 # Safely get values with defaults to avoid NoneType formatting errors
-                                 g_tot = opt_debug.get('grad_total', 0.0) or 0.0
-                                 g_cong = opt_debug.get('g_cong', 0.0) or 0.0
-                                 g_track = opt_debug.get('g_track', 0.0) or 0.0
-                                 margin_val = opt_debug.get('margin', 0.0) or 0.0
-                                 print(f"       [MPC-GRAD] Total: {g_tot:.2f} | Congestion: {g_cong:.2f} | Track: {g_track:.2f} | Margin: {margin_val:.2f}")
+                                 # Check for Override
+                                 if opt_debug.get('override'):
+                                     reason = opt_debug.get('reason', 'unknown')
+                                     margin_val = opt_debug.get('margin', 0.0)
+                                     print(f"       [MPC-OVERRIDE] Reason: {reason} | Margin: {margin_val:.2f} | Force u=0.01")
+                                 else:
+                                     # Safely get values with defaults to avoid NoneType formatting errors
+                                     g_tot = opt_debug.get('grad_total', 0.0) or 0.0
+                                     g_cong = opt_debug.get('g_cong', 0.0) or 0.0
+                                     g_track = opt_debug.get('g_track', 0.0) or 0.0
+                                     margin_val = opt_debug.get('margin', 0.0) or 0.0
+                                     print(f"       [MPC-GRAD] Total: {g_tot:.2f} | Congestion: {g_cong:.2f} | Track: {g_track:.2f} | Margin: {margin_val:.2f}")
 
 
                 end_t = time.time()
