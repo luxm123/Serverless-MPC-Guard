@@ -8,3 +8,6 @@ venv/
 .vscode/
 
 experiments/serverless_test/trace_experiment/results/*.csv
+main.tex
+*.pdf
+
