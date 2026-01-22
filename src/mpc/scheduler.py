@@ -138,9 +138,14 @@ class Scheduler:
                     degrade_plan = "store_to_sqs"
         
         if priority >= prio_high_thr:
-            if price > price_high and (ub_latency_total > self.slo_limit or composite > 0.0):
-                should_shed = True
-                degrade_plan = "store_to_sqs_recovery"
+            # CRITICAL FIX: Disable Heuristic Shedding for Q1
+            # Q1 must rely entirely on Fidelity Scaling (u -> 0.01).
+            # We never shed Q1 based on price/latency heuristics anymore.
+            pass
+
+            # if price > price_high and (ub_latency_total > self.slo_limit or composite > 0.0):
+            #    should_shed = True
+            #    degrade_plan = "store_to_sqs_recovery"
         # Q2/Q3 Shedding is now handled by the MPC 'u' (resource_alloc) below.
         # Removed redundant heuristic price-based shedding for Q2/Q3 to avoid interference.
         
