@@ -110,6 +110,9 @@ def lambda_handler(event, context):
                 # If backlog is critical (>= 100), DROP it to save slots.
                 if current_backlog < 100.0:
                      should_shed = False
+                     # CRITICAL: Update debug info so Client knows we didn't shed!
+                     mpc_debug['shouldShed'] = False 
+                     
                      fidelity = 0.01
                      event['fidelity_factor'] = fidelity
                      print(f"[Q3 Smart] Backlog {current_backlog} < 100: Converting Shed -> Min Fidelity 1%")
