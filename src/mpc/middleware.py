@@ -222,7 +222,19 @@ class MPCMiddleware:
         if base_service_ms <= 0.0:
             base_service_ms = float(state.get('p90_belief', 0.0) or 0.0)
         if base_service_ms <= 0.0:
-            base_service_ms = float(metrics.get('p90', 0.0) or 0.0)
+            # CRITICAL FIX: Decouple Queue Time from Service Time
+            # p90 is End-to-End Latency (Queue + Service).
+            # If we use p90 as Service Time, we double-count Queue Time -> Quadratic Explosion.
+            # Estimation: Service = Latency / (1 + Backlog/Servers)
+            p90_val = float(metrics.get('p90', 0.0) or 0.0)
+            if p90_val > 0 and queue_backlog > 1.0:
+                 base_service_ms = p90_val / (1.0 + queue_backlog / max(1.0, servers))
+            else:
+                 base_service_ms = p90_val
+            
+            # Safety Clamp: Prevent cold start/network latency from poisoning service time belief
+            base_service_ms = min(base_service_ms, 300.0)
+
         if base_service_ms <= 0.0:
             base_service_ms = float(pred_dict.get('p90', 100.0) or 100.0)
         eff_alloc = max(0.1, last_alloc)
