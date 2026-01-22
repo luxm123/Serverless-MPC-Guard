@@ -100,15 +100,15 @@ def lambda_handler(event, context):
         elif qos == "Q2":
             should_shed = raw_should_shed
             
-            # CRITICAL FIX: Q2 Partial Fidelity
-            # If Q2 is admitted during congestion, apply mild fidelity scaling (max 50% degradation)
-            # to help it meet SLO despite queueing.
-            # Without this, admitted Q2 tasks run at full duration + penalty, guaranteeing failure.
+            # CRITICAL FIX: Q2 Partial Fidelity (Aggressive)
+            # If Q2 is admitted during congestion, apply SIGNIFICANT fidelity scaling (max 70% degradation)
+            # to ensure it clears the queue fast enough to meet SLO.
+            # 0.5 was not enough; dropping to 0.3 floor.
             alloc = float(event.get('resource_alloc', 1.0))
             if alloc < 1.0 and not should_shed:
-                 fidelity = max(0.5, min(1.0, alloc))
+                 fidelity = max(0.3, min(1.0, alloc))
                  event['fidelity_factor'] = fidelity
-                 print(f"[Q2 Fidelity] Partial Scaling: {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
+                 print(f"[Q2 Fidelity] Aggressive Scaling: {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
         elif qos == "Q1":
             # Q1 Mission Critical: Prefer Degradation (Fidelity Scaling) over Shedding
             # BUT allow shedding if system is overwhelmed even at min fidelity.

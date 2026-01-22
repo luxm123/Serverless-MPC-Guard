@@ -68,9 +68,24 @@ def update_function(func_name, lambda_folder):
     except Exception as e:
         print(f"Error updating lambda {func_name}: {e}")
 
+def update_function_config(func_name, memory_size=1024):
+    print(f"Updating Lambda Config: {func_name} (Memory: {memory_size}MB)...")
+    try:
+        lmb.update_function_configuration(
+            FunctionName=func_name,
+            MemorySize=memory_size,
+            Timeout=60  # Ensure timeout is sufficient
+        )
+        print(f"Config update for {func_name} initiated.")
+    except Exception as e:
+        print(f"Error updating config for {func_name}: {e}")
+
 def update_lambda():
     update_function(MPC_FUNC_NAME, 'mpc_controller')
+    update_function_config(MPC_FUNC_NAME, memory_size=1024)
+    
     update_function(WORKER_FUNC_NAME, 'business_worker')
+    update_function_config(WORKER_FUNC_NAME, memory_size=1024)
 
 if __name__ == '__main__':
     update_lambda()
