@@ -57,7 +57,7 @@ class Optimizer:
         w3_step_inc = float(state.get('opt_w3_step_inc', 20.0))
         w3_step_dec = float(state.get('opt_w3_step_dec', 0.95))
         w3_min = float(state.get('opt_w3_min', 5.0))
-        w3_max = float(state.get('opt_w3_max', 500.0)) # Reduced from 2000.0 to prevent panic
+        w3_max = float(state.get('opt_w3_max', 50.0)) # Reduced from 500.0 to prevent panic
         
         # 2. Adapt w2 (Waste Penalty) - Define params early
         w2_step_inc = float(state.get('opt_w2_step_inc', 10.0))
@@ -159,8 +159,8 @@ class Optimizer:
         if qos_class == 'Q1':
             # CRITICAL FIX: Q1 Fidelity Mode
             # Q1 cannot shed, so it MUST degrade fidelity aggressively under load.
-            # Reduced boost from 50.0 to 5.0 to prevent gradient explosion (Track > 10000)
-            w3 *= 5.0 
+            # Removed boost entirely (was 5.0) because Gradient is still exploding (12000+)
+            # w3 *= 1.0 
             is_fidelity_mode = True
         elif qos_class == 'Q2':
             w1 *= 2.0
