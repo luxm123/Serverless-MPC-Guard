@@ -125,9 +125,13 @@ class Scheduler:
             thr_med = float(system_state.get('pred_thr_med', self.slo_limit * 1.0))
             thr_low = float(system_state.get('pred_thr_low', self.slo_limit * 0.8))
             if priority >= prio_high_thr:
-                if price > price_high and ub_latency_total > thr_high:
-                    should_shed = True
-                    degrade_plan = "store_to_sqs_recovery"
+                # CRITICAL FIX: Disable Heuristic Shedding for Q1
+                # Q1 must rely entirely on Fidelity Scaling (u -> 0.01).
+                # We never shed Q1 based on price/latency heuristics anymore.
+                pass
+                # if price > price_high and ub_latency_total > thr_high:
+                #    should_shed = True
+                #    degrade_plan = "store_to_sqs_recovery"
             elif priority >= prio_med_thr:
                 if ub_latency_total > thr_med:
                     should_shed = True
