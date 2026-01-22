@@ -34,6 +34,12 @@ def update_shadow_price(state, metrics, u):
     error = float(metrics.get('error_rate', 0.0))
     memp = float(metrics.get('memory_pressure', 0.0))
     slo = float(metrics.get('slo_violation_rate', 0.0))
+    # CRITICAL FIX: Tolerance for Noise
+    # If SLO violation is very small (e.g., < 1%), treat it as 0.0 to allow Price to decay.
+    # This prevents "Price Creep" where 0.75% violation keeps Price high forever, killing Q2.
+    if slo < 0.01:
+        slo = 0.0
+        
     # Capacity baseline
     B = float(state.get('sp_B', 0.8))
     # Dual signals: load side + risk side

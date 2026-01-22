@@ -141,7 +141,13 @@ class TraceReplayer:
             "metrics": {
                 "queue_backlog": current_backlog,  # Real-time Client-Side Injection
                 "concurrency": max(1, current_backlog), # Simulate Ideal Serverless Scaling (1 request = 1 worker)
-                "slo_violation_rate": current_slo_violation_rate,
+                # CRITICAL FIX: Feedback Signal Alignment
+                # Previously, we sent 'current_slo_violation_rate' which aggregated ALL requests.
+                # Since Q2/Q3 shedding counts as 'violation', this created a death spiral:
+                # Shed Q2 -> High Violation -> High Price -> Low u -> Shed More Q2.
+                # We now send 'q1_violation_rate' as the primary signal. 
+                # The Controller will now optimize 'u' to minimize Q1 violations, treating Q2 shedding as acceptable collateral.
+                "slo_violation_rate": q1_violation_rate, 
                 "p90": current_p90_latency,
                 "latency": current_p90_latency,
                 "q1_violation_rate": q1_violation_rate,

@@ -4,7 +4,7 @@ class Optimizer:
     def __init__(self):
         # Default weights (used if not in state)
         self.default_w1 = 1.0
-        self.default_w2 = 0.5
+        self.default_w2 = 5.0 # Boosted from 0.5 to fight Shadow Price
         self.default_w3 = 5.0
 
     def calculate_cost(self, y_ac, y_ref, metrics, state=None):
@@ -65,7 +65,9 @@ class Optimizer:
         w2_min = float(state.get('opt_w2_min', 0.5))
         w2_max = float(state.get('opt_w2_max', 50.0))
         
-        if viol_rate > 0.0:
+        # CRITICAL FIX: Tolerance alignment
+        # Ignore violations < 1% to prevent w3 from exploding on noise
+        if viol_rate > 0.01:
             w3 = w3_min + (viol_rate * w3_step_inc) + (int_viol_err * 10.0)
         else:
             int_viol_err *= 0.9

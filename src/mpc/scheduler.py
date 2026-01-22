@@ -92,7 +92,7 @@ class Scheduler:
         # Original: High price -> Smaller delta (prevent oscillation).
         # New: High price -> Larger delta (panic drop).
         # This allows the system to react aggressively to congestion without waiting for state sync.
-        price_high = float(system_state.get('sched_price_high', 200.0))
+        price_high = float(system_state.get('sched_price_high', 500.0)) # Relaxed from 200.0 to prevent Q1 shedding
         price_med = float(system_state.get('sched_price_med', 50.0))
         
         if not is_emergency:
