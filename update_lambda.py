@@ -4,7 +4,12 @@ import zipfile
 import io
 import time
 
-REGION = 'us-east-1'
+# CRITICAL FIX: Do not hardcode region. Use environment or config.
+# If running on EC2 eu-north-1, this must be eu-north-1.
+session = boto3.Session()
+REGION = session.region_name or 'us-east-1'
+print(f"Deploying to Region: {REGION}")
+
 MPC_FUNC_NAME = 'MPC_Controller'
 WORKER_FUNC_NAME = 'MPC_BusinessWorker'
 
