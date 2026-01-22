@@ -121,35 +121,13 @@ class Scheduler:
 
         pred_admit_enabled = bool(system_state.get('pred_admit_enabled', True))
         if pred_admit_enabled:
-            thr_high = float(system_state.get('pred_thr_high', self.slo_limit * 1.2))
-            thr_med = float(system_state.get('pred_thr_med', self.slo_limit * 1.0))
-            thr_low = float(system_state.get('pred_thr_low', self.slo_limit * 0.8))
-            if priority >= prio_high_thr:
-                # CRITICAL FIX: Disable Heuristic Shedding for Q1
-                # Q1 must rely entirely on Fidelity Scaling (u -> 0.01).
-                # We never shed Q1 based on price/latency heuristics anymore.
-                pass
-                # if price > price_high and ub_latency_total > thr_high:
-                #    should_shed = True
-                #    degrade_plan = "store_to_sqs_recovery"
-            elif priority >= prio_med_thr:
-                if ub_latency_total > thr_med:
-                    should_shed = True
-                    degrade_plan = "store_to_sqs_recovery"
-            else:
-                if ub_latency_total > thr_low:
-                    should_shed = True
-                    degrade_plan = "store_to_sqs"
-        
-        if priority >= prio_high_thr:
-            # CRITICAL FIX: Disable Heuristic Shedding for Q1
-            # Q1 must rely entirely on Fidelity Scaling (u -> 0.01).
-            # We never shed Q1 based on price/latency heuristics anymore.
+            # CRITICAL FIX: Disable ALL Heuristic Shedding (Legacy)
+            # We now rely 100% on:
+            # 1. Q1 -> Fidelity Scaling (u controls duration)
+            # 2. Q2/Q3 -> Probabilistic Shedding (u controls admission)
+            # This avoids "Double Penalty" where PriorityManager degrades score -> Heuristic Sheds -> MPC also lowers u.
             pass
-
-            # if price > price_high and (ub_latency_total > self.slo_limit or composite > 0.0):
-            #    should_shed = True
-            #    degrade_plan = "store_to_sqs_recovery"
+        
         # Q2/Q3 Shedding is now handled by the MPC 'u' (resource_alloc) below.
         # Removed redundant heuristic price-based shedding for Q2/Q3 to avoid interference.
         
@@ -165,6 +143,6 @@ class Scheduler:
                     degrade_plan = "store_to_sqs" if qos_class == 'Q3' else "store_to_sqs_recovery"
 
         if current_backlog is not None and current_backlog > 5.0:
-             print(f"[MPC-SCHED] Decision: Backlog={current_backlog:.1f}, u={resource_alloc:.4f}, Shed={should_shed}, Delta={resource_alloc-prev_u:.4f}")
+             print(f"[MPC-SCHED-v3] Decision: Backlog={current_backlog:.1f}, u={resource_alloc:.4f}, Shed={should_shed}, QoS={qos_class}")
                 
         return should_shed, degrade_plan, resource_alloc
