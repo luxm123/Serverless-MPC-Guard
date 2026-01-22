@@ -11,3 +11,7 @@ experiments/serverless_test/trace_experiment/results/*.csv
 main.tex
 *.pdf
 
+# Deployment artifacts
+worker_package_tmp/
+worker_optimized.zip
+
