@@ -423,7 +423,7 @@ if __name__ == "__main__":
     RESULTS_DIR = os.path.join(SCRIPT_DIR, 'results')
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    THREAD_COUNT = 200  # Increased to 200 to match Serverless Capacity (was 50)
+    THREAD_COUNT = 500  # Increased to 500 to overcome Network RTT bottleneck (was 200)
 
     # --- 运行实验 ---
     # 1. 初始化Replayer并加载一次数据
