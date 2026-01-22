@@ -159,8 +159,8 @@ class Optimizer:
         if qos_class == 'Q1':
             # CRITICAL FIX: Q1 Fidelity Mode
             # Q1 cannot shed, so it MUST degrade fidelity aggressively under load.
-            # We boost Price and Risk sensitivity significantly.
-            w3 *= 50.0  # Massive boost to Risk sensitivity
+            # Reduced boost from 50.0 to 5.0 to prevent gradient explosion (Track > 10000)
+            w3 *= 5.0 
             is_fidelity_mode = True
         elif qos_class == 'Q2':
             w1 *= 2.0
