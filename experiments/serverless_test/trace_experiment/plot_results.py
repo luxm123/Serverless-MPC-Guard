@@ -140,6 +140,71 @@ def plot_goodput_stacked(df, output_dir):
     plt.close()
     print("[图表] 有效吞吐量堆叠图已生成")
 
+def plot_fidelity_comparison(df, output_dir):
+    """
+    图4: 平均保真度对比 (Grouped Bar Chart)
+    """
+    # 确保有 fidelity 列，如果没有则默认为 1.0 (Baseline/Static)
+    if 'fidelity' not in df.columns:
+        df['fidelity'] = 1.0
+    else:
+        df['fidelity'] = df['fidelity'].fillna(1.0)
+
+    # 计算平均保真度
+    stats = df.groupby(['Strategy', 'qos_class'])['fidelity'].mean().reset_index()
+    stats['fidelity'] = stats['fidelity'] * 100.0  # 转百分比
+
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x='qos_class', y='fidelity', hue='Strategy', data=stats, palette='muted')
+    
+    plt.title('Average Fidelity Comparison (Trade-off Analysis)', fontsize=14)
+    plt.xlabel('QoS Class', fontsize=12)
+    plt.ylabel('Average Fidelity (%)', fontsize=12)
+    plt.ylim(0, 110)
+    
+    for p in plt.gca().patches:
+        if p.get_height() > 0:
+            plt.gca().annotate(f'{p.get_height():.1f}%', 
+                               (p.get_x() + p.get_width() / 2., p.get_height()), 
+                               ha = 'center', va = 'center', 
+                               xytext = (0, 5), 
+                               textcoords = 'offset points', fontsize=9)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, '4_fidelity_comparison.png'), dpi=300)
+    plt.close()
+    print("[图表] 保真度对比图已生成")
+
+def plot_p99_latency_comparison(df, output_dir):
+    """
+    图5: P99 尾延迟对比 (Grouped Bar Chart)
+    """
+    stats = df.groupby(['Strategy', 'qos_class'])['e2e_latency'].quantile(0.99).reset_index()
+    
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x='qos_class', y='e2e_latency', hue='Strategy', data=stats, palette='muted')
+    
+    plt.title('P99 Tail Latency Comparison', fontsize=14)
+    plt.xlabel('QoS Class', fontsize=12)
+    plt.ylabel('P99 Latency (ms)', fontsize=12)
+    
+    # 增加 SLO 线
+    plt.axhline(y=1000, color='red', linestyle='--', label='SLO (1000ms)')
+    plt.legend()
+
+    for p in plt.gca().patches:
+        if p.get_height() > 0:
+            plt.gca().annotate(f'{int(p.get_height())}', 
+                               (p.get_x() + p.get_width() / 2., p.get_height()), 
+                               ha = 'center', va = 'center', 
+                               xytext = (0, 5), 
+                               textcoords = 'offset points', fontsize=9)
+            
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, '5_p99_latency_comparison.png'), dpi=300)
+    plt.close()
+    print("[图表] P99 尾延迟对比图已生成")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate comparison plots for Serverless MPC Guard')
     parser.add_argument('files', nargs='+', help='CSV files to compare (e.g. baseline.csv mpc.csv)')
@@ -177,6 +242,8 @@ if __name__ == "__main__":
         plot_slo_comparison(merged_df, output_dir)
         plot_q1_cdf(merged_df, output_dir)
         plot_goodput_stacked(merged_df, output_dir)
+        plot_fidelity_comparison(merged_df, output_dir)
+        plot_p99_latency_comparison(merged_df, output_dir)
         print(f"=== 所有图表生成完毕: {output_dir} ===")
     else:
         print("没有数据可绘图")
