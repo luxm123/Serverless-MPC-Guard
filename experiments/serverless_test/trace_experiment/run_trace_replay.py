@@ -309,11 +309,20 @@ class TraceReplayer:
                 if len(self.latency_window) > 50:
                     self.latency_window.pop(0)
 
+        # Extract fidelity for reporting
+        fidelity_val = 1.0
+        try:
+            if 'worker_result' in locals() and worker_result:
+                fidelity_val = float(worker_result.get('response', {}).get('debug', {}).get('fidelity_applied', 1.0))
+        except:
+            pass
+
         self.results.append({
             "req_id": req_id,
             "trace_duration": ideal_duration,
             "e2e_latency": e2e_latency,
             "slowdown": slowdown,
+            "fidelity": fidelity_val,  # Add fidelity metric
             "slo_violation": is_violation,
             "strategy": strategy,
             "controller_ok": controller_ok,
@@ -413,8 +422,9 @@ class TraceReplayer:
                     p50 = d['e2e_latency'].quantile(0.50)
                     p90 = d['e2e_latency'].quantile(0.90)
                     p99 = d['e2e_latency'].quantile(0.99)
+                    avg_fidelity = d['fidelity'].mean() * 100.0
                     print(f"- {qos}: 数量={len(d)} | 满足SLO={met_slo_rate:.2f}% | 违约率={slo_violation_rate_q:.2f}% | 触发丢弃(控制器)={ctrl_shed:.2f}% | 实际丢弃(Worker)={shed_rate:.2f}%")
-                    print(f"       延迟(P50/P90/P99) = {p50:.1f}/{p90:.1f}/{p99:.1f} ms")
+                    print(f"       延迟(P50/P90/P99) = {p50:.1f}/{p90:.1f}/{p99:.1f} ms | 平均保真度(Fidelity)={avg_fidelity:.1f}%")
         print("==============================\n")
 
 
