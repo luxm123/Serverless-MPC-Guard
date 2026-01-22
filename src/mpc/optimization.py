@@ -57,7 +57,7 @@ class Optimizer:
         w3_step_inc = float(state.get('opt_w3_step_inc', 20.0))
         w3_step_dec = float(state.get('opt_w3_step_dec', 0.95))
         w3_min = float(state.get('opt_w3_min', 5.0))
-        w3_max = float(state.get('opt_w3_max', 2000.0))
+        w3_max = float(state.get('opt_w3_max', 500.0)) # Reduced from 2000.0 to prevent panic
         
         # 2. Adapt w2 (Waste Penalty) - Define params early
         w2_step_inc = float(state.get('opt_w2_step_inc', 10.0))
@@ -69,6 +69,8 @@ class Optimizer:
         # Ignore violations < 1% to prevent w3 from exploding on noise
         if viol_rate > 0.01:
             w3 = w3_min + (viol_rate * w3_step_inc) + (int_viol_err * 10.0)
+            # CRITICAL FIX: Clamp w3 to prevent Death Spiral
+            w3 = min(w3, w3_max)
         else:
             int_viol_err *= 0.9
             w3 = max(w3_min, w3 * w3_step_dec)
