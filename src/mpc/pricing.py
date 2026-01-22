@@ -40,6 +40,14 @@ def update_shadow_price(state, metrics, u):
     if slo < 0.01:
         slo = 0.0
         
+    # CRITICAL FIX: Emergency Decay for Shadow Price
+    # If backlog is low (< 50), force rapid price decay to recover from "Death Spiral".
+    # This acts as a "System Reset" without needing manual intervention.
+    if backlog < 50.0:
+        lam *= 0.8  # Decay by 20% every step if backlog is low
+        if lam < 1.0:
+            lam = 0.0
+        
     # Capacity baseline
     B = float(state.get('sp_B', 0.8))
     # Dual signals: load side + risk side
