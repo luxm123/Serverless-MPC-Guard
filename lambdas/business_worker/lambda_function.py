@@ -108,18 +108,18 @@ def lambda_handler(event, context):
                 
                 # If backlog is manageable (< 100, i.e., 20% capacity), SQUEEZE it in.
                 # If backlog is critical (>= 100), DROP it to save slots.
-                # AGGRESSIVE TUNING: Raised threshold to 450 (90% Capacity) for Max Throughput.
-                # Running at 2ms is almost always better than shedding (50ms).
-                if current_backlog < 450.0:
+                # AGGRESSIVE TUNING: Raised to 1000.0 (Infinite Capacity for 500 threads).
+                # We NEVER want to shed Q3 if we can run at 1% fidelity.
+                if current_backlog < 1000.0:
                      should_shed = False
                      # CRITICAL: Update debug info so Client knows we didn't shed!
                      mpc_debug['shouldShed'] = False 
                      
                      fidelity = 0.01
                      event['fidelity_factor'] = fidelity
-                     print(f"[Q3 Smart] Backlog {current_backlog} < 450: Converting Shed -> Min Fidelity 1%")
+                     print(f"[Q3 Smart] Backlog {current_backlog} < 1000: Converting Shed -> Min Fidelity 1%")
                 else:
-                     print(f"[Q3 Smart] Backlog {current_backlog} >= 450: Respecting Shed to save concurrency.")
+                     print(f"[Q3 Smart] Backlog {current_backlog} >= 1000: Respecting Shed to save concurrency.")
         elif qos == "Q2":
             should_shed = raw_should_shed
             
@@ -131,17 +131,17 @@ def lambda_handler(event, context):
                 if 'metrics' in event and isinstance(event.get('metrics'), dict):
                      current_backlog = float(event['metrics'].get('queue_backlog', 0))
                 
-                # AGGRESSIVE TUNING: Raised to 450 (90% Capacity) - Match Q3.
-                if current_backlog < 450.0:
+                # AGGRESSIVE TUNING: Raised to 1000.0 (Infinite Capacity).
+                if current_backlog < 1000.0:
                      should_shed = False
                      # CRITICAL: Tell Client we revived it!
                      mpc_debug['shouldShed'] = False
                      
                      fidelity = 0.5
                      event['fidelity_factor'] = fidelity
-                     print(f"[Q2 Smart] Backlog {current_backlog} < 450: Resurrecting Shed -> Fidelity 50%")
+                     print(f"[Q2 Smart] Backlog {current_backlog} < 1000: Resurrecting Shed -> Fidelity 50%")
                 else:
-                     print(f"[Q2 Smart] Backlog {current_backlog} >= 450: Shedding Confirmed.")
+                     print(f"[Q2 Smart] Backlog {current_backlog} >= 1000: Shedding Confirmed.")
 
             # CRITICAL FIX: Q2 Partial Fidelity (Aggressive)
             # If Q2 is admitted (or resurrected), apply fidelity scaling.
