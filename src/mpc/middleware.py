@@ -214,6 +214,16 @@ class MPCMiddleware:
 
         last_alloc = float(state.get('last_alloc', 1.0) or 1.0)
         servers = metrics.get('concurrency', metrics.get('servers', None))
+        
+        # DEBUG: Concurrency Detection
+        if servers is None or float(servers) <= 1.0:
+            if queue_backlog > 10.0:
+                print(f"[Middleware WARN] Concurrency Missing/Low ({servers}) with High Backlog ({queue_backlog}). Metrics Keys: {list(metrics.keys())}")
+                # Heuristic: In Serverless, Concurrency ~= Backlog (Ideal Scaling)
+                # We trust Backlog more than missing Concurrency metric.
+                servers = queue_backlog
+                print(f"[Middleware INFO] Auto-Corrected Concurrency to {servers}")
+
         if servers is None:
             servers = state.get('buffer_servers', state.get('concurrency_belief', state.get('buffer_servers_default', 1.0)))
         servers = max(1.0, float(servers or 1.0))
