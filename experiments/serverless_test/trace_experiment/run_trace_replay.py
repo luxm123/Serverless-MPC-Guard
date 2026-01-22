@@ -197,7 +197,8 @@ class TraceReplayer:
             task_payload = {
                 "task_name": f"TraceReq-{req_id}",
                 "simulated_duration_ms": ideal_duration,
-                "priority": prio
+                "priority": prio,
+                "qos_class": qos_class  # CRITICAL: Pass QoS Class so Controller knows it's Q1!
             }
             if controller_should_shed and qos_class == "Q3":
                 worker_status = "shedded"
