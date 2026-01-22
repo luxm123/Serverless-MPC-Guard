@@ -371,12 +371,15 @@ class TraceReplayer:
                 except Exception as e:
                     print(f"[Thread Error] {e}")
 
+        end_exp = time.time()
+        duration = end_exp - start_exp
+        
         output_path = os.path.join(self.output_dir, output_filename)
         print(f">>> 实验结束. 正在保存结果到 {output_path}...")
         pd.DataFrame(self.results).to_csv(output_path, index=False)
-        self.analyze_results(strategy)
+        self.analyze_results(strategy, duration)
 
-    def analyze_results(self, strategy):
+    def analyze_results(self, strategy, duration=None):
         """分析并打印实验结果摘要。"""
         df = pd.DataFrame(self.results)
         if df.empty:
@@ -386,9 +389,12 @@ class TraceReplayer:
         df_success = df[df['success'] == True]
         total_reqs, success_reqs = len(df), len(df_success)
         fail_rate = (total_reqs - success_reqs) / total_reqs * 100 if total_reqs > 0 else 0
+        
+        throughput = success_reqs / duration if duration and duration > 0 else 0.0
 
         print(f"\n=== '{strategy}' 策略实验摘要 ===")
         print(f"总请求数: {total_reqs} | 成功: {success_reqs} | 失败率: {fail_rate:.2f}%")
+        print(f"实验耗时: {duration:.2f}s | 平均吞吐量: {throughput:.2f} RPS")
         if success_reqs > 0:
             violation_rate = (df_success['slo_violation'].sum() / success_reqs) * 100
             print(f"平均减速因子: {df_success['slowdown'].mean():.2f}")
