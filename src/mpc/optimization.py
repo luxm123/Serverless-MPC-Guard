@@ -151,6 +151,9 @@ class Optimizer:
             w1 = float(state.get('opt_w1', w1))
             w2 = float(state.get('opt_w2', w2))
             w3 = float(state.get('opt_w3', w3))
+        
+        # CRITICAL FIX: Force Clamp w3 to prevent state poisoning (e.g. w3=10000 from prev run)
+        w3 = min(w3, 50.0)
 
         # --- MPC Priority Boosting (Explicit QoS) ---
         # For Q1 (Mission Critical), we use Fidelity Scaling.
