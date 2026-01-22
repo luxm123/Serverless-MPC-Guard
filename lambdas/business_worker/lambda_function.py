@@ -97,6 +97,42 @@ def lambda_handler(event, context):
 
         if qos == "Q3":
             should_shed = raw_should_shed
+            
+            # Smart Q3 Strategy: Dynamic Survival
+            # Ideally, running at 1% fidelity (~2ms) is cheaper than shedding (50ms penalty).
+            # However, we must not overwhelm the concurrency limit.
+            if should_shed:
+                current_backlog = 0.0
+                if 'metrics' in event and isinstance(event.get('metrics'), dict):
+                     current_backlog = float(event['metrics'].get('queue_backlog', 0))
+                
+                # If backlog is manageable (< 100, i.e., 20% capacity), SQUEEZE it in.
+                # If backlog is critical (>= 100), DROP it to save slots.
+                if current_backlog < 100.0:
+                     should_shed = False
+                     fidelity = 0.01
+                     event['fidelity_factor'] = fidelity
+                     print(f"[Q3 Smart] Backlog {current_backlog} < 100: Converting Shed -> Min Fidelity 1%")
+                else:
+                     print(f"[Q3 Smart] Backlog {current_backlog} >= 100: Respecting Shed to save concurrency.")
+            
+            # Smart Q3 Strategy: Dynamic Survival
+            # Ideally, running at 1% fidelity (~2ms) is cheaper than shedding (50ms penalty).
+            # However, we must not overwhelm the concurrency limit.
+            if should_shed:
+                current_backlog = 0.0
+                if 'metrics' in event and isinstance(event.get('metrics'), dict):
+                     current_backlog = float(event['metrics'].get('queue_backlog', 0))
+                
+                # If backlog is manageable (< 100, i.e., 20% capacity), SQUEEZE it in.
+                # If backlog is critical (>= 100), DROP it to save slots.
+                if current_backlog < 100.0:
+                     should_shed = False
+                     fidelity = 0.01
+                     event['fidelity_factor'] = fidelity
+                     print(f"[Q3 Smart] Backlog {current_backlog} < 100: Converting Shed -> Min Fidelity 1%")
+                else:
+                     print(f"[Q3 Smart] Backlog {current_backlog} >= 100: Respecting Shed to save concurrency.")
         elif qos == "Q2":
             should_shed = raw_should_shed
             
