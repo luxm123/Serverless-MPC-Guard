@@ -22,7 +22,7 @@ def get_lambda_client():
         },
         connect_timeout=15,
         read_timeout=60,
-        max_pool_connections=100  # Support 100 concurrent threads
+        max_pool_connections=300  # Support 300 concurrent threads (Fixes bottleneck for 200 threads)
     )
     _GLOBAL_LAMBDA_CLIENT = boto3.client('lambda', 
                        region_name=os.environ.get('AWS_REGION','us-east-1'),
