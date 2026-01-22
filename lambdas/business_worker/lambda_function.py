@@ -131,15 +131,17 @@ def lambda_handler(event, context):
                 if 'metrics' in event and isinstance(event.get('metrics'), dict):
                      current_backlog = float(event['metrics'].get('queue_backlog', 0))
                 
-                # AGGRESSIVE TUNING: Raised to 300 (60% Capacity).
-                if current_backlog < 300.0:
+                # AGGRESSIVE TUNING: Raised to 450 (90% Capacity) - Match Q3.
+                if current_backlog < 450.0:
                      should_shed = False
                      # CRITICAL: Tell Client we revived it!
                      mpc_debug['shouldShed'] = False
                      
                      fidelity = 0.5
                      event['fidelity_factor'] = fidelity
-                     print(f"[Q2 Smart] Backlog {current_backlog} < 300: Resurrecting Shed -> Fidelity 50%")
+                     print(f"[Q2 Smart] Backlog {current_backlog} < 450: Resurrecting Shed -> Fidelity 50%")
+                else:
+                     print(f"[Q2 Smart] Backlog {current_backlog} >= 450: Shedding Confirmed.")
 
             # CRITICAL FIX: Q2 Partial Fidelity (Aggressive)
             # If Q2 is admitted (or resurrected), apply fidelity scaling.
