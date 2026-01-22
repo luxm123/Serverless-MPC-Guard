@@ -6,8 +6,9 @@ import time
 
 # CRITICAL FIX: Do not hardcode region. Use environment or config.
 # If running on EC2 eu-north-1, this must be eu-north-1.
+# Logic aligned with serverless_utils.py: Check AWS_REGION first.
 session = boto3.Session()
-REGION = session.region_name or 'us-east-1'
+REGION = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', session.region_name or 'us-east-1'))
 print(f"Deploying to Region: {REGION}")
 
 MPC_FUNC_NAME = 'MPC_Controller'
@@ -38,6 +39,8 @@ def zip_function(folder, extra_dirs=[]):
                         # os.path.relpath(full, base) will give src/...
                         arc = os.path.relpath(full, base)
                         z.write(full, arc)
+                        if 'middleware.py' in file:
+                             print(f"  [DEBUG] Packaging: {arc}")
     buf.seek(0)
     return buf.read()
 
