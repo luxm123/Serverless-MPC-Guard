@@ -121,15 +121,35 @@ def lambda_handler(event, context):
         elif qos == "Q2":
             should_shed = raw_should_shed
             
+            # CRITICAL FIX: Smart Q2 Resurrection
+            # If Controller says SHED, but backlog is not critical (< 100),
+            # allow Q2 to run at reduced fidelity (0.5) instead of dying.
+            if should_shed:
+                current_backlog = 0.0
+                if 'metrics' in event and isinstance(event.get('metrics'), dict):
+                     current_backlog = float(event['metrics'].get('queue_backlog', 0))
+                
+                if current_backlog < 100.0:
+                     should_shed = False
+                     # CRITICAL: Tell Client we revived it!
+                     mpc_debug['shouldShed'] = False
+                     
+                     fidelity = 0.5
+                     event['fidelity_factor'] = fidelity
+                     print(f"[Q2 Smart] Backlog {current_backlog} < 100: Resurrecting Shed -> Fidelity 50%")
+
             # CRITICAL FIX: Q2 Partial Fidelity (Aggressive)
-            # If Q2 is admitted during congestion, apply SIGNIFICANT fidelity scaling (max 70% degradation)
-            # to ensure it clears the queue fast enough to meet SLO.
-            # 0.5 was not enough; dropping to 0.3 floor.
+            # If Q2 is admitted (or resurrected), apply fidelity scaling.
             alloc = float(event.get('resource_alloc', 1.0))
-            if alloc < 1.0 and not should_shed:
+            if not should_shed:
+                 # Base fidelity on alloc, but floor at 0.3
                  fidelity = max(0.3, min(1.0, alloc))
+                 # If we resurrected it, it might already be 0.5. Take the min to be safe.
+                 if event.get('fidelity_factor', 1.0) < 1.0:
+                      fidelity = min(fidelity, event.get('fidelity_factor'))
+                 
                  event['fidelity_factor'] = fidelity
-                 print(f"[Q2 Fidelity] Aggressive Scaling: {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
+                 print(f"[Q2 Fidelity] Scaling: {fidelity*100:.1f}% (Alloc: {alloc:.2f})")
         elif qos == "Q1":
             # Q1 Mission Critical: Prefer Degradation (Fidelity Scaling) over Shedding
             # BUT allow shedding if system is overwhelmed even at min fidelity.
