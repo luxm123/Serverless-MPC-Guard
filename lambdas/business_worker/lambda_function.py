@@ -115,24 +115,6 @@ def lambda_handler(event, context):
                      print(f"[Q3 Smart] Backlog {current_backlog} < 100: Converting Shed -> Min Fidelity 1%")
                 else:
                      print(f"[Q3 Smart] Backlog {current_backlog} >= 100: Respecting Shed to save concurrency.")
-            
-            # Smart Q3 Strategy: Dynamic Survival
-            # Ideally, running at 1% fidelity (~2ms) is cheaper than shedding (50ms penalty).
-            # However, we must not overwhelm the concurrency limit.
-            if should_shed:
-                current_backlog = 0.0
-                if 'metrics' in event and isinstance(event.get('metrics'), dict):
-                     current_backlog = float(event['metrics'].get('queue_backlog', 0))
-                
-                # If backlog is manageable (< 100, i.e., 20% capacity), SQUEEZE it in.
-                # If backlog is critical (>= 100), DROP it to save slots.
-                if current_backlog < 100.0:
-                     should_shed = False
-                     fidelity = 0.01
-                     event['fidelity_factor'] = fidelity
-                     print(f"[Q3 Smart] Backlog {current_backlog} < 100: Converting Shed -> Min Fidelity 1%")
-                else:
-                     print(f"[Q3 Smart] Backlog {current_backlog} >= 100: Respecting Shed to save concurrency.")
         elif qos == "Q2":
             should_shed = raw_should_shed
             
@@ -170,7 +152,9 @@ def lambda_handler(event, context):
             # Circuit Breaker: If Backlog > 5 (10% capacity) OR Predicted Delay > 300ms
             # REMOVED: Dynamic MPC now handles this via grad_congestion.
             
-            if raw_should_shed:
+            # FIX: Check 'should_shed' (which may have been overridden by Smart Q3 logic)
+            # instead of 'raw_should_shed' (which is the original Controller decision).
+            if should_shed:
                 # If Controller says SHED, we check if we can just degrade.
                 # Circuit Breaker: 
                 # 1. If alloc is extremely low (< 0.05), system is completely broken.
