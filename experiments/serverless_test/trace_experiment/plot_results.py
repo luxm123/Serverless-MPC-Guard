@@ -133,11 +133,12 @@ def plot_goodput_stacked(df, output_dir):
     # 绘制堆叠图
     stats.plot(kind='bar', stacked=True, figsize=(10, 6), colormap='viridis')
     
-    plt.title('Effective Throughput (Goodput) by Strategy', fontsize=14)
-    plt.xlabel('Strategy', fontsize=12)
-    plt.ylabel('Total Successful Requests', fontsize=12)
+    plt.title('Effective Throughput (Goodput) by Strategy', fontsize=16, fontweight='bold')
+    plt.xlabel('Strategy', fontsize=14)
+    plt.ylabel('Total Successful Requests', fontsize=14)
     plt.xticks(rotation=0)
-    plt.legend(title='QoS Class')
+    plt.legend(title='QoS Class', fontsize=12)
+    plt.tick_params(axis='both', which='major', labelsize=12)
     
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, '3_goodput_stacked.png'), dpi=300)
@@ -161,10 +162,11 @@ def plot_fidelity_comparison(df, output_dir):
     plt.figure(figsize=(10, 6))
     sns.barplot(x='qos_class', y='fidelity', hue='Strategy', data=stats, palette='muted')
     
-    plt.title('Average Fidelity Comparison (Trade-off Analysis)', fontsize=14)
-    plt.xlabel('QoS Class', fontsize=12)
-    plt.ylabel('Average Fidelity (%)', fontsize=12)
+    plt.title('Average Fidelity Comparison (Trade-off Analysis)', fontsize=16, fontweight='bold')
+    plt.xlabel('QoS Class', fontsize=14)
+    plt.ylabel('Average Fidelity (%)', fontsize=14)
     plt.ylim(0, 110)
+    plt.tick_params(axis='both', which='major', labelsize=12)
     
     for p in plt.gca().patches:
         if p.get_height() > 0:
