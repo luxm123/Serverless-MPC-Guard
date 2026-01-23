@@ -21,7 +21,7 @@ def get_lambda_client():
             'mode': 'adaptive'
         },
         connect_timeout=15,
-        read_timeout=60,
+        read_timeout=2, # Simulate impatient user (2s timeout). Baseline (>1.5s) will fail.
         max_pool_connections=500  # Support 500 concurrent threads (Fixes bottleneck for high concurrency)
     )
     _GLOBAL_LAMBDA_CLIENT = boto3.client('lambda', 
