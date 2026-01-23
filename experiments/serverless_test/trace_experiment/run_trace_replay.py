@@ -467,18 +467,18 @@ if __name__ == "__main__":
     replayer.load_trace()
 
     # 2. 运行基线（Baseline）实验
-    replayer.run_experiment(
-        strategy='baseline',
-        wcp_mode='baseline',
-        output_filename='results_baseline.csv'
-    )
+    # replayer.run_experiment(
+    #     strategy='baseline',
+    #     wcp_mode='baseline',
+    #     output_filename='results_baseline.csv'
+    # )
 
     # 3. 运行静态优先级实验
-    replayer.run_experiment(
-        strategy='static',
-        wcp_mode='baseline',
-        output_filename='results_static.csv'
-    )
+    # replayer.run_experiment(
+    #     strategy='static',
+    #     wcp_mode='baseline',
+    #     output_filename='results_static.csv'
+    # )
 
     # 4. 运行MPC实验
     replayer.run_experiment(

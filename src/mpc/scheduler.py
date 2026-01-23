@@ -115,6 +115,9 @@ class Scheduler:
         # CRITICAL FIX: Ensure resource_alloc does not exceed 1.0 or drop below 0.0
         resource_alloc = max(0.01, min(1.0, resource_alloc))
         
+        # Store admission probability (raw u) before clamping for fidelity
+        admission_prob = resource_alloc
+
         # Priority-based Shedding Logic
         prio_high_thr = float(system_state.get('sched_prio_high_thr', 0.8))
         prio_med_thr = float(system_state.get('sched_prio_med_thr', 0.4))
@@ -135,14 +138,19 @@ class Scheduler:
         # For Q2/Q3, u represents Admission Probability.
         # For Q1, u represents Fidelity (handled in Worker).
         if qos_class != 'Q1':
-            # Probabilistic Shedding based on u
+            # Probabilistic Shedding based on u (Admission Probability)
             # If u=0.01, we shed 99% of requests.
-            if random.random() > resource_alloc:
+            if random.random() > admission_prob:
                 should_shed = True
                 if not degrade_plan:
                     degrade_plan = "store_to_sqs" if qos_class == 'Q3' else "store_to_sqs_recovery"
 
         if current_backlog is not None and current_backlog > 5.0:
-             print(f"[MPC-SCHED-v3] Decision: Backlog={current_backlog:.1f}, u={resource_alloc:.4f}, Shed={should_shed}, QoS={qos_class}")
+             print(f"[MPC-SCHED-v3] Decision: Backlog={current_backlog:.1f}, u={admission_prob:.4f}, Shed={should_shed}, QoS={qos_class}")
+        
+        # Enforce Minimum Fidelity Floor (User Requirement: > 85%)
+        # Decouple Fidelity from Admission. Survivors run at high fidelity.
+        min_fidelity = 0.85
+        resource_alloc = max(min_fidelity, resource_alloc)
                 
         return should_shed, degrade_plan, resource_alloc
