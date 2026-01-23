@@ -120,38 +120,64 @@ def plot_q1_cdf(df, output_dir):
 
 def plot_goodput_stacked(df, output_dir):
     """
-    图3: 有效吞吐量堆叠图 (Stacked Bar Chart)
+    图3: 请求结果分布 (Request Outcome Distribution)
+    替代原来的单纯吞吐量图，展示 成功/违约/失败 的构成，
+    直观解释为什么"违约率高导致有效吞吐量降低"。
     """
-    df['is_success'] = (~df['slo_violation']) & (~df['shed_by_worker'])
-    stats = df[df['is_success']].groupby(['Strategy', 'qos_class']).size().unstack(fill_value=0)
+    df = df.copy()
     
-    qos_order = ['Q1', 'Q2', 'Q3']
-    stats = stats.reindex(columns=qos_order, fill_value=0)
+    # 定义请求状态
+    # 1. 失败或被丢弃
+    condition_fail = (~df['success']) | (df.get('shed_by_worker', False))
+    # 2. 成功但违约 (Late)
+    condition_violation = (df['success']) & (df['slo_violation']) & (~df.get('shed_by_worker', False))
+    # 3. 成功且达标 (Good)
+    condition_good = (df['success']) & (~df['slo_violation']) & (~df.get('shed_by_worker', False))
+    
+    df['Outcome'] = 'Unknown'
+    df.loc[condition_fail, 'Outcome'] = 'Failed/Shed'
+    df.loc[condition_violation, 'Outcome'] = 'SLO Violation (Late)'
+    df.loc[condition_good, 'Outcome'] = 'Success (Met SLO)'
+    
+    # 统计每种策略的各类请求数量
+    stats = df.groupby(['Strategy', 'Outcome']).size().unstack(fill_value=0)
+    
+    # 确保列顺序：Success 在最下，Violation 在中间，Failed 在最上
+    columns_order = ['Success (Met SLO)', 'SLO Violation (Late)', 'Failed/Shed']
+    # 过滤掉数据中不存在的列
+    columns_order = [c for c in columns_order if c in stats.columns]
+    stats = stats.reindex(columns=columns_order, fill_value=0)
     
     if stats.empty:
-        print("[警告] 没有有效请求，跳过吞吐量图")
+        print("[警告] 数据为空，跳过结果分布图")
         return
 
-    # 使用默认配色
-    qos_colors = ['#4a1486', '#008080', '#fdb462'] 
+    # 配色：绿色(Good)，橙色(Late)，红色(Fail)
+    outcome_colors = {
+        'Success (Met SLO)': '#2ca02c',       # Green
+        'SLO Violation (Late)': '#ff7f0e',    # Orange
+        'Failed/Shed': '#d62728'              # Red
+    }
+    colors = [outcome_colors[c] for c in columns_order]
     
-    ax = stats.plot(kind='bar', stacked=True, figsize=(10, 6), color=qos_colors, edgecolor='black', width=0.7)
+    ax = stats.plot(kind='bar', stacked=True, figsize=(10, 6), color=colors, edgecolor='black', width=0.6)
     
-    plt.title('Effective Throughput (Goodput) by Strategy', fontsize=16, fontweight='bold')
+    plt.title('Request Outcome Distribution (Why Throughput Differs)', fontsize=16, fontweight='bold')
     plt.xlabel('Strategy', fontsize=14)
-    plt.ylabel('Total Successful Requests', fontsize=14)
+    plt.ylabel('Number of Requests', fontsize=14)
     plt.xticks(rotation=0)
-    plt.legend(title='QoS Class', fontsize=12)
+    plt.legend(title='Outcome', fontsize=12, loc='upper right') # 图例放右上角
     plt.grid(True, axis='y', alpha=0.3, linestyle='--')
 
+    # 标注数值 (只标注非零且有一定高度的)
     for c in ax.containers:
-        labels = [f'{v.get_height():.0f}' if v.get_height() > 20 else '' for v in c]
+        labels = [f'{int(v.get_height())}' if v.get_height() > 100 else '' for v in c]
         ax.bar_label(c, labels=labels, label_type='center', color='white', fontsize=10, fontweight='bold')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, '3_goodput_stacked.png'), dpi=300)
+    plt.savefig(os.path.join(output_dir, '3_response_outcome_distribution.png'), dpi=300)
     plt.close()
-    print("[图表] 有效吞吐量堆叠图已生成")
+    print("[图表] 请求结果分布图已生成 (替代吞吐量图)")
 
 def plot_fidelity_comparison(df, output_dir):
     """
