@@ -7,41 +7,14 @@ import argparse
 import numpy as np
 
 # 设置绘图风格
-# 使用 seaborn-ticks 风格，更接近论文发表质量
-sns.set_theme(style="ticks", font_scale=1.2)
+sns.set(style="whitegrid")
+# 尝试设置中文字体，如果失败则回退到默认
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
-
-# === 全局配色方案 (Paper/Pastel Style) ===
-# 参考学术论文常用的配色：柔和、区分度高、黑白打印友好
-STRATEGY_COLORS = {
-    'Baseline': '#fb9a99',      # Pastel Red
-    'Static': '#fdbf6f',        # Pastel Orange
-    'MPC': '#b2df8a',           # Pastel Green
-    'No-Fidelity': '#cab2d6',   # Pastel Purple
-    'No-Shedding': '#a6cee3'    # Pastel Blue
-}
-
-def get_strategy_color(strategy_name):
-    """获取策略对应的颜色，如果未定义则返回默认色"""
-    return STRATEGY_COLORS.get(strategy_name, '#d9d9d9')  # Grey default
-
-def save_plot(filename, output_dir):
-    """统一保存图表，确保去白边和高 DPI"""
-    path = os.path.join(output_dir, filename)
-    plt.tight_layout()
-    plt.savefig(path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"[图表] 已保存: {filename}")
 
 def ensure_dir(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
-
-def get_palette_for_df(df):
-    """根据 DataFrame 中的 Strategy 列生成调色板"""
-    strategies = sorted(df['Strategy'].unique())
-    return [get_strategy_color(s) for s in strategies]
 
 def load_and_merge_data(files, labels):
     """
@@ -64,7 +37,6 @@ def load_and_merge_data(files, labels):
 def plot_slo_comparison(df, output_dir):
     """
     图1: SLA 违约率对比 (Grouped Bar Chart)
-    改进：动态调整 Y 轴高度，避免过多留白；增加纹理
     """
     if 'success' not in df.columns:
         df['success'] = True
@@ -75,26 +47,19 @@ def plot_slo_comparison(df, output_dir):
         })
     ).reset_index()
 
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(10, 6))
     
-    # 动态 Y 轴
+    # 获取最大违约率以动态设置 Y 轴
     max_val = stats['SLO Violation Rate (%)'].max()
     y_limit = max(5.0, max_val * 1.2)
     
-    palette = get_palette_for_df(stats)
-    ax = sns.barplot(x='qos_class', y='SLO Violation Rate (%)', hue='Strategy', data=stats, palette=palette, edgecolor='black', alpha=0.9)
+    ax = sns.barplot(x='qos_class', y='SLO Violation Rate (%)', hue='Strategy', data=stats, palette='muted', edgecolor='black', alpha=0.9)
     
-    # 添加纹理 (黑白打印友好)
-    hatches = ['/', '\\', 'x', '.', 'o']
-    for i, bar in enumerate(ax.patches):
-        bar.set_hatch(hatches[i % len(hatches)])
-
-    plt.title('SLO Violation Rate Comparison (Lower is Better)', fontsize=18, fontweight='bold', pad=20)
-    plt.xlabel('QoS Class', fontsize=16)
-    plt.ylabel('SLO Violation Rate (%)', fontsize=16)
+    plt.title('SLO Violation Rate Comparison (Lower is Better)', fontsize=16, fontweight='bold')
+    plt.xlabel('QoS Class', fontsize=14)
+    plt.ylabel('SLO Violation Rate (%)', fontsize=14)
     plt.ylim(0, y_limit) 
-    plt.grid(axis='y', linestyle='--', alpha=0.5)
-    plt.legend(title='Strategy', fontsize=14, title_fontsize=14, loc='upper right', frameon=True, shadow=True)
+    plt.tick_params(axis='both', which='major', labelsize=12)
     
     # 标注数值
     for p in ax.patches:
@@ -104,19 +69,22 @@ def plot_slo_comparison(df, output_dir):
                         (p.get_x() + p.get_width() / 2., height), 
                         ha = 'center', va = 'bottom', 
                         xytext = (0, 3), 
-                        textcoords = 'offset points', fontsize=12, fontweight='bold')
+                        textcoords = 'offset points', fontsize=10, fontweight='bold')
 
-    save_plot('1_slo_comparison.png', output_dir)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, '1_slo_comparison.png'), dpi=300)
+    plt.close()
+    print("[图表] SLO 违约率对比图已生成")
 
 def plot_q1_cdf(df, output_dir):
     """
     图2: Q1 尾延迟分布 (CDF Plot)
-    改进：X轴动态范围；线条加粗；SLO线淡化
     """
-    plt.figure(figsize=(12, 7))
+    plt.figure(figsize=(10, 6))
     
     q1_df = df[df['qos_class'] == 'Q1'].copy()
     strategies = sorted(q1_df['Strategy'].unique())
+    colors = sns.color_palette('muted', n_colors=len(strategies))
     line_styles = ['-', '--', '-.', ':']
     
     max_p99 = 0
@@ -126,34 +94,33 @@ def plot_q1_cdf(df, output_dir):
         if subset.empty: continue
             
         y_vals = np.arange(len(subset)) / float(len(subset))
-        color = get_strategy_color(strategy)
         style = line_styles[i % len(line_styles)]
         
-        plt.plot(subset, y_vals, label=f'{strategy}', linewidth=3, color=color, linestyle=style, alpha=0.9)
+        plt.plot(subset, y_vals, label=f'{strategy}', linewidth=2, color=colors[i], linestyle=style)
         
         p99 = subset.quantile(0.99)
         max_p99 = max(max_p99, p99)
-        plt.axvline(x=p99, color=color, linestyle=':', alpha=0.4, linewidth=1.5)
+        plt.axvline(x=p99, color=colors[i], linestyle=':', alpha=0.5)
 
-    # SLO 线 (灰色虚线)
-    plt.axvline(x=1000, color='gray', linestyle='--', linewidth=2.0, label='SLO (1000ms)')
+    plt.axvline(x=1000, color='gray', linestyle='--', linewidth=2, label='SLO (1000ms)')
     
-    plt.title('Q1 Latency CDF (Tail Latency Analysis)', fontsize=18, fontweight='bold', pad=20)
-    plt.xlabel('End-to-End Latency (ms)', fontsize=16)
-    plt.ylabel('CDF (Probability)', fontsize=16)
-    plt.legend(loc='lower right', fontsize=14, frameon=True, shadow=True)
-    plt.grid(True, alpha=0.4, linestyle='--')
+    plt.title('Q1 Latency CDF (Tail Latency Analysis)', fontsize=16, fontweight='bold')
+    plt.xlabel('End-to-End Latency (ms)', fontsize=14)
+    plt.ylabel('CDF (Probability)', fontsize=14)
+    plt.legend(loc='lower right', fontsize=12)
+    plt.grid(True, alpha=0.3)
     
-    # 动态 X 轴
-    x_limit = max(1200, max_p99 * 1.2)
+    x_limit = max(1500, max_p99 * 1.3)
     plt.xlim(0, x_limit) 
     
-    save_plot('2_q1_latency_cdf.png', output_dir)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, '2_q1_latency_cdf.png'), dpi=300)
+    plt.close()
+    print("[图表] Q1 CDF 分布图已生成")
 
 def plot_goodput_stacked(df, output_dir):
     """
     图3: 有效吞吐量堆叠图 (Stacked Bar Chart)
-    改进：高对比度配色；网格线
     """
     df['is_success'] = (~df['slo_violation']) & (~df['shed_by_worker'])
     stats = df[df['is_success']].groupby(['Strategy', 'qos_class']).size().unstack(fill_value=0)
@@ -165,23 +132,26 @@ def plot_goodput_stacked(df, output_dir):
         print("[警告] 没有有效请求，跳过吞吐量图")
         return
 
-    # Q1=Purple, Q2=Teal, Q3=Yellow
+    # 使用默认配色
     qos_colors = ['#4a1486', '#008080', '#fdb462'] 
     
-    ax = stats.plot(kind='bar', stacked=True, figsize=(12, 7), color=qos_colors, edgecolor='black', width=0.6)
+    ax = stats.plot(kind='bar', stacked=True, figsize=(10, 6), color=qos_colors, edgecolor='black', width=0.7)
     
-    plt.title('Effective Throughput (Goodput) by Strategy', fontsize=18, fontweight='bold', pad=20)
-    plt.xlabel('Strategy', fontsize=16)
-    plt.ylabel('Total Successful Requests', fontsize=16)
-    plt.xticks(rotation=0, fontsize=14)
-    plt.legend(title='QoS Class', fontsize=14, title_fontsize=14, loc='upper left', frameon=True, shadow=True)
+    plt.title('Effective Throughput (Goodput) by Strategy', fontsize=16, fontweight='bold')
+    plt.xlabel('Strategy', fontsize=14)
+    plt.ylabel('Total Successful Requests', fontsize=14)
+    plt.xticks(rotation=0)
+    plt.legend(title='QoS Class', fontsize=12)
     plt.grid(True, axis='y', alpha=0.3, linestyle='--')
 
     for c in ax.containers:
-        labels = [f'{v.get_height():.0f}' if v.get_height() > 50 else '' for v in c]
-        ax.bar_label(c, labels=labels, label_type='center', color='white', fontsize=11, fontweight='bold')
+        labels = [f'{v.get_height():.0f}' if v.get_height() > 20 else '' for v in c]
+        ax.bar_label(c, labels=labels, label_type='center', color='white', fontsize=10, fontweight='bold')
 
-    save_plot('3_goodput_stacked.png', output_dir)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, '3_goodput_stacked.png'), dpi=300)
+    plt.close()
+    print("[图表] 有效吞吐量堆叠图已生成")
 
 def plot_fidelity_comparison(df, output_dir):
     """
@@ -195,62 +165,46 @@ def plot_fidelity_comparison(df, output_dir):
     stats = df.groupby(['Strategy', 'qos_class'])['fidelity'].mean().reset_index()
     stats['fidelity'] = stats['fidelity'] * 100.0
 
-    plt.figure(figsize=(12, 6))
-    palette = get_palette_for_df(stats)
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x='qos_class', y='fidelity', hue='Strategy', data=stats, palette='muted')
     
-    ax = sns.barplot(x='qos_class', y='fidelity', hue='Strategy', data=stats, palette=palette, edgecolor='black', alpha=0.9)
-    
-    # 添加纹理
-    hatches = ['/', '\\', 'x', '.', 'o']
-    for i, bar in enumerate(ax.patches):
-        bar.set_hatch(hatches[i % len(hatches)])
-    
-    plt.title('Average Fidelity Comparison (Trade-off Analysis)', fontsize=18, fontweight='bold', pad=20)
-    plt.xlabel('QoS Class', fontsize=16)
-    plt.ylabel('Average Fidelity (%)', fontsize=16)
+    plt.title('Average Fidelity Comparison (Trade-off Analysis)', fontsize=16, fontweight='bold')
+    plt.xlabel('QoS Class', fontsize=14)
+    plt.ylabel('Average Fidelity (%)', fontsize=14)
     plt.ylim(0, 110)
-    plt.grid(axis='y', linestyle='--', alpha=0.5)
-    plt.legend(title='Strategy', fontsize=14, title_fontsize=14, loc='lower right', frameon=True, shadow=True)
     
-    for p in ax.patches:
+    for p in plt.gca().patches:
         if p.get_height() > 0:
-            ax.annotate(f'{p.get_height():.1f}%', 
-                        (p.get_x() + p.get_width() / 2., p.get_height()), 
-                        ha = 'center', va = 'bottom', 
-                        xytext = (0, 3), 
-                        textcoords = 'offset points', fontsize=11, fontweight='bold')
+            plt.gca().annotate(f'{p.get_height():.1f}%', 
+                               (p.get_x() + p.get_width() / 2., p.get_height()), 
+                               ha = 'center', va = 'center', 
+                               xytext = (0, 5), 
+                               textcoords = 'offset points', fontsize=9)
 
-    save_plot('4_fidelity_comparison.png', output_dir)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, '4_fidelity_comparison.png'), dpi=300)
+    plt.close()
+    print("[图表] 保真度对比图已生成")
 
 def plot_p99_latency_comparison(df, output_dir):
     """
     图5: P99 尾延迟对比 (Grouped Bar Chart)
-    改进：SLO 线改为灰色虚线
     """
     stats = df.groupby(['Strategy', 'qos_class'])['e2e_latency'].quantile(0.99).reset_index()
     
-    plt.figure(figsize=(12, 6))
-    palette = get_palette_for_df(stats)
+    plt.figure(figsize=(10, 6))
+    ax = sns.barplot(x='qos_class', y='e2e_latency', hue='Strategy', data=stats, palette='muted', edgecolor='black')
     
-    ax = sns.barplot(x='qos_class', y='e2e_latency', hue='Strategy', data=stats, palette=palette, edgecolor='black')
-    
-    # 添加纹理
-    hatches = ['/', '\\', 'x', '.', 'o']
-    for i, bar in enumerate(ax.patches):
-        bar.set_hatch(hatches[i % len(hatches)])
-    
-    plt.title('P99 Tail Latency Comparison (Lower is Better)', fontsize=18, fontweight='bold', pad=20)
-    plt.xlabel('QoS Class', fontsize=16)
-    plt.ylabel('P99 Latency (ms) [Log Scale]', fontsize=16)
+    plt.title('P99 Tail Latency Comparison (Lower is Better)', fontsize=16, fontweight='bold')
+    plt.xlabel('QoS Class', fontsize=14)
+    plt.ylabel('P99 Latency (ms) [Log Scale]', fontsize=14)
     
     plt.yscale('log')
     
-    # SLO 线 (灰色)
     plt.axhline(y=1000, color='gray', linestyle='--', linewidth=2, alpha=0.7)
-    plt.text(x=-0.4, y=1100, s='SLO Target (1000ms)', color='gray', fontsize=12, fontweight='bold')
+    plt.text(x=-0.4, y=1050, s='SLO Target (1000ms)', color='gray', fontsize=10, fontweight='bold')
 
-    plt.legend(fontsize=14, loc='upper left', frameon=True, shadow=True)
-    plt.grid(True, which="both", ls="--", alpha=0.3)
+    plt.legend(fontsize=12)
 
     for p in ax.patches:
         height = p.get_height()
@@ -259,59 +213,64 @@ def plot_p99_latency_comparison(df, output_dir):
                         (p.get_x() + p.get_width() / 2., height), 
                         ha = 'center', va = 'bottom', 
                         xytext = (0, 3), 
-                        textcoords = 'offset points', fontsize=11, fontweight='bold')
+                        textcoords = 'offset points', fontsize=10, fontweight='bold')
             
-    save_plot('5_p99_latency_comparison.png', output_dir)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, '5_p99_latency_comparison.png'), dpi=300)
+    plt.close()
+    print("[图表] P99 尾延迟对比图已生成")
 
 def plot_time_series_adaptation(df, output_dir):
     """
-    图6: 动态自适应过程 (Reverted to Original Style)
-    使用 Seaborn 默认配色，恢复用户喜欢的样式
+    图6: 动态自适应过程
     """
     if 'timestamp' not in df.columns:
         print("[警告] 数据缺少 'timestamp' 列，跳过时序图绘制")
         return
 
+    # Binning data by 0.5s intervals
     df = df.copy()
+    df['time_bin'] = (df['timestamp'] // 0.5) * 0.5
     
-    # 统一字体大小
-    sns.set_context("paper", font_scale=1.4)
+    strategies = df['Strategy'].unique()
     
-    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
     
-    # 1. Request Rate
-    sns.histplot(data=df, x='timestamp', hue='Strategy', bins=50, element="step", ax=axes[0], alpha=0.4)
-    axes[0].set_ylabel('Request Rate (req/s)')
-    axes[0].set_title('Load / Request Rate')
-    axes[0].grid(True, alpha=0.3)
+    # Subplot 1: Request Rate (Load)
+    sns.histplot(data=df, x='timestamp', hue='Strategy', bins=50, element="step", ax=axes[0], alpha=0.3)
+    axes[0].set_ylabel('Request Rate (req/0.5s)', fontsize=12)
+    axes[0].set_title('Load / Request Rate', fontsize=14, fontweight='bold')
+    axes[0].legend(loc='upper right')
 
-    # 2. Latency
-    # 计算滚动平均，以便绘图平滑
-    df_sorted = df.sort_values(['Strategy', 'timestamp'])
-    df_sorted['lat_smooth'] = df_sorted.groupby('Strategy')['e2e_latency'].transform(lambda x: x.rolling(window=50, min_periods=1).mean())
+    # Subplot 2: Latency (Rolling Mean)
+    for strategy in strategies:
+        subset = df[df['Strategy'] == strategy].sort_values('timestamp')
+        # Rolling average of 50 requests
+        subset['lat_smooth'] = subset['e2e_latency'].rolling(window=50, min_periods=1).mean()
+        axes[1].plot(subset['timestamp'], subset['lat_smooth'], label=strategy, linewidth=2)
     
-    sns.lineplot(data=df_sorted, x='timestamp', y='lat_smooth', hue='Strategy', ax=axes[1], linewidth=2)
-    axes[1].axhline(y=1000, color='red', linestyle='--', label='SLO (1000ms)')
-    axes[1].set_ylabel('E2E Latency (ms)')
-    axes[1].set_title('Latency Adaptation (Smoothed)')
-    axes[1].set_ylim(0, 3000)
-    axes[1].grid(True, alpha=0.3)
+    axes[1].axhline(y=1000, color='r', linestyle='--', label='SLO (1000ms)')
+    axes[1].set_ylabel('E2E Latency (ms)', fontsize=12)
+    axes[1].set_title('Latency Adaptation (Rolling Mean)', fontsize=14, fontweight='bold')
+    axes[1].set_ylim(0, 3000) # Cap at 3s for readability
+    axes[1].legend(loc='upper right')
 
-    # 3. Fidelity
-    if 'fidelity' in df.columns:
-        df_sorted['fid_smooth'] = df_sorted.groupby('Strategy')['fidelity'].transform(lambda x: x.rolling(window=50, min_periods=1).mean())
-        sns.lineplot(data=df_sorted, x='timestamp', y='fid_smooth', hue='Strategy', ax=axes[2], linewidth=2)
-        axes[2].set_ylabel('Fidelity (0-1)')
-        axes[2].set_title('Fidelity Scaling')
-        axes[2].set_ylim(0, 1.1)
-        axes[2].grid(True, alpha=0.3)
-    
-    axes[2].set_xlabel('Time (s)')
-    
+    # Subplot 3: Fidelity (Rolling Mean)
+    for strategy in strategies:
+        subset = df[df['Strategy'] == strategy].sort_values('timestamp')
+        subset['fid_smooth'] = subset['fidelity'].rolling(window=50, min_periods=1).mean()
+        axes[2].plot(subset['timestamp'], subset['fid_smooth'], label=strategy, linewidth=2)
+
+    axes[2].set_ylabel('Fidelity (0-1)', fontsize=12)
+    axes[2].set_title('Fidelity Scaling', fontsize=14, fontweight='bold')
+    axes[2].set_xlabel('Time (s)', fontsize=14)
+    axes[2].set_ylim(0, 1.1)
+    axes[2].legend(loc='upper right')
+
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, '6_time_series_adaptation.png'), dpi=300)
     plt.close()
-    print("[图表] 动态自适应时序图已生成 (Reverted Style)")
+    print("[图表] 动态自适应时序图已生成")
 
 
 def print_summary_table(df):
