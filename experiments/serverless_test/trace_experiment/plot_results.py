@@ -48,10 +48,11 @@ def plot_slo_comparison(df, output_dir):
     plt.figure(figsize=(10, 6))
     sns.barplot(x='qos_class', y='SLO Violation Rate (%)', hue='Strategy', data=stats, palette='muted')
     
-    plt.title('SLO Violation Rate Comparison', fontsize=14)
-    plt.xlabel('QoS Class', fontsize=12)
-    plt.ylabel('SLO Violation Rate (%)', fontsize=12)
-    plt.ylim(0, 105)
+    plt.title('SLO Violation Rate Comparison', fontsize=16, fontweight='bold')
+    plt.xlabel('QoS Class', fontsize=14)
+    plt.ylabel('SLO Violation Rate (%)', fontsize=14)
+    plt.ylim(0, 110)
+    plt.tick_params(axis='both', which='major', labelsize=12)
     
     # 标注数值
     for p in plt.gca().patches:
@@ -95,13 +96,16 @@ def plot_q1_cdf(df, output_dir):
 
     plt.axvline(x=1000, color='red', linestyle='--', label='SLO (1000ms)')
     
-    plt.title('Q1 Latency CDF (Tail Latency Analysis)', fontsize=14)
-    plt.xlabel('End-to-End Latency (ms)', fontsize=12)
-    plt.ylabel('CDF (Probability)', fontsize=12)
-    plt.legend(loc='lower right')
+    plt.title('Q1 Latency CDF (Tail Latency Analysis)', fontsize=16, fontweight='bold')
+    plt.xlabel('End-to-End Latency (ms)', fontsize=14)
+    plt.ylabel('CDF (Probability)', fontsize=14)
+    plt.legend(loc='lower right', fontsize=12)
     plt.grid(True, alpha=0.3)
-    # 限制 X 轴范围以聚焦有效区域 (可选)
-    # plt.xlim(0, 3000) 
+    plt.tick_params(axis='both', which='major', labelsize=12)
+    
+    # 限制 X 轴范围以聚焦有效区域 (0-3000ms)
+    # 超过 3000ms 的长尾对分析 SLO (1000ms) 意义不大，且会压缩有效部分
+    plt.xlim(0, 3000) 
     
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, '2_q1_latency_cdf.png'), dpi=300)
@@ -184,13 +188,17 @@ def plot_p99_latency_comparison(df, output_dir):
     plt.figure(figsize=(10, 6))
     sns.barplot(x='qos_class', y='e2e_latency', hue='Strategy', data=stats, palette='muted')
     
-    plt.title('P99 Tail Latency Comparison', fontsize=14)
-    plt.xlabel('QoS Class', fontsize=12)
-    plt.ylabel('P99 Latency (ms)', fontsize=12)
+    plt.title('P99 Tail Latency Comparison', fontsize=16, fontweight='bold')
+    plt.xlabel('QoS Class', fontsize=14)
+    plt.ylabel('P99 Latency (ms) [Log Scale]', fontsize=14)
+    
+    # 使用对数坐标，解决 Baseline (5000ms) 和 MPC (200ms) 比例悬殊问题
+    plt.yscale('log')
     
     # 增加 SLO 线
-    plt.axhline(y=1000, color='red', linestyle='--', label='SLO (1000ms)')
-    plt.legend()
+    plt.axhline(y=1000, color='red', linestyle='--', label='SLO (1000ms)', linewidth=2)
+    plt.legend(fontsize=12)
+    plt.tick_params(axis='both', which='major', labelsize=12)
 
     for p in plt.gca().patches:
         if p.get_height() > 0:
