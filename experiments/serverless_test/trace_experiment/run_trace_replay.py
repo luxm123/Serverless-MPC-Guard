@@ -416,35 +416,78 @@ class TraceReplayer:
             print("[警告] 没有可供分析的结果。")
             return
 
+        total_reqs = len(df)
         df_success = df[df['success'] == True]
-        total_reqs, success_reqs = len(df), len(df_success)
-        fail_rate = (total_reqs - success_reqs) / total_reqs * 100 if total_reqs > 0 else 0
+        success_reqs = len(df_success)
+        failed_reqs = total_reqs - success_reqs
+        
+        # 修正：失败率 = 失败请求 / 总请求
+        fail_rate = (failed_reqs / total_reqs * 100) if total_reqs > 0 else 0
         
         throughput = success_reqs / duration if duration and duration > 0 else 0.0
 
         print(f"\n=== '{strategy}' 策略实验摘要 ===")
-        print(f"总请求数: {total_reqs} | 成功: {success_reqs} | 失败率: {fail_rate:.2f}%")
+        print(f"总请求数: {total_reqs} | 成功: {success_reqs} | 失败: {failed_reqs} | 失败率: {fail_rate:.2f}%")
+        
+        # [Failure Analysis]
+        if failed_reqs > 0 and 'error' in df.columns:
+            df_failed = df[df['success'] == False]
+            # Count error types
+            err_strs = df_failed['error'].astype(str)
+            timeout_count = err_strs.str.contains('Timed out|ReadTimeout|ConnectTimeout', case=False, na=False).sum()
+            throttle_count = err_strs.str.contains('TooManyRequests|Throttling', case=False, na=False).sum()
+            other_count = failed_reqs - timeout_count - throttle_count
+            print(f"   >> 失败详情: Timeout={timeout_count} | Throttling={throttle_count} | Other={other_count}")
+
         print(f"实验耗时: {duration:.2f}s | 平均吞吐量: {throughput:.2f} RPS")
-        if success_reqs > 0:
-            violation_rate = (df_success['slo_violation'].sum() / success_reqs) * 100
-            print(f"平均减速因子: {df_success['slowdown'].mean():.2f}")
-            print(f"P99 减速因子: {df_success['slowdown'].quantile(0.99):.2f}")
-            print(f"SLO 违约率: {violation_rate:.2f}%")
+        
+        if total_reqs > 0:
+            # 修正：SLO 违约率应包含失败的请求 (Availability也是SLO的一部分)
+            # 违约数 = 成功的慢请求 + 失败请求
+            slow_success_count = df_success['slo_violation'].sum() if not df_success.empty else 0
+            total_violations = slow_success_count + failed_reqs
+            real_violation_rate = (total_violations / total_reqs) * 100
+            
+            print(f"SLO 违约率 (含失败): {real_violation_rate:.2f}%")
+            
+            if not df_success.empty:
+                print(f"平均减速因子: {df_success['slowdown'].mean():.2f}")
+                print(f"P99 减速因子: {df_success['slowdown'].quantile(0.99):.2f}")
+            
             # QoS 维度评估
-            if 'qos_class' in df_success.columns:
+            if 'qos_class' in df.columns: # 使用全集 df 而不是 df_success
                 for qos in ['Q1', 'Q2', 'Q3']:
-                    d = df_success[df_success['qos_class'] == qos]
-                    if len(d) == 0:
-                        continue
-                    shed_rate = (d['shed_by_worker'].sum() / len(d)) * 100
-                    ctrl_shed = (d['controller_should_shed'].sum() / len(d)) * 100
-                    met_slo_rate = (d['met_slo'].sum() / len(d)) * 100
+                    d_all = df[df['qos_class'] == qos]
+                    if len(d_all) == 0: continue
+                    
+                    d_success = d_all[d_all['success'] == True]
+                    
+                    # 统计基础数据
+                    q_total = len(d_all)
+                    q_fail = q_total - len(d_success)
+                    
+                    # 丢弃率 (Worker侧)
+                    shed_count = d_success['shed_by_worker'].sum() if not d_success.empty else 0
+                    shed_rate = (shed_count / q_total) * 100 # 分母用总数
+                    
+                    # 满足SLO的请求 (必须是成功的，且met_slo=True)
+                    met_slo_count = d_success['met_slo'].sum() if not d_success.empty else 0
+                    met_slo_rate = (met_slo_count / q_total) * 100
+                    
+                    # 真实违约率 = 100% - 满足率
                     slo_violation_rate_q = 100.0 - met_slo_rate
-                    p50 = d['e2e_latency'].quantile(0.50)
-                    p90 = d['e2e_latency'].quantile(0.90)
-                    p99 = d['e2e_latency'].quantile(0.99)
-                    avg_fidelity = d['fidelity'].mean() * 100.0
-                    print(f"- {qos}: 数量={len(d)} | 满足SLO={met_slo_rate:.2f}% | 违约率={slo_violation_rate_q:.2f}% | 触发丢弃(控制器)={ctrl_shed:.2f}% | 实际丢弃(Worker)={shed_rate:.2f}%")
+                    
+                    # 延迟统计 (仅针对成功请求)
+                    if not d_success.empty:
+                        p50 = d_success['e2e_latency'].quantile(0.50)
+                        p90 = d_success['e2e_latency'].quantile(0.90)
+                        p99 = d_success['e2e_latency'].quantile(0.99)
+                        avg_fidelity = d_success['fidelity'].mean() * 100.0
+                    else:
+                        p50 = p90 = p99 = 0.0
+                        avg_fidelity = 0.0
+                        
+                    print(f"- {qos}: 数量={q_total} (失{q_fail}) | 满足SLO={met_slo_rate:.2f}% | 违约率={slo_violation_rate_q:.2f}% | 实际丢弃={shed_rate:.2f}%")
                     print(f"       延迟(P50/P90/P99) = {p50:.1f}/{p90:.1f}/{p99:.1f} ms | 平均保真度(Fidelity)={avg_fidelity:.1f}%")
         print("==============================\n")
 
@@ -468,25 +511,42 @@ if __name__ == "__main__":
     replayer = TraceReplayer(trace_file=TRACE_FILE_PATH, output_dir=RESULTS_DIR, thread_num=THREAD_COUNT)
     replayer.load_trace()
 
-    # 2. 运行基线（Baseline）实验
+    # 2. 运行MPC实验 (优先运行)
+    replayer.run_experiment(
+        strategy='mpc',
+        wcp_mode='strict',
+        output_filename='results_mpc.csv'
+    )
+
+    # 3. 运行基线（Baseline）实验
     replayer.run_experiment(
         strategy='baseline',
         wcp_mode='baseline',
         output_filename='results_baseline.csv'
     )
 
-    # 3. 运行静态优先级实验
+    # 4. 运行静态优先级实验
     replayer.run_experiment(
         strategy='static',
         wcp_mode='baseline',
         output_filename='results_static.csv'
     )
 
-    # 4. 运行MPC实验
+    # 5. 运行消融实验 (Ablation Studies)
+    # 5.1 No Fidelity (仅丢弃，不降级)
     replayer.run_experiment(
         strategy='mpc',
-        wcp_mode='strict',
-        output_filename='results_mpc.csv'
+        wcp_mode='wcp',
+        output_filename='results_ablation_no_fidelity.csv',
+        ablation_mode='no_fidelity'
+    )
+    
+    # 5.2 No Shedding (仅降级，不丢弃)
+    replayer.run_experiment(
+        strategy='mpc',
+        wcp_mode='wcp',
+        output_filename='results_ablation_no_shedding.csv',
+        ablation_mode='no_shedding'
     )
 
     print("所有实验已完成。")
