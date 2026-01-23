@@ -217,7 +217,7 @@ def plot_p99_latency_comparison(df, output_dir):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate comparison plots for Serverless MPC Guard')
-    parser.add_argument('files', nargs='+', help='CSV files to compare (e.g. baseline.csv mpc.csv)')
+    parser.add_argument('files', nargs='*', help='CSV files to compare (e.g. baseline.csv mpc.csv)')
     parser.add_argument('--labels', nargs='+', help='Labels for each file (e.g. Baseline MPC)')
     
     args = parser.parse_args()
