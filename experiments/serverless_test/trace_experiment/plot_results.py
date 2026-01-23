@@ -222,6 +222,59 @@ def plot_p99_latency_comparison(df, output_dir):
     plt.close()
     print("[图表] P99 尾延迟对比图已生成")
 
+def plot_time_series_adaptation(df, output_dir):
+    """
+    图6: 动态自适应过程 (Time Series: Request Rate vs Latency vs Fidelity)
+    展示 Flash Crowd 期间系统的响应
+    """
+    if 'timestamp' not in df.columns:
+        print("[警告] 数据缺少 'timestamp' 列，跳过时序图绘制")
+        return
+
+    # Binning data by 0.5s intervals
+    df = df.copy()
+    df['time_bin'] = (df['timestamp'] // 0.5) * 0.5
+    
+    strategies = df['Strategy'].unique()
+    
+    fig, axes = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
+    
+    # Subplot 1: Request Rate (Load)
+    sns.histplot(data=df, x='timestamp', hue='Strategy', bins=50, element="step", ax=axes[0], alpha=0.3)
+    axes[0].set_ylabel('Request Rate (req/0.5s)', fontsize=12)
+    axes[0].set_title('Load / Request Rate', fontsize=14, fontweight='bold')
+    axes[0].legend(loc='upper right')
+
+    # Subplot 2: Latency (Rolling Mean)
+    for strategy in strategies:
+        subset = df[df['Strategy'] == strategy].sort_values('timestamp')
+        # Rolling average of 50 requests
+        subset['lat_smooth'] = subset['e2e_latency'].rolling(window=50, min_periods=1).mean()
+        axes[1].plot(subset['timestamp'], subset['lat_smooth'], label=strategy, linewidth=2)
+    
+    axes[1].axhline(y=1000, color='r', linestyle='--', label='SLO (1000ms)')
+    axes[1].set_ylabel('E2E Latency (ms)', fontsize=12)
+    axes[1].set_title('Latency Adaptation (Rolling Mean)', fontsize=14, fontweight='bold')
+    axes[1].set_ylim(0, 3000) # Cap at 3s for readability
+    axes[1].legend(loc='upper right')
+
+    # Subplot 3: Fidelity (Rolling Mean)
+    for strategy in strategies:
+        subset = df[df['Strategy'] == strategy].sort_values('timestamp')
+        subset['fid_smooth'] = subset['fidelity'].rolling(window=50, min_periods=1).mean()
+        axes[2].plot(subset['timestamp'], subset['fid_smooth'], label=strategy, linewidth=2)
+
+    axes[2].set_ylabel('Fidelity (0-1)', fontsize=12)
+    axes[2].set_title('Fidelity Scaling', fontsize=14, fontweight='bold')
+    axes[2].set_xlabel('Time (s)', fontsize=14)
+    axes[2].set_ylim(0, 1.1)
+    axes[2].legend(loc='upper right')
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, '6_time_series_adaptation.png'), dpi=300)
+    plt.close()
+    print("[图表] 动态自适应时序图已生成")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate comparison plots for Serverless MPC Guard')
     parser.add_argument('files', nargs='*', help='CSV files to compare (e.g. baseline.csv mpc.csv)')
@@ -272,6 +325,7 @@ if __name__ == "__main__":
         plot_goodput_stacked(merged_df, output_dir)
         plot_fidelity_comparison(merged_df, output_dir)
         plot_p99_latency_comparison(merged_df, output_dir)
+        plot_time_series_adaptation(merged_df, output_dir)
         print(f"=== 所有图表生成完毕: {output_dir} ===")
     else:
         print("没有数据可绘图")

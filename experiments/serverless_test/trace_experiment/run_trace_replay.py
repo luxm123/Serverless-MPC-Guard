@@ -328,6 +328,7 @@ class TraceReplayer:
 
         self.results.append({
             "req_id": req_id,
+            "timestamp": time.time() - start_exp, # Record relative timestamp for time-series plotting
             "trace_duration": ideal_duration,
             "e2e_latency": e2e_latency,
             "slowdown": slowdown,
@@ -385,7 +386,8 @@ class TraceReplayer:
         # --------------------------------
         
         # Inject flash crowd to simulate high concurrency
-        self.inject_flash_crowd(peak_time=5.0, requests=100)
+        # INCREASED to 400 requests (JIAGU-style Extreme Scenario) to force shedding/degradation
+        self.inject_flash_crowd(peak_time=5.0, requests=400)
 
         self.results = []  # 为新实验重置结果
         start_exp = time.time()
@@ -467,18 +469,18 @@ if __name__ == "__main__":
     replayer.load_trace()
 
     # 2. 运行基线（Baseline）实验
-    # replayer.run_experiment(
-    #     strategy='baseline',
-    #     wcp_mode='baseline',
-    #     output_filename='results_baseline.csv'
-    # )
+    replayer.run_experiment(
+        strategy='baseline',
+        wcp_mode='baseline',
+        output_filename='results_baseline.csv'
+    )
 
     # 3. 运行静态优先级实验
-    # replayer.run_experiment(
-    #     strategy='static',
-    #     wcp_mode='baseline',
-    #     output_filename='results_static.csv'
-    # )
+    replayer.run_experiment(
+        strategy='static',
+        wcp_mode='baseline',
+        output_filename='results_static.csv'
+    )
 
     # 4. 运行MPC实验
     replayer.run_experiment(
