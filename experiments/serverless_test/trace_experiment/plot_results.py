@@ -12,18 +12,19 @@ sns.set_theme(style="ticks", font_scale=1.2)
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
-# === 全局配色方案 (High Contrast) ===
+# === 全局配色方案 (Paper/Pastel Style) ===
+# 参考学术论文常用的配色：柔和、区分度高、黑白打印友好
 STRATEGY_COLORS = {
-    'Baseline': '#d62728',      # Red (Danger/Default)
-    'Static': '#ff7f0e',        # Orange (Warning)
-    'MPC': '#2ca02c',           # Green (Good/Safe)
-    'No-Fidelity': '#9467bd',   # Purple
-    'No-Shedding': '#8c564b'    # Brown
+    'Baseline': '#fb9a99',      # Pastel Red
+    'Static': '#fdbf6f',        # Pastel Orange
+    'MPC': '#b2df8a',           # Pastel Green
+    'No-Fidelity': '#cab2d6',   # Pastel Purple
+    'No-Shedding': '#a6cee3'    # Pastel Blue
 }
 
 def get_strategy_color(strategy_name):
-    """获取策略对应的颜色，如果未定义则返回灰色"""
-    return STRATEGY_COLORS.get(strategy_name, '#7f7f7f')
+    """获取策略对应的颜色，如果未定义则返回默认色"""
+    return STRATEGY_COLORS.get(strategy_name, '#d9d9d9')  # Grey default
 
 def save_plot(filename, output_dir):
     """统一保存图表，确保去白边和高 DPI"""
@@ -264,55 +265,54 @@ def plot_p99_latency_comparison(df, output_dir):
 
 def plot_time_series_adaptation(df, output_dir):
     """
-    图6: 动态自适应过程
-    改进：统一配色
+    图6: 动态自适应过程 (Reverted to Original Style)
+    使用 Seaborn 默认配色，恢复用户喜欢的样式
     """
     if 'timestamp' not in df.columns:
         print("[警告] 数据缺少 'timestamp' 列，跳过时序图绘制")
         return
 
     df = df.copy()
-    df['time_bin'] = (df['timestamp'] // 0.5) * 0.5
     
-    strategies = sorted(df['Strategy'].unique())
-    colors = [get_strategy_color(s) for s in strategies]
+    # 统一字体大小
+    sns.set_context("paper", font_scale=1.4)
     
     fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
     
     # 1. Request Rate
-    sns.histplot(data=df, x='timestamp', hue='Strategy', bins=50, element="step", ax=axes[0], palette=STRATEGY_COLORS, alpha=0.3)
-    axes[0].set_ylabel('Request Rate (req/0.5s)', fontsize=14)
-    axes[0].set_title('Load / Request Rate', fontsize=16, fontweight='bold')
-    axes[0].legend(loc='upper right', fontsize=12)
+    sns.histplot(data=df, x='timestamp', hue='Strategy', bins=50, element="step", ax=axes[0], alpha=0.4)
+    axes[0].set_ylabel('Request Rate (req/s)')
+    axes[0].set_title('Load / Request Rate')
     axes[0].grid(True, alpha=0.3)
 
     # 2. Latency
-    for i, strategy in enumerate(strategies):
-        subset = df[df['Strategy'] == strategy].sort_values('timestamp')
-        subset['lat_smooth'] = subset['e2e_latency'].rolling(window=50, min_periods=1).mean()
-        axes[1].plot(subset['timestamp'], subset['lat_smooth'], label=strategy, linewidth=2.5, color=get_strategy_color(strategy))
+    # 计算滚动平均，以便绘图平滑
+    df_sorted = df.sort_values(['Strategy', 'timestamp'])
+    df_sorted['lat_smooth'] = df_sorted.groupby('Strategy')['e2e_latency'].transform(lambda x: x.rolling(window=50, min_periods=1).mean())
     
-    axes[1].axhline(y=1000, color='gray', linestyle='--', label='SLO (1000ms)')
-    axes[1].set_ylabel('E2E Latency (ms)', fontsize=14)
-    axes[1].set_title('Latency Adaptation (Rolling Mean)', fontsize=16, fontweight='bold')
+    sns.lineplot(data=df_sorted, x='timestamp', y='lat_smooth', hue='Strategy', ax=axes[1], linewidth=2)
+    axes[1].axhline(y=1000, color='red', linestyle='--', label='SLO (1000ms)')
+    axes[1].set_ylabel('E2E Latency (ms)')
+    axes[1].set_title('Latency Adaptation (Smoothed)')
     axes[1].set_ylim(0, 3000)
-    axes[1].legend(loc='upper right', fontsize=12)
     axes[1].grid(True, alpha=0.3)
 
     # 3. Fidelity
-    for i, strategy in enumerate(strategies):
-        subset = df[df['Strategy'] == strategy].sort_values('timestamp')
-        subset['fid_smooth'] = subset['fidelity'].rolling(window=50, min_periods=1).mean()
-        axes[2].plot(subset['timestamp'], subset['fid_smooth'], label=strategy, linewidth=2.5, color=get_strategy_color(strategy))
+    if 'fidelity' in df.columns:
+        df_sorted['fid_smooth'] = df_sorted.groupby('Strategy')['fidelity'].transform(lambda x: x.rolling(window=50, min_periods=1).mean())
+        sns.lineplot(data=df_sorted, x='timestamp', y='fid_smooth', hue='Strategy', ax=axes[2], linewidth=2)
+        axes[2].set_ylabel('Fidelity (0-1)')
+        axes[2].set_title('Fidelity Scaling')
+        axes[2].set_ylim(0, 1.1)
+        axes[2].grid(True, alpha=0.3)
+    
+    axes[2].set_xlabel('Time (s)')
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, '6_time_series_adaptation.png'), dpi=300)
+    plt.close()
+    print("[图表] 动态自适应时序图已生成 (Reverted Style)")
 
-    axes[2].set_ylabel('Fidelity (0-1)', fontsize=14)
-    axes[2].set_title('Fidelity Scaling', fontsize=16, fontweight='bold')
-    axes[2].set_xlabel('Time (s)', fontsize=16)
-    axes[2].set_ylim(0, 1.1)
-    axes[2].legend(loc='lower right', fontsize=12)
-    axes[2].grid(True, alpha=0.3)
-
-    save_plot('6_time_series_adaptation.png', output_dir)
 
 def print_summary_table(df):
     """
