@@ -214,14 +214,25 @@ if __name__ == "__main__":
     
     # 如果没有提供参数，尝试默认行为
     if not args.files:
-        print("Usage: python plot_results.py file1.csv file2.csv --labels Baseline MPC")
         # 默认回退逻辑 (方便调试)
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        default_file = os.path.join(base_dir, 'results', 'results_mpc.csv')
-        if os.path.exists(default_file):
-             args.files = [default_file]
-             args.labels = ['MPC_Current']
+        results_dir = os.path.join(base_dir, 'results')
+        
+        default_files = []
+        default_labels = []
+        
+        for strategy in ['baseline', 'static', 'mpc']:
+            f_path = os.path.join(results_dir, f'results_{strategy}.csv')
+            if os.path.exists(f_path):
+                default_files.append(f_path)
+                default_labels.append(strategy.capitalize())
+        
+        if default_files:
+            args.files = default_files
+            args.labels = default_labels
+            print(f"[Info] Automatically found result files: {default_labels}")
         else:
+            print("Usage: python plot_results.py file1.csv file2.csv --labels Baseline MPC")
             sys.exit(1)
             
     # 如果没有提供标签，默认使用文件名
