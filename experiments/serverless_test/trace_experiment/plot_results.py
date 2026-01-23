@@ -140,7 +140,7 @@ def plot_goodput_stacked(df, output_dir):
     # 绘制堆叠图
     stats.plot(kind='bar', stacked=True, figsize=(10, 6), colormap='viridis')
     
-    plt.title('Effective Throughput (Goodput) by Strategy', fontsize=16, fontweight='bold') fontweight='bold')
+    plt.title('Effective Throughput (Goodput) by Strategy', fontsize=16, fontweight='bold')
     plt.xlabel('Strategy', fontsize=14)
     plt.ylabel('Total Successful Requests', fontsize=14)
     plt.xticks(rotation=0)
