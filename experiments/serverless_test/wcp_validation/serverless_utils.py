@@ -17,12 +17,12 @@ def get_lambda_client():
         
     config = Config(
         retries = {
-            'max_attempts': 50,
-            'mode': 'adaptive'
+            'max_attempts': 0, # DISABLE RETRIES: Fail fast to show Availability Drop in Baseline
+            'mode': 'standard'
         },
-        connect_timeout=15,
-        read_timeout=2, # Simulate impatient user (2s timeout). Baseline (>1.5s) will fail.
-        max_pool_connections=500  # Support 500 concurrent threads (Fixes bottleneck for high concurrency)
+        connect_timeout=5, # Reduce connect timeout
+        read_timeout=2, # Strict 2s timeout. If Queue > 2s, request FAILS.
+        max_pool_connections=500  
     )
     _GLOBAL_LAMBDA_CLIENT = boto3.client('lambda', 
                        region_name=os.environ.get('AWS_REGION','us-east-1'),
