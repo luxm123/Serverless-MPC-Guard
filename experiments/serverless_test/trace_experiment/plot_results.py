@@ -120,8 +120,10 @@ def plot_q1_cdf(df, output_dir):
 
 def plot_goodput_stacked(df, output_dir):
     """
-    图3: 请求结果分布 (Request Outcome Distribution)
-    替代原来的单纯吞吐量图，展示 成功/违约/失败 的构成
+    图3: 请求结果分布 (Request Outcome Distribution) - 100% 堆叠图
+    按用户建议修改：
+    1. Y轴改为百分比 (100% Stacked)，突出相对构成。
+    2. 使用浅色系 (Pastel) 配色，视觉更柔和。
     """
     df = df.copy()
     
@@ -138,47 +140,50 @@ def plot_goodput_stacked(df, output_dir):
     # 统计每种策略的各类请求数量
     stats = df.groupby(['Strategy', 'Outcome']).size().unstack(fill_value=0)
     
+    # 计算百分比 (Normalize to 100%)
+    totals = stats.sum(axis=1)
+    stats_pct = stats.div(totals, axis=0) * 100
+    
     # 确保列顺序：Success 在最下，Violation 在中间，Failed 在最上
     columns_order = ['Success (Met SLO)', 'SLO Violation (Late)', 'Failed/Shed']
-    columns_order = [c for c in columns_order if c in stats.columns]
-    stats = stats.reindex(columns=columns_order, fill_value=0)
+    columns_order = [c for c in columns_order if c in stats_pct.columns]
+    stats_pct = stats_pct.reindex(columns=columns_order, fill_value=0)
     
-    if stats.empty:
+    if stats_pct.empty:
         print("[警告] 数据为空，跳过结果分布图")
         return
 
-    # 改进配色：更现代、柔和但对比清晰的颜色
+    # 配色：浅色系 (Pastel)
     outcome_colors = {
-        'Success (Met SLO)': '#5DADE2',       # Soft Blue (calm, positive)
-        'SLO Violation (Late)': '#F5B041',    # Soft Orange (warning)
-        'Failed/Shed': '#EC7063'              # Soft Red (error)
+        'Success (Met SLO)': '#CCEBC5',       # Pastel Green
+        'SLO Violation (Late)': '#FED9A6',    # Pastel Orange
+        'Failed/Shed': '#FBB4AE'              # Pastel Red
     }
     colors = [outcome_colors[c] for c in columns_order]
     
     plt.figure(figsize=(10, 6))
-    ax = stats.plot(kind='bar', stacked=True, figsize=(10, 6), color=colors, edgecolor='white', linewidth=1, width=0.65)
+    ax = stats_pct.plot(kind='bar', stacked=True, figsize=(10, 6), color=colors, edgecolor='white', linewidth=0.5, width=0.6)
     
-    plt.title('Request Outcomes by Strategy', fontsize=16, fontweight='bold', pad=20)
+    plt.title('Request Outcome Distribution (Normalized %)', fontsize=16, fontweight='bold', pad=20)
     plt.xlabel('Strategy', fontsize=13)
-    plt.ylabel('Request Count', fontsize=13)
+    plt.ylabel('Percentage of Requests (%)', fontsize=13)
     plt.xticks(rotation=0, fontsize=11)
+    plt.ylim(0, 100)
     
-    # 优化图例：放在顶部，避免遮挡
+    # 图例放顶部
     plt.legend(title='', fontsize=11, loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=3, frameon=False)
     plt.grid(True, axis='y', alpha=0.2, linestyle='--')
 
-    # 标注数值：只标注占比超过 2% 的部分，避免拥挤
-    total_reqs = stats.sum(axis=1).max()
-    threshold = total_reqs * 0.02
-    
+    # 标注数值：显示百分比
     for c in ax.containers:
-        labels = [f'{int(v.get_height())}' if v.get_height() > threshold else '' for v in c]
-        ax.bar_label(c, labels=labels, label_type='center', color='white', fontsize=10, fontweight='bold')
+        # 只标注 > 2% 的部分
+        labels = [f'{v.get_height():.1f}%' if v.get_height() > 2.0 else '' for v in c]
+        ax.bar_label(c, labels=labels, label_type='center', color='#333333', fontsize=10, fontweight='bold')
 
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, '3_response_outcome_distribution.png'), dpi=300)
     plt.close()
-    print("[图表] 请求结果分布图已生成 (美化版)")
+    print("[图表] 请求结果分布图 (100% 堆叠版) 已生成")
 
 def plot_fidelity_comparison(df, output_dir):
     """
