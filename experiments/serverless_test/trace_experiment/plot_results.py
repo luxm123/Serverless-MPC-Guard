@@ -38,17 +38,24 @@ def plot_slo_comparison(df, output_dir):
     """
     图1: SLA 违约率对比 (Grouped Bar Chart)
     """
-    # 计算每个策略每个 QoS 的违约率
+    # 计算每个策略每个 QoS 的违约率 (包含失败/超时)
+    # 注意：在 run_trace_replay.py 中，失败的请求 success=False，且 slo_violation 可能未被正确标记
+    # 这里我们定义：Effective Violation = (SLO Violation OR Success=False)
+    
+    # 确保 success 列存在 (向前兼容)
+    if 'success' not in df.columns:
+        df['success'] = True
+
     stats = df.groupby(['Strategy', 'qos_class']).apply(
         lambda x: pd.Series({
-            'SLO Violation Rate (%)': (x['slo_violation'].sum() / len(x)) * 100
+            'SLO Violation Rate (%)': ((x['slo_violation'] | (~x['success'])).sum() / len(x)) * 100
         })
     ).reset_index()
 
     plt.figure(figsize=(10, 6))
     sns.barplot(x='qos_class', y='SLO Violation Rate (%)', hue='Strategy', data=stats, palette='muted')
     
-    plt.title('SLO Violation Rate Comparison', fontsize=16, fontweight='bold')
+    plt.title('SLO Violation Rate Comparison (Inc. Failures)', fontsize=16, fontweight='bold')
     plt.xlabel('QoS Class', fontsize=14)
     plt.ylabel('SLO Violation Rate (%)', fontsize=14)
     plt.ylim(0, 110)
@@ -103,9 +110,9 @@ def plot_q1_cdf(df, output_dir):
     plt.grid(True, alpha=0.3)
     plt.tick_params(axis='both', which='major', labelsize=12)
     
-    # 限制 X 轴范围以聚焦有效区域 (0-3000ms)
-    # 超过 3000ms 的长尾对分析 SLO (1000ms) 意义不大，且会压缩有效部分
-    plt.xlim(0, 3000) 
+    # 限制 X 轴范围以聚焦有效区域 (0-2000ms)
+    # 超过 2000ms 的长尾对分析 SLO (1000ms) 意义不大，且会压缩有效部分
+    plt.xlim(0, 2000) 
     
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, '2_q1_latency_cdf.png'), dpi=300)
@@ -133,7 +140,7 @@ def plot_goodput_stacked(df, output_dir):
     # 绘制堆叠图
     stats.plot(kind='bar', stacked=True, figsize=(10, 6), colormap='viridis')
     
-    plt.title('Effective Throughput (Goodput) by Strategy', fontsize=16, fontweight='bold')
+    plt.title('Effective Throughput (Goodput) by Strategy', fontsize=16, fontweight='bold') fontweight='bold')
     plt.xlabel('Strategy', fontsize=14)
     plt.ylabel('Total Successful Requests', fontsize=14)
     plt.xticks(rotation=0)
