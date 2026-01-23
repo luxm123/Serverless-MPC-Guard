@@ -275,6 +275,36 @@ def plot_time_series_adaptation(df, output_dir):
     plt.close()
     print("[图表] 动态自适应时序图已生成")
 
+def print_summary_table(df):
+    """
+    打印汇总统计表到控制台
+    """
+    print("\n=== 实验结果汇总 (Summary) ===")
+    
+    # 确保 success 列
+    if 'success' not in df.columns:
+        df['success'] = True
+    
+    # 确保 fidelity 列
+    if 'fidelity' not in df.columns:
+        df['fidelity'] = 1.0
+    else:
+        df['fidelity'] = df['fidelity'].fillna(1.0)
+
+    # 计算关键指标
+    stats = df.groupby(['Strategy', 'qos_class']).apply(
+        lambda x: pd.Series({
+            'Total Reqs': len(x),
+            'SLO Violation (%)': ((x['slo_violation'] | (~x['success'])).sum() / len(x)) * 100,
+            'Avg Fidelity (%)': x['fidelity'].mean() * 100,
+            'P99 Latency (ms)': x['e2e_latency'].quantile(0.99)
+        })
+    ).reset_index()
+    
+    # 格式化输出
+    print(stats.to_string(index=False, float_format=lambda x: "{:.2f}".format(x)))
+    print("==============================\n")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate comparison plots for Serverless MPC Guard')
     parser.add_argument('files', nargs='*', help='CSV files to compare (e.g. baseline.csv mpc.csv)')
@@ -291,11 +321,20 @@ if __name__ == "__main__":
         default_files = []
         default_labels = []
         
-        for strategy in ['baseline', 'static', 'mpc']:
-            f_path = os.path.join(results_dir, f'results_{strategy}.csv')
+        # 定义要查找的文件模式和对应的标签
+        file_patterns = [
+            ('results_baseline.csv', 'Baseline'),
+            ('results_static.csv', 'Static'),
+            ('results_mpc.csv', 'MPC'),
+            ('results_ablation_no_fidelity.csv', 'No-Fidelity'),
+            ('results_ablation_no_shedding.csv', 'No-Shedding')
+        ]
+        
+        for filename, label in file_patterns:
+            f_path = os.path.join(results_dir, filename)
             if os.path.exists(f_path):
                 default_files.append(f_path)
-                default_labels.append(strategy.capitalize())
+                default_labels.append(label)
         
         if default_files:
             args.files = default_files
@@ -320,6 +359,7 @@ if __name__ == "__main__":
     merged_df = load_and_merge_data(args.files, args.labels)
     
     if not merged_df.empty:
+        print_summary_table(merged_df)  # 打印汇总表
         plot_slo_comparison(merged_df, output_dir)
         plot_q1_cdf(merged_df, output_dir)
         plot_goodput_stacked(merged_df, output_dir)
