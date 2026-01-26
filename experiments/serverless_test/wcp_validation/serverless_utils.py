@@ -245,3 +245,34 @@ def run_experiment_sequence(mode, steps=10, quiet=False):
         time.sleep(0.5) # Avoid rate limits
         
     return history
+
+def force_cold_start(function_names):
+    """
+    Forces a cold start by updating a dummy environment variable for the specified functions.
+    """
+    lmb = get_lambda_client()
+    if isinstance(function_names, str):
+        function_names = [function_names]
+        
+    print(f"Forcing cold start for: {function_names}...")
+    for fname in function_names:
+        try:
+            # 1. Get current config
+            conf = lmb.get_function_configuration(FunctionName=fname)
+            env = conf.get('Environment', {}).get('Variables', {})
+            
+            # 2. Update a dummy variable
+            env['FORCE_COLD_START'] = str(time.time())
+            
+            # 3. Update function configuration
+            lmb.update_function_configuration(
+                FunctionName=fname,
+                Environment={'Variables': env}
+            )
+            print(f"  - Updated {fname} successfully.")
+        except Exception as e:
+            print(f"  - Failed to update {fname}: {e}")
+    
+    # Wait a bit for the update to propagate
+    time.sleep(2)
+    print("Cold start forced.")
