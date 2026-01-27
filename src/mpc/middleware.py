@@ -113,6 +113,11 @@ class MPCMiddleware:
         task = event.get('task', {})
         # If client didn't send metrics (Real Scenario), use our belief from state
         state, version = self._load_state()
+
+        # Inject Profile from Client Task (if present) to enable Per-Request Tuning
+        if task.get('mpc_profile'):
+            state['mpc_profile'] = task['mpc_profile']
+        
         qos_raw = task.get('qos', task.get('priority'))
         qos = 'Q3'
         if isinstance(qos_raw, str):

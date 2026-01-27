@@ -47,7 +47,7 @@ def run_scalability_experiment():
         # 1. Run MPC
         print(f"\n--- Strategy: MPC (Threads={concurrency}) ---")
         force_cold_start(target_funcs)
-        replayer.run_experiment(strategy='mpc', wcp_mode='strict', output_filename='results_mpc.csv')
+        replayer.run_experiment(strategy='mpc', wcp_mode='strict', output_filename='results_mpc.csv', mpc_profile='scalability_tuned')
         
         # 2. Run Baseline
         print(f"\n--- Strategy: Baseline (Threads={concurrency}) ---")

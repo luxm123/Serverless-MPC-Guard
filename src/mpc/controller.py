@@ -1,3 +1,4 @@
+import os
 from .priority import PriorityManager
 from .trajectory import TrajectoryGenerator
 from .optimization import Optimizer
@@ -59,6 +60,22 @@ class MPCController:
             'traj_prio_high': 0.8, 'traj_prio_low': 0.3,
             'traj_vi_prio_tight': 0.9, 'traj_vi_prio_relax': 1.1,
         }
+
+        # [PROFILE OVERRIDE]
+        # Check for scalability profile to apply aggressive tuning without modifying code permanently.
+        # Check both Env Var (Lambda Config) and System State (Client Payload)
+        if os.environ.get('MPC_PROFILE') == 'scalability_tuned' or system_state.get('mpc_profile') == 'scalability_tuned':
+            overrides = {
+                'sp_queue_thr': 0.1, 'sp_kq_inc_fac': 1.2, 'sp_kq_inc_step': 0.02,
+                'sp_kq_dec_fac': 0.95, 'sp_kq_dec_step': 0.005,
+                'sp_decay': 0.01, 'sp_risk_low': 0.01, 'sp_load_low': 0.6, 'sp_queue_low': 0.05,
+                'traj_price_high': 100.0, 'traj_price_med': 20.0
+            }
+            defaults.update(overrides)
+            # Force update system_state for these keys to ensure profile takes precedence over DB state
+            for k, v in overrides.items():
+                system_state[k] = v
+
         for k, v in defaults.items():
             if k not in system_state:
                 system_state[k] = v

@@ -78,7 +78,7 @@ class TraceReplayer:
         self.trace_data.sort(key=lambda x: x['timestamp'])
         print(f"[Info] Trace data size increased to {len(self.trace_data)} requests.")
 
-    def run_request(self, req_id, row, strategy, wcp_mode, start_exp):
+    def run_request(self, req_id, row, strategy, wcp_mode, start_exp, mpc_profile=None):
         """
         执行单个请求。此函数由线程池并发调用。
         """
@@ -207,7 +207,8 @@ class TraceReplayer:
                 "task_name": f"TraceReq-{req_id}",
                 "simulated_duration_ms": ideal_duration,
                 "priority": prio,
-                "qos_class": qos_class  # CRITICAL: Pass QoS Class so Controller knows it's Q1!
+                "qos_class": qos_class,  # CRITICAL: Pass QoS Class so Controller knows it's Q1!
+                "mpc_profile": mpc_profile  # Inject Profile
             }
             if controller_should_shed and qos_class == "Q3":
                 worker_status = "shedded"
@@ -360,7 +361,7 @@ class TraceReplayer:
                 
             print(f"[{strategy}] Req {req_id}: Ideal={ideal_duration}ms -> Actual={e2e_latency:.1f}ms (Status={display_status}, Slowdown={slowdown:.2f})")
 
-    def run_experiment(self, strategy, wcp_mode, output_filename):
+    def run_experiment(self, strategy, wcp_mode, output_filename, mpc_profile=None):
         """为给定的策略运行一次完整的实验。"""
         # Ensure reproducibility across runs
         random.seed(42)
@@ -393,7 +394,7 @@ class TraceReplayer:
         start_exp = time.time()
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_num) as executor:
-            futures = [executor.submit(self.run_request, i, row, strategy, wcp_mode, start_exp) for i, row in enumerate(self.trace_data)]
+            futures = [executor.submit(self.run_request, i, row, strategy, wcp_mode, start_exp, mpc_profile) for i, row in enumerate(self.trace_data)]
             # Check for exceptions in threads
             for future in concurrent.futures.as_completed(futures):
                 try:
