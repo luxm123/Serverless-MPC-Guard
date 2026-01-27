@@ -140,8 +140,8 @@ class DynamicReplayer(TraceReplayer):
 
 import copy
 
-def plot_time_series(mpc_csv, baseline_csv, output_dir):
-    print("Plotting time series results...")
+def plot_time_series(mpc_csv, baseline_csv, output_dir, trial_suffix=''):
+    print(f"Plotting time series results for {trial_suffix}...")
     try:
         df_mpc = pd.read_csv(mpc_csv)
         df_base = pd.read_csv(baseline_csv)
@@ -160,7 +160,7 @@ def plot_time_series(mpc_csv, baseline_csv, output_dir):
         # 1. P99 Latency over Time
         sns.lineplot(data=df_all, x='TimeBin', y='e2e_latency', hue='Strategy', 
                      estimator=lambda x: np.percentile(x, 99), errorbar=None, ax=axes[0], palette={'MPC': 'g', 'Baseline': 'r'})
-        axes[0].set_title('P99 Latency over Time (Flash Crowd + Slowdown)')
+        axes[0].set_title(f'P99 Latency over Time (Flash Crowd + Slowdown) {trial_suffix}')
         axes[0].set_ylabel('Latency (ms)')
         axes[0].axvline(30, color='k', linestyle='--', alpha=0.5, label='Burst Start')
         axes[0].axvline(60, color='k', linestyle='--', alpha=0.5, label='Burst End')
@@ -169,7 +169,7 @@ def plot_time_series(mpc_csv, baseline_csv, output_dir):
         
         # 2. Fidelity (MPC Only)
         sns.lineplot(data=df_mpc, x='TimeBin', y='fidelity', estimator='mean', errorbar=None, ax=axes[1], color='g')
-        axes[1].set_title('MPC Fidelity Adaptation')
+        axes[1].set_title(f'MPC Fidelity Adaptation {trial_suffix}')
         axes[1].set_ylabel('Fidelity')
         axes[1].set_ylim(0, 1.1)
         axes[1].axvline(30, color='k', linestyle='--', alpha=0.5)
@@ -182,14 +182,16 @@ def plot_time_series(mpc_csv, baseline_csv, output_dir):
             
         shed_rates = df_all.groupby(['Strategy', 'TimeBin']).apply(get_shed_rate).reset_index(name='ShedRate')
         sns.lineplot(data=shed_rates, x='TimeBin', y='ShedRate', hue='Strategy', ax=axes[2], palette={'MPC': 'g', 'Baseline': 'r'})
-        axes[2].set_title('Shedding Rate over Time')
+        axes[2].set_title(f'Shedding Rate over Time {trial_suffix}')
         axes[2].set_ylabel('Shedding Rate (%)')
         axes[2].axvline(30, color='k', linestyle='--', alpha=0.5)
         axes[2].axvline(90, color='k', linestyle='--', alpha=0.5)
         
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, 'flash_crowd_analysis.png'))
-        print(f"Plot saved to {os.path.join(output_dir, 'flash_crowd_analysis.png')}")
+        plot_path = os.path.join(output_dir, f'flash_crowd_analysis{trial_suffix}.png')
+        plt.savefig(plot_path)
+        plt.close() # Close to free memory
+        print(f"Plot saved to {plot_path}")
         
     except Exception as e:
         print(f"Error plotting: {e}")
@@ -210,27 +212,33 @@ def run_flash_crowd_experiment():
         os.environ.get('MPC_WORKER_NAME', 'MPC_BusinessWorker')
     ]
     
-    # 1. Run MPC
-    print(f"\n{'='*50}")
-    print("Running MPC Strategy (Flash Crowd)")
-    print(f"{'='*50}")
-    force_cold_start(target_funcs)
-    # Use flash_crowd profile for tuned capacity (150.0) matching our thread count (200)
-    replayer.run_experiment(strategy='mpc', wcp_mode='strict', output_filename='results_mpc.csv', mpc_profile='flash_crowd')
-    
-    # 2. Run Baseline
-    print(f"\n{'='*50}")
-    print("Running Baseline Strategy (Flash Crowd)")
-    print(f"{'='*50}")
-    force_cold_start(target_funcs)
-    replayer.run_experiment(strategy='baseline', wcp_mode='baseline', output_filename='results_baseline.csv')
-    
-    # 3. Plot
-    plot_time_series(
-        os.path.join(output_dir, 'results_mpc.csv'),
-        os.path.join(output_dir, 'results_baseline.csv'),
-        output_dir
-    )
+    # Run 3 Trials
+    for trial in range(1, 4):
+        trial_suffix = f"_run{trial}"
+        print(f"\n{'='*50}")
+        print(f"Running Flash Crowd Experiment (Trial {trial}/3)")
+        print(f"{'='*50}")
+        
+        # 1. Run MPC
+        print(f"\n>>> MPC Trial {trial} <<<")
+        force_cold_start(target_funcs)
+        # Use flash_crowd profile for tuned capacity (150.0) matching our thread count (200)
+        replayer.run_experiment(strategy='mpc', wcp_mode='strict', output_filename=f'results_mpc{trial_suffix}.csv', mpc_profile='flash_crowd')
+        time.sleep(5) # Cooldown
+        
+        # 2. Run Baseline
+        print(f"\n>>> Baseline Trial {trial} <<<")
+        force_cold_start(target_funcs)
+        replayer.run_experiment(strategy='baseline', wcp_mode='baseline', output_filename=f'results_baseline{trial_suffix}.csv')
+        time.sleep(5) # Cooldown
+        
+        # 3. Plot this trial immediately
+        plot_time_series(
+            os.path.join(output_dir, f'results_mpc{trial_suffix}.csv'),
+            os.path.join(output_dir, f'results_baseline{trial_suffix}.csv'),
+            output_dir,
+            trial_suffix
+        )
 
 if __name__ == "__main__":
     run_flash_crowd_experiment()

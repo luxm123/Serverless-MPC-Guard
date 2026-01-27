@@ -44,25 +44,32 @@ def run_scalability_experiment():
         replayer = TraceReplayer(trace_file=trace_file, output_dir=current_output_dir, thread_num=concurrency)
         replayer.load_trace()
         
-        # 1. Run MPC
-        print(f"\n--- Strategy: MPC (Threads={concurrency}) ---")
-        force_cold_start(target_funcs)
-        replayer.run_experiment(strategy='mpc', wcp_mode='strict', output_filename='results_mpc.csv', mpc_profile='scalability_tuned')
-        
-        # 2. Run Baseline
-        print(f"\n--- Strategy: Baseline (Threads={concurrency}) ---")
-        force_cold_start(target_funcs)
-        replayer.run_experiment(strategy='baseline', wcp_mode='baseline', output_filename='results_baseline.csv')
-        
-        # Analyze results for this level
-        try:
-            df_mpc = pd.read_csv(os.path.join(current_output_dir, 'results_mpc.csv'))
-            df_base = pd.read_csv(os.path.join(current_output_dir, 'results_baseline.csv'))
+        # Run 3 Trials per concurrency level
+        for trial in range(1, 4):
+            trial_suffix = f"_run{trial}"
+            print(f"\n--- Trial {trial}/3 (Concurrency={concurrency}) ---")
             
-            summary_data.append(get_metrics(df_mpc, 'MPC', concurrency))
-            summary_data.append(get_metrics(df_base, 'Baseline', concurrency))
-        except Exception as e:
-            print(f"Error analyzing results for concurrency {concurrency}: {e}")
+            # 1. Run MPC
+            print(f"Running MPC...")
+            force_cold_start(target_funcs)
+            replayer.run_experiment(strategy='mpc', wcp_mode='strict', output_filename=f'results_mpc{trial_suffix}.csv', mpc_profile='scalability_tuned')
+            
+            # 2. Run Baseline
+            print(f"Running Baseline...")
+            force_cold_start(target_funcs)
+            replayer.run_experiment(strategy='baseline', wcp_mode='baseline', output_filename=f'results_baseline{trial_suffix}.csv')
+            
+            # Analyze results for this trial
+            try:
+                df_mpc = pd.read_csv(os.path.join(current_output_dir, f'results_mpc{trial_suffix}.csv'))
+                df_base = pd.read_csv(os.path.join(current_output_dir, f'results_baseline{trial_suffix}.csv'))
+                
+                summary_data.append(get_metrics(df_mpc, 'MPC', concurrency))
+                summary_data.append(get_metrics(df_base, 'Baseline', concurrency))
+            except Exception as e:
+                print(f"Error analyzing results for concurrency {concurrency}, trial {trial}: {e}")
+            
+            time.sleep(2) # Brief cooldown
 
     # Save summary
     summary_df = pd.DataFrame(summary_data)

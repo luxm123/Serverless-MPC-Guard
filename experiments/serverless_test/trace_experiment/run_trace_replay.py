@@ -7,6 +7,10 @@ import concurrent.futures
 import pandas as pd
 import numpy as np
 import random
+import matplotlib.pyplot as plt
+import seaborn as sns
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # --- 动态路径设置 ---
 # 将项目根目录添加到系统路径，以便导入项目内模块（例如 `from src.utils import ...`）
@@ -361,7 +365,7 @@ class TraceReplayer:
                 
             print(f"[{strategy}] Req {req_id}: Ideal={ideal_duration}ms -> Actual={e2e_latency:.1f}ms (Status={display_status}, Slowdown={slowdown:.2f})")
 
-    def run_experiment(self, strategy, wcp_mode, output_filename, mpc_profile=None):
+    def run_experiment(self, strategy, wcp_mode, output_filename, mpc_profile=None, ablation_mode=None):
         """为给定的策略运行一次完整的实验。"""
         # Ensure reproducibility across runs
         random.seed(42)
@@ -493,6 +497,41 @@ class TraceReplayer:
         print("==============================\n")
 
 
+def plot_cdf(mpc_csv, baseline_csv, output_dir, trial_suffix=''):
+    """Generate a CDF plot of Latency for MPC vs Baseline."""
+    print(f"Plotting CDF for {trial_suffix}...")
+    try:
+        df_mpc = pd.read_csv(mpc_csv)
+        df_base = pd.read_csv(baseline_csv)
+        
+        # Add Strategy label
+        df_mpc['Strategy'] = 'MPC'
+        df_base['Strategy'] = 'Baseline'
+        
+        # Combine
+        df_all = pd.concat([df_mpc, df_base])
+        
+        # Filter for successful requests only
+        df_all = df_all[df_all['success'] == True]
+        
+        plt.figure(figsize=(10, 6))
+        sns.ecdfplot(data=df_all, x='e2e_latency', hue='Strategy', palette={'MPC': 'g', 'Baseline': 'r'})
+        
+        plt.title(f'Latency CDF: MPC vs Baseline {trial_suffix}')
+        plt.xlabel('Latency (ms)')
+        plt.ylabel('Cumulative Probability')
+        plt.grid(True, alpha=0.3)
+        plt.axvline(1000, color='k', linestyle='--', label='SLO (1000ms)')
+        plt.legend()
+        
+        plot_path = os.path.join(output_dir, f'trace_replay_cdf{trial_suffix}.png')
+        plt.savefig(plot_path)
+        plt.close()
+        print(f"CDF plot saved to {plot_path}")
+        
+    except Exception as e:
+        print(f"Error plotting CDF: {e}")
+
 if __name__ == "__main__":
     # --- 实验配置 ---
     # 动态定位项目根目录并构建数据集的绝对路径
@@ -505,49 +544,50 @@ if __name__ == "__main__":
     RESULTS_DIR = os.path.join(SCRIPT_DIR, 'results')
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    THREAD_COUNT = 500  # Increased to 500 to overcome Network RTT bottleneck (was 200)
+    THREAD_COUNT = 200  # Reduced to 200 to avoid AWS Throttling (TooManyRequests)
 
     # --- 运行实验 ---
     # 1. 初始化Replayer并加载一次数据
     replayer = TraceReplayer(trace_file=TRACE_FILE_PATH, output_dir=RESULTS_DIR, thread_num=THREAD_COUNT)
     replayer.load_trace()
 
-    # 2. 运行MPC实验 (优先运行)
-    replayer.run_experiment(
-        strategy='mpc',
-        wcp_mode='strict',
-        output_filename='results_mpc.csv'
-    )
+    # Run 3 Trials
+    for trial in range(1, 4):
+        trial_suffix = f"_run{trial}"
+        print(f"\n{'#'*60}")
+        print(f"Starting Trace Replay Trial {trial}/3")
+        print(f"{'#'*60}")
 
-    # 3. 运行基线（Baseline）实验
-    replayer.run_experiment(
-        strategy='baseline',
-        wcp_mode='baseline',
-        output_filename='results_baseline.csv'
-    )
+        # 2. 运行MPC实验 (优先运行)
+        replayer.run_experiment(
+            strategy='mpc',
+            wcp_mode='strict',
+            output_filename=f'results_mpc{trial_suffix}.csv'
+        )
 
-    # 4. 运行静态优先级实验
-    replayer.run_experiment(
-        strategy='static',
-        wcp_mode='baseline',
-        output_filename='results_static.csv'
-    )
+        # 3. 运行基线（Baseline）实验
+        replayer.run_experiment(
+            strategy='baseline',
+            wcp_mode='baseline',
+            output_filename=f'results_baseline{trial_suffix}.csv'
+        )
 
-    # 5. 运行消融实验 (Ablation Studies)
-    # 5.1 No Fidelity (仅丢弃，不降级)
-    replayer.run_experiment(
-        strategy='mpc',
-        wcp_mode='wcp',
-        output_filename='results_ablation_no_fidelity.csv',
-        ablation_mode='no_fidelity'
-    )
-    
-    # 5.2 No Shedding (仅降级，不丢弃)
-    replayer.run_experiment(
-        strategy='mpc',
-        wcp_mode='wcp',
-        output_filename='results_ablation_no_shedding.csv',
-        ablation_mode='no_shedding'
-    )
+        # 4. 运行静态优先级实验
+        replayer.run_experiment(
+            strategy='static',
+            wcp_mode='baseline',
+            output_filename=f'results_static{trial_suffix}.csv'
+        )
+        
+        # 5. Plot CDF for this trial
+        plot_cdf(
+            os.path.join(RESULTS_DIR, f'results_mpc{trial_suffix}.csv'),
+            os.path.join(RESULTS_DIR, f'results_baseline{trial_suffix}.csv'),
+            RESULTS_DIR,
+            trial_suffix
+        )
+        
+        # Optional: Cool down between trials
+        time.sleep(5)
 
     print("所有实验已完成。")
