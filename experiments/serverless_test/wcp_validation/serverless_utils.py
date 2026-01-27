@@ -17,12 +17,12 @@ def get_lambda_client():
         
     config = Config(
         retries = {
-            'max_attempts': 3, # Enable retries to handle API Throttling (TooManyRequests)
+            'max_attempts': 5, # Increased to 5 to aggressively handle Rate Exceeded
             'mode': 'standard'
         },
         connect_timeout=5, 
-        read_timeout=4, # Increase slightly to 4s to allow for mild cold starts, but fail if severe
-        max_pool_connections=200 # Match thread count
+        read_timeout=6, # Increased to 6s to allow for deeper queues before giving up
+        max_pool_connections=200 
     )
     _GLOBAL_LAMBDA_CLIENT = boto3.client('lambda', 
                        region_name=os.environ.get('AWS_REGION','us-east-1'),

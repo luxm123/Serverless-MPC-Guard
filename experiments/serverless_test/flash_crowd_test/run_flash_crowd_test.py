@@ -32,8 +32,8 @@ def generate_flash_crowd_trace(output_path, duration_s=150):
     trace_data = []
     
     # Parameters
-    base_rps = 25
-    burst_rps = 150
+    base_rps = 20
+    burst_rps = 80 # Further reduced from 150 to 80 to prevent AWS Rate Exceeded
     base_duration = 2000 # ms
     slowdown_factor = 2.0
     
@@ -204,8 +204,8 @@ def run_flash_crowd_experiment():
     generate_flash_crowd_trace(trace_file)
     
     # Use high thread count to avoid client bottleneck
-    # Max concurrency ~300. But AWS Throttling occurs at 500. Lowered to 200.
-    replayer = DynamicReplayer(trace_file=trace_file, output_dir=output_dir, thread_num=200)
+    # Max concurrency ~300. But AWS Throttling occurs at 500. Lowered to 100.
+    replayer = DynamicReplayer(trace_file=trace_file, output_dir=output_dir, thread_num=100)
     
     target_funcs = [
         os.environ.get('MPC_CONTROLLER_NAME', 'MPC_Controller'),
