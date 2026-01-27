@@ -8,6 +8,9 @@ venv/
 .vscode/
 
 experiments/serverless_test/trace_experiment/results/*.csv
+experiments/serverless_test/flash_crowd_test/results/
+**/results/*.csv
+**/results/*.png
 main.tex
 *.pdf
 
@@ -15,3 +18,14 @@ main.tex
 worker_package_tmp/
 worker_optimized.zip
 
+```
+experiments/serverless_test/trace_experiment/results/*.csv
+experiments/serverless_test/flash_crowd_test/results/
+**/results/*.csv
+**/results/*.png
+main.tex
+*.pdf
+
+# Deployment artifacts
+worker_package_tmp/
+worker_optimized.zip
