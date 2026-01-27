@@ -215,8 +215,8 @@ def run_flash_crowd_experiment():
     print("Running MPC Strategy (Flash Crowd)")
     print(f"{'='*50}")
     force_cold_start(target_funcs)
-    # Use scalability_tuned profile for aggressive handling
-    replayer.run_experiment(strategy='mpc', wcp_mode='strict', output_filename='results_mpc.csv', mpc_profile='scalability_tuned')
+    # Use flash_crowd profile for tuned capacity (150.0) matching our thread count (200)
+    replayer.run_experiment(strategy='mpc', wcp_mode='strict', output_filename='results_mpc.csv', mpc_profile='flash_crowd')
     
     # 2. Run Baseline
     print(f"\n{'='*50}")

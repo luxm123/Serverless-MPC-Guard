@@ -53,7 +53,12 @@ def update_shadow_price(state, metrics, u):
     # Dual signals: load side + risk side
     load = max(cpu, min(1.0, memp))
     risk = max(timeout, error, slo)
-    queue_term = min(1.0, backlog / 1000.0)
+    
+    # Capacity for Backlog Normalization
+    # Default 1000.0 (High concurrency). Can be lowered (e.g. 150.0) for flash crowd tests.
+    backlog_cap = float(state.get('sp_backlog_capacity', 1000.0))
+    queue_term = min(1.0, backlog / backlog_cap)
+    
     # Weights (can be auto-calibrated by slow loop)
     kr = float(state.get('sp_kr', 0.5))
     kq = float(state.get('sp_kq', 0.2))

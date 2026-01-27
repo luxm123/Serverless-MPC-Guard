@@ -64,15 +64,31 @@ class MPCController:
         # [PROFILE OVERRIDE]
         # Check for scalability profile to apply aggressive tuning without modifying code permanently.
         # Check both Env Var (Lambda Config) and System State (Client Payload)
-        if os.environ.get('MPC_PROFILE') == 'scalability_tuned' or system_state.get('mpc_profile') == 'scalability_tuned':
+        profile_name = os.environ.get('MPC_PROFILE') or system_state.get('mpc_profile')
+        
+        if profile_name == 'scalability_tuned':
             overrides = {
                 'sp_queue_thr': 0.1, 'sp_kq_inc_fac': 1.2, 'sp_kq_inc_step': 0.02,
                 'sp_kq_dec_fac': 0.95, 'sp_kq_dec_step': 0.005,
                 'sp_decay': 0.01, 'sp_risk_low': 0.01, 'sp_load_low': 0.6, 'sp_queue_low': 0.05,
-                'traj_price_high': 100.0, 'traj_price_med': 20.0
+                'traj_price_high': 100.0, 'traj_price_med': 20.0,
+                'sp_backlog_capacity': 1000.0 # Default High Capacity
             }
             defaults.update(overrides)
-            # Force update system_state for these keys to ensure profile takes precedence over DB state
+            for k, v in overrides.items():
+                system_state[k] = v
+                
+        elif profile_name == 'flash_crowd':
+            # Flash Crowd Profile:
+            # Lower capacity to ensure 200 threads trigger congestion logic.
+            # Otherwise, 200 threads < 1000 capacity looks like "low load".
+            overrides = {
+                'sp_backlog_capacity': 150.0, # Trigger congestion at ~150 backlog
+                'sp_queue_thr': 0.1,         # React fast to queue
+                'sp_kq_inc_fac': 1.5,        # Aggressive price hike
+                'traj_price_high': 150.0     # High barrier
+            }
+            defaults.update(overrides)
             for k, v in overrides.items():
                 system_state[k] = v
 
