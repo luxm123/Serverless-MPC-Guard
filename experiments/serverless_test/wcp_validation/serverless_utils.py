@@ -17,8 +17,8 @@ def get_lambda_client():
         
     config = Config(
         retries = {
-            'max_attempts': 5, # Increased to 5 to aggressively handle Rate Exceeded
-            'mode': 'standard'
+            'max_attempts': 10, # Increased to 10 for extreme resilience
+            'mode': 'adaptive'  # Use adaptive mode for client-side rate limiting
         },
         connect_timeout=5, 
         read_timeout=6, # Increased to 6s to allow for deeper queues before giving up

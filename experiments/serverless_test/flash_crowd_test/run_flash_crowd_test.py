@@ -205,7 +205,9 @@ def run_flash_crowd_experiment():
     
     # Use high thread count to avoid client bottleneck
     # Max concurrency ~300. But AWS Throttling occurs at 500. Lowered to 100.
-    replayer = DynamicReplayer(trace_file=trace_file, output_dir=output_dir, thread_num=100)
+    THREADS = 100
+    print(f"CONF: Running with Thread_Num={THREADS} and Burst_RPS=80 to avoid Throttling.")
+    replayer = DynamicReplayer(trace_file=trace_file, output_dir=output_dir, thread_num=THREADS)
     
     target_funcs = [
         os.environ.get('MPC_CONTROLLER_NAME', 'MPC_Controller'),
