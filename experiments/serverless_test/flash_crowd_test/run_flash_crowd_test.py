@@ -152,7 +152,12 @@ def plot_time_series(mpc_csv, baseline_csv, output_dir, trial_suffix=''):
         df_all = pd.concat([df_mpc, df_base])
         
         # Bin data by second for cleaner plots
-        df_all['TimeBin'] = df_all['timestamp'].astype(int)
+        # TraceReplayer saves 'arrival_timestamp' (relative to start) or 'timestamp' (trace time)
+        # We need relative time from start of experiment.
+        # Check available columns
+        time_col = 'arrival_timestamp' if 'arrival_timestamp' in df_all.columns else 'timestamp'
+        
+        df_all['TimeBin'] = df_all[time_col].astype(int)
         
         sns.set_theme(style="whitegrid")
         fig, axes = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
