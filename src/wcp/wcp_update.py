@@ -32,6 +32,33 @@ def vec_add(u, v):
     """Vector addition: w = u + v"""
     return [u[i] + v[i] for i in range(len(u))]
 
+def clamp01(x):
+    return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
+
+def logit(p, eps=1e-6):
+    p = clamp01(float(p))
+    p = min(1.0 - eps, max(eps, p))
+    return math.log(p / (1.0 - p))
+
+def sigmoid(z):
+    if z > 50.0:
+        return 1.0
+    if z < -50.0:
+        return 0.0
+    return 1.0 / (1.0 + math.exp(-z))
+
+def safe_get_float(d, key, default=0.0):
+    try:
+        return float(d.get(key, default))
+    except Exception:
+        return float(default)
+
+def build_phi(name, last_val, metrics):
+    c = safe_get_float(metrics, 'concurrency', 0.0)
+    b = safe_get_float(metrics, 'backlog', 0.0)
+    s = safe_get_float(metrics, 'service_time_ms', 0.0)
+    return [1.0, float(last_val), c, b, s]
+
 # --- 2. RLS Class (Parameterized Dynamics Model) ---
 
 class RLS:
@@ -58,13 +85,17 @@ class RLS:
         # 1. Compute gain vector: k = (P * phi) / (lambda + phi^T * P * phi)
         P_phi = mat_vec(self.P, phi)
         phi_P_phi = vec_dot(phi, P_phi)
-        denom = self.lambda_factor + phi_P_phi
+        # Denominator protection: avoid division by zero or negative values
+        denom = max(1e-9, self.lambda_factor + phi_P_phi)
         
         k = [val / denom for val in P_phi]
         
         # 2. Update parameters: theta = theta + k * (y - phi^T * theta)
         prediction = vec_dot(phi, self.theta)
         error = y - prediction
+        
+        # Huber-like error clipping (optional safety): prevents outliers from blowing up parameters
+        # error = max(-500.0, min(500.0, error)) 
         
         theta_correction = [val * error for val in k]
         self.theta = vec_add(self.theta, theta_correction)
@@ -73,7 +104,16 @@ class RLS:
         # Term: k * (phi^T * P) = k * (P_phi)^T (since P is symmetric)
         k_P_phi_T = vec_outer(k, P_phi)
         P_numer = mat_add(self.P, mat_scale(k_P_phi_T, -1.0))
-        self.P = mat_scale(P_numer, 1.0 / self.lambda_factor)
+        new_P = mat_scale(P_numer, 1.0 / self.lambda_factor)
+        
+        # Numerical stability: enforce symmetry P = 0.5 * (P + P^T)
+        rows = len(new_P)
+        for i in range(rows):
+            for j in range(i + 1, rows):
+                avg = 0.5 * (new_P[i][j] + new_P[j][i])
+                new_P[i][j] = avg
+                new_P[j][i] = avg
+        self.P = new_P
         
         return prediction
 
@@ -116,8 +156,6 @@ def wcp_update(state, metrics, alpha=0.1):
     # Define metric vector order
     metric_names = ['p90', 'timeout_rate', 'error_rate', 'memory_pressure']
     
-    # 1. Extract Current Observation y_k
-    # Default values handle missing metrics gracefully, though in strict mode we might want to error out.
     y_k = [
         float(metrics.get('p90', 0.0)),
         float(metrics.get('timeout_rate', 0.0)),
@@ -125,18 +163,13 @@ def wcp_update(state, metrics, alpha=0.1):
         float(metrics.get('memory_pressure', 0.0))
     ]
     
-    # 2. Retrieve last prediction (y_hat_k)
-    # If first run, use current metrics as naive prediction (or zeros)
     y_hat_k = state.get('last_prediction', [])
     if not y_hat_k or len(y_hat_k) != len(y_k):
         y_hat_k = [0.0] * len(y_k)
     
-    # 3. Calculate Global L2 Non-conformity Score (weighted)
-    # Ensure y_hat_k is list of floats
     if not isinstance(y_hat_k, list):
-         y_hat_k = [float(y_hat_k)] * len(y_k) # Fallback if state corrupted
+         y_hat_k = [float(y_hat_k)] * len(y_k)
     
-    # Handle length mismatch gracefully (e.g. if metrics changed)
     min_len = min(len(y_k), len(y_hat_k))
     weights = [1.0] * min_len
     l2_sum = 0.0
@@ -145,7 +178,6 @@ def wcp_update(state, metrics, alpha=0.1):
         l2_sum += weights[i] * (diff * diff)
     score_k = math.sqrt(l2_sum)
     
-    # 4. Update Score History
     if 'scores_l1' not in state:
         state['scores_l1'] = []
     
@@ -160,11 +192,9 @@ def wcp_update(state, metrics, alpha=0.1):
         arr.append(residuals[i])
         state['scores_dim'][name] = arr
     
-    # Adaptive sliding window
     prev_avg = sum(state['scores_l1'][:-1]) / max(1, len(state['scores_l1']) - 1) if len(state['scores_l1']) > 1 else score_k
     window_len = int(state.get('wcp_window', 100))
     
-    # Adaptive Thresholds
     spike_thr = float(state.get('wcp_spike_thr', 1.5))
     drop_thr = float(state.get('wcp_drop_thr', 0.5))
     win_inc = int(state.get('wcp_win_inc', 20))
@@ -180,57 +210,54 @@ def wcp_update(state, metrics, alpha=0.1):
     if len(state['scores_l1']) > window_len:
         state['scores_l1'] = state['scores_l1'][-window_len:]
         
-    # 5. RLS Update & Prediction for Next Step
-    # We use independent RLS for each dimension for simplicity and stability.
-    # Feature vector phi = [1, y_{k-1}] (AR(1) process)
-    # Note: For the update step, we use the PREVIOUS observation as feature.
-    # But to keep it stateless simple:
-    # We maintain RLS state. The 'input' to RLS for this step is the PREVIOUS y.
-    # Wait, RLS models y_k = theta * phi_k. 
-    # If we model y_k based on y_{k-1}, then phi_k = [1, y_{k-1}].
-    # We need to store y_{k-1} in state.
+    last_y = state.get('last_y', y_k)
     
-    last_y = state.get('last_y', y_k) # Default to current if missing
-    phi = [1.0, 0.0] # Placeholder
+    cfg = state.get('rls_cfg', {})
+    if not cfg:
+        cfg = {
+            'p90': {'lambda': 0.97, 'delta': 10.0, 'transform': 'identity'},
+            'timeout_rate': {'lambda': 0.99, 'delta': 10.0, 'transform': 'logit'},
+            'error_rate': {'lambda': 0.99, 'delta': 10.0, 'transform': 'logit'},
+            'memory_pressure': {'lambda': 0.995, 'delta': 10.0, 'transform': 'identity'},
+        }
+        state['rls_cfg'] = cfg
     
     if 'rls_states' not in state:
+        feat_len = 5
         init = {}
-        for i, name in enumerate(metric_names):
-            prev_val = float(last_y[i]) if i < len(last_y) else 0.0
-            init[name] = {
-                'theta': [0.0, 1.0],
-                'P': [[10.0, 0.0], [0.0, 10.0]]
-            }
+        for name in metric_names:
+            delta = float(cfg.get(name, {}).get('delta', 10.0))
+            P = [[delta if r == c else 0.0 for c in range(feat_len)] for r in range(feat_len)]
+            init[name] = {'theta': [0.0] * feat_len, 'P': P}
         state['rls_states'] = init
     
     y_hat_next = []
     
     for i, name in enumerate(metric_names):
-        # Feature: [1, previous_value_of_this_metric]
-        # Using AR(1) per dimension
-        
-        # Safe access to last_y
-        if i < len(last_y):
-            phi = [1.0, float(last_y[i])]
-        else:
-            phi = [1.0, 0.0]
-        
+        prev_val = float(last_y[i]) if i < len(last_y) else 0.0
+        phi = build_phi(name, prev_val, metrics)
         rls_data = state['rls_states'].get(name, {})
-        rls = RLS.from_dict(rls_data, n_features=2)
-        
-        # Update RLS with CURRENT observation y_k[i]
-        # The model predicted y_k[i] using last_y[i]
-        current_val = float(y_k[i]) if i < len(y_k) else 0.0
-        
-        rls.update(phi, current_val)
-        
-        # Predict NEXT value y_{k+1}
-        # Feature for next step is CURRENT observation y_k[i]
-        phi_next = [1.0, current_val]
-        pred_val = rls.predict(phi_next)
+        feat_len = len(phi)
+        rls = RLS.from_dict(rls_data, n_features=feat_len)
+        if len(rls.theta) != feat_len or len(rls.P) != feat_len:
+            lam = float(state['rls_cfg'].get(name, {}).get('lambda', 0.99))
+            delta = float(state['rls_cfg'].get(name, {}).get('delta', 10.0))
+            rls = RLS(feat_len, lambda_factor=lam, delta=delta)
+        rls.lambda_factor = float(state['rls_cfg'].get(name, {}).get('lambda', rls.lambda_factor))
+        current_raw = float(y_k[i]) if i < len(y_k) else 0.0
+        tform = state['rls_cfg'].get(name, {}).get('transform', 'identity')
+        y_for_update = logit(current_raw) if tform == 'logit' else current_raw
+        rls.update(phi, y_for_update)
+        phi_next = build_phi(name, current_raw, metrics)
+        pred_z = rls.predict(phi_next)
+        if tform == 'logit':
+            pred_val = sigmoid(pred_z)
+        else:
+            # Physical clamping for identity metrics (p90, memory_pressure)
+            pred_val = max(0.0, pred_z)
+            if name == 'memory_pressure':
+                pred_val = min(2.0, pred_val) # Pressure rarely exceeds 200% in model
         y_hat_next.append(pred_val)
-        
-        # Save RLS state
         state['rls_states'][name] = rls.to_dict()
         
     # Store current y as last_y for next iteration
