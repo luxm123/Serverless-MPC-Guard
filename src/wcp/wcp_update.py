@@ -53,11 +53,9 @@ def safe_get_float(d, key, default=0.0):
     except Exception:
         return float(default)
 
-def build_phi(name, last_val, metrics):
-    c = safe_get_float(metrics, 'concurrency', 0.0)
-    b = safe_get_float(metrics, 'backlog', 0.0)
-    s = safe_get_float(metrics, 'service_time_ms', 0.0)
-    return [1.0, float(last_val), c, b, s]
+def build_phi(last_val, concurrency, backlog, service_time_ms):
+    """Constructs the feature vector phi for the RLS model."""
+    return [1.0, float(last_val), float(concurrency), float(backlog), float(service_time_ms)]
 
 # --- 2. RLS Class (Parameterized Dynamics Model) ---
 
@@ -136,65 +134,34 @@ class RLS:
 
 # --- 3. Main WCP Logic (Strict Implementation) ---
 
-def wcp_update(state, metrics, alpha=0.1):
+def wcp_update(state, p90_latency, concurrency, backlog, service_time_ms, alpha=0.1):
     """
-    Strict WCP Update Implementation.
-    
-    1. Global L1 Non-conformity Score: s_k = ||y_k - y_hat_k||_1
-    2. RLS Prediction: y_hat_{k+1} = f(y_k; theta)
-    3. Weighted Quantile with Infinite Mass Point
-    
+    Strict WCP Update for P90 Latency.
+
     Args:
         state (dict): Persistent state (RLS params, score history, last_prediction).
-        metrics (dict): Current observations.
+        p90_latency (float): The current observed P90 latency.
+        concurrency (float): Current request concurrency.
+        backlog (float): Current task backlog.
+        service_time_ms (float): Current average service time.
         alpha (float): Target error rate.
-        
+
     Returns:
         tuple: (prediction_next, uncertainty_radius, debug_info)
     """
+    y_k = float(p90_latency)
+    y_hat_k = float(state.get('last_prediction', 0.0))
+
+    # Non-conformity score is the absolute error
+    score_k = abs(y_k - y_hat_k)
     
-    # Define metric vector order
-    metric_names = ['p90', 'timeout_rate', 'error_rate', 'memory_pressure']
-    
-    y_k = [
-        float(metrics.get('p90', 0.0)),
-        float(metrics.get('timeout_rate', 0.0)),
-        float(metrics.get('error_rate', 0.0)),
-        float(metrics.get('memory_pressure', 0.0))
-    ]
-    
-    y_hat_k = state.get('last_prediction', [])
-    if not y_hat_k or len(y_hat_k) != len(y_k):
-        y_hat_k = [0.0] * len(y_k)
-    
-    if not isinstance(y_hat_k, list):
-         y_hat_k = [float(y_hat_k)] * len(y_k)
-    
-    min_len = min(len(y_k), len(y_hat_k))
-    weights = [1.0] * min_len
-    l2_sum = 0.0
-    for i in range(min_len):
-        diff = y_k[i] - float(y_hat_k[i])
-        l2_sum += weights[i] * (diff * diff)
-    score_k = math.sqrt(l2_sum)
-    
-    if 'scores_l1' not in state:
-        state['scores_l1'] = []
-    
-    state['scores_l1'].append(score_k)
-    if 'scores_dim' not in state:
-        state['scores_dim'] = {}
-    residuals = []
-    for i in range(min_len):
-        residuals.append(abs(y_k[i] - float(y_hat_k[i])))
-    for i, name in enumerate(metric_names[:min_len]):
-        arr = state['scores_dim'].get(name, [])
-        arr.append(residuals[i])
-        state['scores_dim'][name] = arr
-    
-    prev_avg = sum(state['scores_l1'][:-1]) / max(1, len(state['scores_l1']) - 1) if len(state['scores_l1']) > 1 else score_k
+    if 'scores' not in state:
+        state['scores'] = []
+    state['scores'].append(score_k)
+
+    # --- Adaptive Window for Scores ---
+    prev_avg = sum(state['scores'][:-1]) / max(1, len(state['scores']) - 1) if len(state['scores']) > 1 else score_k
     window_len = int(state.get('wcp_window', 100))
-    
     spike_thr = float(state.get('wcp_spike_thr', 1.5))
     drop_thr = float(state.get('wcp_drop_thr', 0.5))
     win_inc = int(state.get('wcp_win_inc', 20))
@@ -207,157 +174,47 @@ def wcp_update(state, metrics, alpha=0.1):
     elif score_k < drop_thr * prev_avg:
         window_len = max(win_min, window_len - win_dec)
     state['wcp_window'] = window_len
-    if len(state['scores_l1']) > window_len:
-        state['scores_l1'] = state['scores_l1'][-window_len:]
-        
-    last_y = state.get('last_y', y_k)
+    if len(state['scores']) > window_len:
+        state['scores'] = state['scores'][-window_len:]
+
+    # --- RLS Update and Prediction ---
+    last_y = float(state.get('last_y', 0.0))
+    phi = build_phi(last_y, concurrency, backlog, service_time_ms)
+    feat_len = len(phi)
+
+    rls_data = state.get('rls_state', {})
+    rls = RLS.from_dict(rls_data, n_features=feat_len)
+    if len(rls.theta) != feat_len or len(rls.P) != feat_len:
+        rls = RLS(feat_len, lambda_factor=0.97, delta=10.0)
     
-    cfg = state.get('rls_cfg', {})
-    if not cfg:
-        cfg = {
-            'p90': {'lambda': 0.97, 'delta': 10.0, 'transform': 'identity'},
-            'timeout_rate': {'lambda': 0.99, 'delta': 10.0, 'transform': 'logit'},
-            'error_rate': {'lambda': 0.99, 'delta': 10.0, 'transform': 'logit'},
-            'memory_pressure': {'lambda': 0.995, 'delta': 10.0, 'transform': 'identity'},
-        }
-        state['rls_cfg'] = cfg
+    # Update RLS with current observation
+    rls.update(phi, y_k)
     
-    if 'rls_states' not in state:
-        feat_len = 5
-        init = {}
-        for name in metric_names:
-            delta = float(cfg.get(name, {}).get('delta', 10.0))
-            P = [[delta if r == c else 0.0 for c in range(feat_len)] for r in range(feat_len)]
-            init[name] = {'theta': [0.0] * feat_len, 'P': P}
-        state['rls_states'] = init
-    
-    y_hat_next = []
-    
-    for i, name in enumerate(metric_names):
-        prev_val = float(last_y[i]) if i < len(last_y) else 0.0
-        phi = build_phi(name, prev_val, metrics)
-        rls_data = state['rls_states'].get(name, {})
-        feat_len = len(phi)
-        rls = RLS.from_dict(rls_data, n_features=feat_len)
-        if len(rls.theta) != feat_len or len(rls.P) != feat_len:
-            lam = float(state['rls_cfg'].get(name, {}).get('lambda', 0.99))
-            delta = float(state['rls_cfg'].get(name, {}).get('delta', 10.0))
-            rls = RLS(feat_len, lambda_factor=lam, delta=delta)
-        rls.lambda_factor = float(state['rls_cfg'].get(name, {}).get('lambda', rls.lambda_factor))
-        current_raw = float(y_k[i]) if i < len(y_k) else 0.0
-        tform = state['rls_cfg'].get(name, {}).get('transform', 'identity')
-        y_for_update = logit(current_raw) if tform == 'logit' else current_raw
-        rls.update(phi, y_for_update)
-        phi_next = build_phi(name, current_raw, metrics)
-        pred_z = rls.predict(phi_next)
-        if tform == 'logit':
-            pred_val = sigmoid(pred_z)
-        else:
-            # Physical clamping for identity metrics (p90, memory_pressure)
-            pred_val = max(0.0, pred_z)
-            if name == 'memory_pressure':
-                pred_val = min(2.0, pred_val) # Pressure rarely exceeds 200% in model
-        y_hat_next.append(pred_val)
-        state['rls_states'][name] = rls.to_dict()
-        
-    # Store current y as last_y for next iteration
+    # Predict next step using the updated model
+    next_phi = build_phi(y_k, concurrency, backlog, service_time_ms)
+    y_hat_next = rls.predict(next_phi)
+
+    # Persist state
+    state['rls_state'] = rls.to_dict()
     state['last_y'] = y_k
     state['last_prediction'] = y_hat_next
-    
-    # 6. Weighted Quantile (Strict)
-    # Adaptive rho (forgetting factor)
-    # If volatility is high (large variance in recent scores), decrease rho to adapt faster.
-    # If stable, increase rho to 0.99+ for better statistical power.
-    
-    scores = state['scores_l1']
-    n = len(scores)
 
-    recent_scores = scores[-10:] if n > 10 else scores
-    if len(recent_scores) > 1:
-        avg_s = sum(recent_scores) / len(recent_scores)
-        var_s = sum((x - avg_s)**2 for x in recent_scores) / (len(recent_scores) - 1)
-        
-        # Heuristic: High variance -> lower rho
-        if var_s > 100.0: # Arbitrary threshold for "high volatility"
-            rho = 0.90
-        elif var_s > 10.0:
-            rho = 0.95
-        else:
-            rho = 0.99
-    else:
-        rho = 0.98
-        
-    # Weights w_i = rho^{n-i-1}
-    
-    if n == 0:
-        uncertainty = 0.0
-    else:
-        weights = [rho**(n - 1 - i) for i in range(n)]
-        target_mass = 1.0 - float(state.get('wcp_alpha', alpha))
-        from .stats import weighted_quantile
-        uncertainty = weighted_quantile(scores, weights, target_mass, inf_weight=1.0)
-    unc_dict = {}
-    for name in metric_names:
-        arr = state['scores_dim'].get(name, [])
-        m = len(arr)
-        if m == 0:
-            unc_dict[name] = 0.0
-        else:
-            w = [rho**(m - 1 - i) for i in range(m)]
-            from .stats import weighted_quantile
-            unc_dict[name] = weighted_quantile(arr, w, target_mass, inf_weight=1.0)
+    # --- Weighted Quantile Calculation ---
+    scores = state['scores']
+    sorted_scores = sorted(scores, reverse=True)
+    q_index = math.ceil((len(scores) + 1) * (1 - alpha)) - 1
+    q_index = max(0, min(len(scores) - 1, q_index))
+    uncertainty = sorted_scores[q_index]
 
-    # Dynamic alpha calibration
-    current_alpha = float(state.get('wcp_alpha', alpha))
-    risk_signal = max(metrics.get('timeout_rate', 0.0), metrics.get('error_rate', 0.0))
-    mp = metrics.get('memory_pressure', 0.0)
-    risk_thr = float(state.get('wcp_risk_thr', 0.05))
-    mem_thr = float(state.get('wcp_mem_thr', 0.8))
-    
-    # Parametric steps
-    alpha_min = float(state.get('wcp_alpha_min', 0.01))
-    alpha_dec_factor = float(state.get('wcp_alpha_dec', 0.9))
-    alpha_dec_step = float(state.get('wcp_alpha_step_dec', 0.005))
-    alpha_inc_factor = float(state.get('wcp_alpha_inc', 1.05))
-    alpha_inc_step = float(state.get('wcp_alpha_step_inc', 0.002))
-    
-    # If we are seeing timeouts or errors, we are under-provisioning.
-    # We need to increase the confidence level (1-alpha), i.e., DECREASE alpha.
-    # This will push the quantile higher (e.g. p90 -> p95), allocating more resources.
-    if risk_signal > risk_thr:
-        # Decrease alpha to be safer (min 0.01)
-        current_alpha = max(alpha_min, current_alpha * alpha_dec_factor - alpha_dec_step)
-    elif mp > mem_thr:
-        # If memory pressure is high but NO timeouts yet, we might be close to limit.
-        # But if we increase resources, we might OOM?
-        # Actually usually 'memory_pressure' means system load.
-        # If we are under pressure, maybe we should be safer too?
-        # Or maybe we want to shed load (increase alpha)?
-        # Let's assume 'memory_pressure' means we are running out of RAM, so we should be careful.
-        # But if we reduce resources (increase alpha), we might cause OOM/Timeout?
-        # Let's stick to risk_signal for safety adaptation.
-        pass
-    else:
-        # If everything is stable (no risk), we can slowly relax (increase alpha) to save cost.
-        target_alpha = alpha
-        if current_alpha < target_alpha:
-             current_alpha = min(target_alpha, current_alpha * alpha_inc_factor + alpha_inc_step)
-
-    state['wcp_alpha'] = current_alpha
-
-    # 7. Construct Result
-    # Return structure matching what MPC expects, but strictly derived.
-    # We return prediction vector and scalar uncertainty.
-    
-    # Map back to dict for readability/compatibility
-    pred_dict = {
-        'p90': y_hat_next[0],
-        'timeout_rate': y_hat_next[1],
-        'error_rate': y_hat_next[2],
-        'memory_pressure': y_hat_next[3]
+    debug_info = {
+        'score_k': score_k,
+        'wcp_window': window_len,
+        'quantile_idx': q_index,
+        'sorted_scores_len': len(sorted_scores),
+        'rls_theta': rls.theta
     }
-    
-    return pred_dict, unc_dict if unc_dict else uncertainty, {'scores_len': n, 'rls_updated': True}
+
+    return y_hat_next, uncertainty, debug_info
 
 def slow_loop_calibration(state, metrics):
     slo = float(metrics.get('slo_violation_rate', 0.0))
