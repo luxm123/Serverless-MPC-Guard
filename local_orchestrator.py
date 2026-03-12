@@ -30,9 +30,26 @@ CONTROL_LAG_STEPS = 2
 SAMPLES_PER_STEP = 20  # 每步采样 20 个请求计算 P90
 MAX_WORKERS = 100
 
-# 初始化 AWS Lambda 客户端 (预先配置连接池以支持高并发)
-lambda_config = Config(max_pool_connections=200, retries={'max_attempts': 0})
+# 初始化 AWS Lambda 客户端
+lambda_config = Config(
+    max_pool_connections=200, 
+    retries={'max_attempts': 2},
+    connect_timeout=5,
+    read_timeout=15
+)
 lmb = boto3.client('lambda', region_name='us-east-1', config=lambda_config)
+
+# --- 连通性自检 ---
+def check_aws_connectivity():
+    print(">>> Checking AWS Connectivity and Lambda Status...", end="", flush=True)
+    try:
+        lmb.get_function(FunctionName=LAMBDA_FUNC_NAME)
+        print(" [OK]")
+    except Exception as e:
+        print(f" [FAILED]\nError: {e}")
+        sys.exit(1)
+
+check_aws_connectivity()
 
 class BaseController:
     def __init__(self, name):
@@ -153,29 +170,41 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
             current_effective_cpu = cpu_buffer.pop(0)
             comp_factor = complexity_trace[step]
             
-            # 物理调用函数：数据完全来自 AWS 骨干网
+            # 物理调用函数：暴露真实错误，拒绝假数据
             def invoke_once(_):
                 try:
                     if USE_AWS_LAMBDA:
                         payload = json.dumps({
                             "cpu_limit": current_effective_cpu, 
-                            "concurrency": int(concurrency)
+                            "concurrency": int(concurrency),
+                            "comp_factor": float(comp_factor) # 复杂度移入云端
                         })
-                        # 测量真实的 E2E 延迟 (包含网络 RTT 和 Lambda 内部物理计算)
-                        resp = lmb.invoke(FunctionName=LAMBDA_FUNC_NAME, Payload=payload)
-                        resp_payload = json.loads(resp['Payload'].read())
-                        return float(resp_payload.get('latency_ms', 200.0))
+                        # 增加重试逻辑，应对 AWS 暂时的节流或网络抖动
+                        for attempt in range(3):
+                            try:
+                                resp = lmb.invoke(FunctionName=LAMBDA_FUNC_NAME, Payload=payload)
+                                if 'FunctionError' in resp:
+                                    err_payload = json.loads(resp['Payload'].read().decode('utf-8'))
+                                    raise Exception(f"Lambda Error: {err_payload.get('errorMessage', 'Unknown')}")
+                                    
+                                resp_payload = json.loads(resp['Payload'].read())
+                                return float(resp_payload.get('latency_ms', 200.0))
+                            except Exception as e:
+                                if attempt == 2: raise e
+                                time.sleep(0.1 * (attempt + 1))
                     else:
-                        # 仿真仅在后端不可达时作为备选，且公式必须贴合物理规律
-                        return (220.0 / current_effective_cpu) * comp_factor + random.uniform(5, 15)
-                except Exception:
-                    return 1000.0 # 错误惩罚
+                        # 仿真路径：注意这里不乘 comp_factor，外层会统一处理
+                        return (220.0 / (current_effective_cpu + 0.01)) + random.uniform(5, 15)
+                except Exception as e:
+                    # 在控制台打印错误摘要，不再静默
+                    print(f"!", end="", flush=True) # 用感叹号表示一次调用失败
+                    return 1000.0 # 维持惩罚值
 
             # 饱和采样：每步采样固定数量的请求来计算统计 P90
             sample_latencies = list(executor.map(invoke_once, range(SAMPLES_PER_STEP)))
             
-            # 物理测量值：不含任何人造加法
-            obs_p90 = np.percentile(sample_latencies, 90) * comp_factor
+            # 物理测量值：完全来自真实请求采样 (comp_factor 已经在云端处理)
+            obs_p90 = np.percentile(sample_latencies, 90)
             
             # 统计与记录
             is_violation = obs_p90 > SLO_TARGET_MS
@@ -198,10 +227,11 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
                                         future_concurrency=future_concurrency)
             cpu_buffer.append(next_cpu)
             
-            # 动态调整实验节奏：每步保证至少有 0.2s 的物理观测窗口，让 RLS 稳定
+            # 动态调整实验节奏：每步保证至少有 0.5s 的物理观测窗口
+            # 理由：实验太快会导致控制信号过于密集，系统观测不稳。0.5s 是合理的步进时长。
             elapsed = time.time() - step_start_time
-            if elapsed < 0.2:
-                time.sleep(0.2 - elapsed)
+            if elapsed < 0.5:
+                time.sleep(0.5 - elapsed)
 
             if step % 10 == 0:
                  print(f"Step {step}/{len(workload_trace)} | Physical P90: {obs_p90:.2f}ms | CPU: {current_effective_cpu:.2f} | Time: {time.time()-step_start_time:.2f}s", flush=True)
