@@ -2,6 +2,7 @@ import pandas as pd
 import json
 import os
 import numpy as np
+import random
 
 def parse_alibaba_gpu_trace(csv_path, output_json, max_steps=1200):
     """
@@ -59,7 +60,6 @@ def parse_alibaba_gpu_trace(csv_path, output_json, max_steps=1200):
     print(f"Successfully saved {len(trace)} steps (approx 40min) to {output_json}")
 
 if __name__ == "__main__":
-    import random # 确保 random 已导入
     csv_path = "benchmarks/clusterdata/cluster-trace-gpu-v2023/csv/openb_pod_list_cpu100.csv"
     output_json = "real_workload.json"
     if os.path.exists(csv_path):

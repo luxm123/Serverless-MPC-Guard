@@ -178,28 +178,42 @@ def create_table(table_name, key_name):
     except dynamodb.exceptions.ResourceInUseException:
         print(f"  - {table_name} already exists.")
 
-def zip_function(folder_path, extra_dirs=None):
+def zip_function(folder_path, extra_dirs=None, ignore_patterns=None):
+    if ignore_patterns is None:
+        ignore_patterns = [
+            '.git', '__pycache__', 'node_modules', '.ipynb_checkpoints',
+            'dataset/amzn_fine_food_reviews', 'dataset/file', 'dataset/video',
+            'azure', 'google', 'openwhisk', 'docs', 'clusterdata'
+        ]
+        
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
         if os.path.isdir(folder_path):
             base = folder_path
             for root, dirs, files in os.walk(folder_path):
+                # 过滤目录
+                dirs[:] = [d for d in dirs if not any(p in os.path.join(root, d) for p in ignore_patterns)]
+                
                 for file in files:
-                    if file != 'function.zip':
+                    if file != 'function.zip' and not any(p in file for p in ignore_patterns):
                         full = os.path.join(root, file)
                         arc = os.path.relpath(full, base)
                         z.write(full, arc)
-        else:
-            z.write(folder_path, os.path.basename(folder_path))
+                        
         if extra_dirs:
             for d in extra_dirs:
                 if os.path.isdir(d):
                     base = d
                     for root, dirs, files in os.walk(d):
+                        # 过滤目录
+                        dirs[:] = [d for d in dirs if not any(p in os.path.join(root, d) for p in ignore_patterns)]
+                        
                         for file in files:
-                            full = os.path.join(root, file)
-                            arc = os.path.join(os.path.basename(d), os.path.relpath(full, base))
-                            z.write(full, arc)
+                            if not any(p in file for p in ignore_patterns):
+                                full = os.path.join(root, file)
+                                # 保持 extra_dirs 的顶层目录名
+                                arc = os.path.join(os.path.basename(d), os.path.relpath(full, base))
+                                z.write(full, arc)
     buf.seek(0)
     return buf.read()
 
@@ -220,14 +234,12 @@ def wait_for_function_update(func_name):
         time.sleep(1)
     print("    Warning: Timeout waiting for update.")
 
-def deploy_lambda(func_name, folder, role_arn, runtime='python3.9', handler='lambda_function.lambda_handler', env_vars={}):
+def deploy_lambda(func_name, folder, role_arn, runtime='python3.9', handler='lambda_function.lambda_handler', env_vars={}, extra_dirs=None):
     print(f"Deploying Lambda: {func_name} ({runtime})...")
     
-    # 增加 benchmarks/function_bench 到打包目录，确保云端能引用到真实负载代码
-    extra_dirs = [
-        os.path.join(os.getcwd(), 'src'),
-        os.path.join(os.getcwd(), 'benchmarks', 'function_bench')
-    ]
+    if extra_dirs is None:
+        extra_dirs = [os.path.join(os.getcwd(), 'src')]
+        
     zip_content = zip_function(folder, extra_dirs=extra_dirs)
     env_config = {'Variables': env_vars}
     tracing_config = {'Mode': 'Active'} # Enable X-Ray
@@ -442,9 +454,19 @@ if __name__ == '__main__':
     # 2. Deploy Lambdas
     cwd = os.getcwd()
     
+    # MPC Controller 只需核心逻辑
     mpc_arn = deploy_lambda(MPC_FUNC_NAME, os.path.join(cwd, 'lambdas', 'mpc_controller'), role_arn)
-    worker_arn = deploy_lambda(WORKER_FUNC_NAME, os.path.join(cwd, 'lambdas', 'business_worker'), role_arn)
-    recovery_arn = deploy_lambda(RECOVERY_WORKER_NAME, os.path.join(cwd, 'lambdas', 'recovery_worker'), role_arn, env_vars={'QUEUE_URL': recovery_queue_url, 'TABLE_NAME': DYNAMODB_DATA_TABLE})
+    
+    # Business Worker 需要 benchmarks 进行真实负载运行
+    worker_extra = [
+        os.path.join(cwd, 'src'),
+        os.path.join(cwd, 'benchmarks', 'function_bench')
+    ]
+    worker_arn = deploy_lambda(WORKER_FUNC_NAME, os.path.join(cwd, 'lambdas', 'business_worker'), role_arn, extra_dirs=worker_extra)
+    
+    # Recovery Worker 只需核心逻辑
+    recovery_arn = deploy_lambda(RECOVERY_WORKER_NAME, os.path.join(cwd, 'lambdas', 'recovery_worker'), role_arn, 
+                                 env_vars={'QUEUE_URL': recovery_queue_url, 'TABLE_NAME': DYNAMODB_DATA_TABLE})
     
     # 3. Deploy Step Function
     replacements = {
