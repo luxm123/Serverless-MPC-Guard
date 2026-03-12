@@ -6,14 +6,17 @@ import pandas as pd
 import random
 import sys
 import os
-
 import boto3
 from botocore.config import Config
-from wcp.wcp_update import RLS, build_phi, wcp_update
 
-# --- 路径配置 ---
+# --- 路径配置 (必须在 import wcp 之前) ---
 sys.path.append(os.path.join(os.getcwd(), 'src'))
-# try-except moved to top-level imports for standard practice
+
+try:
+    from wcp.wcp_update import RLS, build_phi, wcp_update
+except ImportError:
+    print("Error: Could not import wcp_update. Make sure you are running from the project root.")
+    sys.exit(1)
 
 # --- 实验超参数 ---
 SLO_TARGET_MS = 800.0  
