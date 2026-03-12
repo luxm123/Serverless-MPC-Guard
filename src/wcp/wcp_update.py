@@ -53,9 +53,14 @@ def safe_get_float(d, key, default=0.0):
     except Exception:
         return float(default)
 
-def build_phi(last_val, concurrency, backlog, service_time_ms):
+def build_phi(concurrency, cpu, backlog, service_time_ms):
     """Constructs the feature vector phi for the RLS model."""
-    return [1.0, float(last_val), float(concurrency), float(backlog), float(service_time_ms)]
+    # latency is roughly proportional to concurrency and inversely proportional to cpu
+    # We use concurrency and cpu_inv as core features.
+    # To handle non-linearity, we add concurrency^2 and cpu_inv^2 (Taylor expansion style)
+    c = float(concurrency)
+    u_inv = 1.0 / (float(cpu) + 0.05)
+    return [1.0, c, u_inv, c * u_inv, c**2, u_inv**2]
 
 # --- 2. RLS Class (Parameterized Dynamics Model) ---
 
@@ -123,7 +128,7 @@ class RLS:
         return {'theta': self.theta, 'P': self.P}
 
     @staticmethod
-    def from_dict(d, n_features=2):
+    def from_dict(d, n_features=6):
         rls = RLS(n_features)
         if d and 'theta' in d and 'P' in d:
             rls.theta = [float(x) for x in d['theta']]
@@ -134,7 +139,7 @@ class RLS:
 
 # --- 3. Main WCP Logic (Strict Implementation) ---
 
-def wcp_update(state, p90_latency, concurrency, backlog, service_time_ms, alpha=0.1):
+def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, alpha=0.1):
     """
     Strict WCP Update for P90 Latency.
 
@@ -142,6 +147,7 @@ def wcp_update(state, p90_latency, concurrency, backlog, service_time_ms, alpha=
         state (dict): Persistent state (RLS params, score history, last_prediction).
         p90_latency (float): The current observed P90 latency.
         concurrency (float): Current request concurrency.
+        cpu (float): Current CPU limit.
         backlog (float): Current task backlog.
         service_time_ms (float): Current average service time.
         alpha (float): Target error rate.
@@ -178,8 +184,8 @@ def wcp_update(state, p90_latency, concurrency, backlog, service_time_ms, alpha=
         state['scores'] = state['scores'][-window_len:]
 
     # --- RLS Update and Prediction ---
-    last_y = float(state.get('last_y', 0.0))
-    phi = build_phi(last_y, concurrency, backlog, service_time_ms)
+    # Model: y = f(concurrency, cpu)
+    phi = build_phi(concurrency, cpu, backlog, service_time_ms)
     feat_len = len(phi)
 
     rls_data = state.get('rls_state', {})
@@ -191,12 +197,13 @@ def wcp_update(state, p90_latency, concurrency, backlog, service_time_ms, alpha=
     rls.update(phi, y_k)
     
     # Predict next step using the updated model
-    next_phi = build_phi(y_k, concurrency, backlog, service_time_ms)
-    y_hat_next = rls.predict(next_phi)
+    # Note: In the orchestrator, we will call this with future_concurrency
+    y_hat_next = rls.predict(phi) # Prediction for current state (for next WCP score)
 
     # Persist state
     state['rls_state'] = rls.to_dict()
     state['last_y'] = y_k
+    state['last_cpu'] = cpu
     state['last_prediction'] = y_hat_next
 
     # --- Weighted Quantile Calculation ---

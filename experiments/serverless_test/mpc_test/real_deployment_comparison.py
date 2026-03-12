@@ -33,8 +33,8 @@ def run_single_execution(config, run_id, task_type='standard'):
 
     priority = config.get('priority', 'standard')
     
-    # Simulate SLO based on task type (aligned with QoS SLO thresholds)
-    slo_map = {'critical': 1000, 'high': 1800, 'standard': 1800, 'low': 3000}
+    # Simulate SLO based on task type
+    slo_map = {'critical': 200, 'high': 300, 'standard': 500, 'low': 1000}
     slo_limit = slo_map.get(priority, 500)
     
     payload = {

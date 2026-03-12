@@ -1,0 +1,8642 @@
+[
+  {
+    "minute": 0,
+    "timestamp": "00:00",
+    "concurrency": 1,
+    "complexity": 988382
+  },
+  {
+    "minute": 1,
+    "timestamp": "00:01",
+    "concurrency": 3,
+    "complexity": 991243
+  },
+  {
+    "minute": 2,
+    "timestamp": "00:02",
+    "concurrency": 5,
+    "complexity": 992065
+  },
+  {
+    "minute": 3,
+    "timestamp": "00:03",
+    "concurrency": 3,
+    "complexity": 986757
+  },
+  {
+    "minute": 4,
+    "timestamp": "00:04",
+    "concurrency": 3,
+    "complexity": 954734
+  },
+  {
+    "minute": 5,
+    "timestamp": "00:05",
+    "concurrency": 4,
+    "complexity": 1027739
+  },
+  {
+    "minute": 6,
+    "timestamp": "00:06",
+    "concurrency": 2,
+    "complexity": 1026806
+  },
+  {
+    "minute": 7,
+    "timestamp": "00:07",
+    "concurrency": 3,
+    "complexity": 981746
+  },
+  {
+    "minute": 8,
+    "timestamp": "00:08",
+    "concurrency": 2,
+    "complexity": 1005408
+  },
+  {
+    "minute": 9,
+    "timestamp": "00:09",
+    "concurrency": 2,
+    "complexity": 1000866
+  },
+  {
+    "minute": 10,
+    "timestamp": "00:10",
+    "concurrency": 4,
+    "complexity": 1003392
+  },
+  {
+    "minute": 11,
+    "timestamp": "00:11",
+    "concurrency": 1,
+    "complexity": 976412
+  },
+  {
+    "minute": 12,
+    "timestamp": "00:12",
+    "concurrency": 4,
+    "complexity": 1008359
+  },
+  {
+    "minute": 13,
+    "timestamp": "00:13",
+    "concurrency": 2,
+    "complexity": 1034647
+  },
+  {
+    "minute": 14,
+    "timestamp": "00:14",
+    "concurrency": 3,
+    "complexity": 1075626
+  },
+  {
+    "minute": 15,
+    "timestamp": "00:15",
+    "concurrency": 1,
+    "complexity": 1034064
+  },
+  {
+    "minute": 16,
+    "timestamp": "00:16",
+    "concurrency": 4,
+    "complexity": 1030366
+  },
+  {
+    "minute": 17,
+    "timestamp": "00:17",
+    "concurrency": 5,
+    "complexity": 1019355
+  },
+  {
+    "minute": 18,
+    "timestamp": "00:18",
+    "concurrency": 2,
+    "complexity": 1019400
+  },
+  {
+    "minute": 19,
+    "timestamp": "00:19",
+    "concurrency": 1,
+    "complexity": 1052095
+  },
+  {
+    "minute": 20,
+    "timestamp": "00:20",
+    "concurrency": 3,
+    "complexity": 1040707
+  },
+  {
+    "minute": 21,
+    "timestamp": "00:21",
+    "concurrency": 5,
+    "complexity": 1023914
+  },
+  {
+    "minute": 22,
+    "timestamp": "00:22",
+    "concurrency": 1,
+    "complexity": 1017933
+  },
+  {
+    "minute": 23,
+    "timestamp": "00:23",
+    "concurrency": 1,
+    "complexity": 1036867
+  },
+  {
+    "minute": 24,
+    "timestamp": "00:24",
+    "concurrency": 2,
+    "complexity": 1031167
+  },
+  {
+    "minute": 25,
+    "timestamp": "00:25",
+    "concurrency": 1,
+    "complexity": 1043466
+  },
+  {
+    "minute": 26,
+    "timestamp": "00:26",
+    "concurrency": 1,
+    "complexity": 1040723
+  },
+  {
+    "minute": 27,
+    "timestamp": "00:27",
+    "concurrency": 1,
+    "complexity": 1054834
+  },
+  {
+    "minute": 28,
+    "timestamp": "00:28",
+    "concurrency": 3,
+    "complexity": 1023479
+  },
+  {
+    "minute": 29,
+    "timestamp": "00:29",
+    "concurrency": 3,
+    "complexity": 1072354
+  },
+  {
+    "minute": 30,
+    "timestamp": "00:30",
+    "concurrency": 1,
+    "complexity": 1107812
+  },
+  {
+    "minute": 31,
+    "timestamp": "00:31",
+    "concurrency": 5,
+    "complexity": 1077850
+  },
+  {
+    "minute": 32,
+    "timestamp": "00:32",
+    "concurrency": 5,
+    "complexity": 1060080
+  },
+  {
+    "minute": 33,
+    "timestamp": "00:33",
+    "concurrency": 1,
+    "complexity": 1075071
+  },
+  {
+    "minute": 34,
+    "timestamp": "00:34",
+    "concurrency": 4,
+    "complexity": 1038982
+  },
+  {
+    "minute": 35,
+    "timestamp": "00:35",
+    "concurrency": 2,
+    "complexity": 1029225
+  },
+  {
+    "minute": 36,
+    "timestamp": "00:36",
+    "concurrency": 3,
+    "complexity": 1078090
+  },
+  {
+    "minute": 37,
+    "timestamp": "00:37",
+    "concurrency": 1,
+    "complexity": 1053578
+  },
+  {
+    "minute": 38,
+    "timestamp": "00:38",
+    "concurrency": 6,
+    "complexity": 1039130
+  },
+  {
+    "minute": 39,
+    "timestamp": "00:39",
+    "concurrency": 2,
+    "complexity": 1050174
+  },
+  {
+    "minute": 40,
+    "timestamp": "00:40",
+    "concurrency": 3,
+    "complexity": 1046896
+  },
+  {
+    "minute": 41,
+    "timestamp": "00:41",
+    "concurrency": 1,
+    "complexity": 1073914
+  },
+  {
+    "minute": 42,
+    "timestamp": "00:42",
+    "concurrency": 5,
+    "complexity": 1084586
+  },
+  {
+    "minute": 43,
+    "timestamp": "00:43",
+    "concurrency": 5,
+    "complexity": 1092415
+  },
+  {
+    "minute": 44,
+    "timestamp": "00:44",
+    "concurrency": 5,
+    "complexity": 1094262
+  },
+  {
+    "minute": 45,
+    "timestamp": "00:45",
+    "concurrency": 4,
+    "complexity": 1093189
+  },
+  {
+    "minute": 46,
+    "timestamp": "00:46",
+    "concurrency": 2,
+    "complexity": 1075658
+  },
+  {
+    "minute": 47,
+    "timestamp": "00:47",
+    "concurrency": 4,
+    "complexity": 1069042
+  },
+  {
+    "minute": 48,
+    "timestamp": "00:48",
+    "concurrency": 2,
+    "complexity": 1053058
+  },
+  {
+    "minute": 49,
+    "timestamp": "00:49",
+    "concurrency": 4,
+    "complexity": 1106922
+  },
+  {
+    "minute": 50,
+    "timestamp": "00:50",
+    "concurrency": 4,
+    "complexity": 1083080
+  },
+  {
+    "minute": 51,
+    "timestamp": "00:51",
+    "concurrency": 2,
+    "complexity": 1080131
+  },
+  {
+    "minute": 52,
+    "timestamp": "00:52",
+    "concurrency": 4,
+    "complexity": 1113636
+  },
+  {
+    "minute": 53,
+    "timestamp": "00:53",
+    "concurrency": 4,
+    "complexity": 1073778
+  },
+  {
+    "minute": 54,
+    "timestamp": "00:54",
+    "concurrency": 1,
+    "complexity": 1110137
+  },
+  {
+    "minute": 55,
+    "timestamp": "00:55",
+    "concurrency": 4,
+    "complexity": 1101070
+  },
+  {
+    "minute": 56,
+    "timestamp": "00:56",
+    "concurrency": 2,
+    "complexity": 1076078
+  },
+  {
+    "minute": 57,
+    "timestamp": "00:57",
+    "concurrency": 1,
+    "complexity": 1097012
+  },
+  {
+    "minute": 58,
+    "timestamp": "00:58",
+    "concurrency": 1,
+    "complexity": 1119679
+  },
+  {
+    "minute": 59,
+    "timestamp": "00:59",
+    "concurrency": 2,
+    "complexity": 1117821
+  },
+  {
+    "minute": 60,
+    "timestamp": "01:00",
+    "concurrency": 3,
+    "complexity": 1133506
+  },
+  {
+    "minute": 61,
+    "timestamp": "01:01",
+    "concurrency": 1,
+    "complexity": 1112047
+  },
+  {
+    "minute": 62,
+    "timestamp": "01:02",
+    "concurrency": 3,
+    "complexity": 1174413
+  },
+  {
+    "minute": 63,
+    "timestamp": "01:03",
+    "concurrency": 3,
+    "complexity": 1090241
+  },
+  {
+    "minute": 64,
+    "timestamp": "01:04",
+    "concurrency": 5,
+    "complexity": 1102356
+  },
+  {
+    "minute": 65,
+    "timestamp": "01:05",
+    "concurrency": 1,
+    "complexity": 1110790
+  },
+  {
+    "minute": 66,
+    "timestamp": "01:06",
+    "concurrency": 2,
+    "complexity": 1085307
+  },
+  {
+    "minute": 67,
+    "timestamp": "01:07",
+    "concurrency": 3,
+    "complexity": 1136206
+  },
+  {
+    "minute": 68,
+    "timestamp": "01:08",
+    "concurrency": 4,
+    "complexity": 1135098
+  },
+  {
+    "minute": 69,
+    "timestamp": "01:09",
+    "concurrency": 2,
+    "complexity": 1119076
+  },
+  {
+    "minute": 70,
+    "timestamp": "01:10",
+    "concurrency": 4,
+    "complexity": 1109674
+  },
+  {
+    "minute": 71,
+    "timestamp": "01:11",
+    "concurrency": 1,
+    "complexity": 1092126
+  },
+  {
+    "minute": 72,
+    "timestamp": "01:12",
+    "concurrency": 1,
+    "complexity": 1107904
+  },
+  {
+    "minute": 73,
+    "timestamp": "01:13",
+    "concurrency": 3,
+    "complexity": 1140223
+  },
+  {
+    "minute": 74,
+    "timestamp": "01:14",
+    "concurrency": 1,
+    "complexity": 1122763
+  },
+  {
+    "minute": 75,
+    "timestamp": "01:15",
+    "concurrency": 1,
+    "complexity": 1120124
+  },
+  {
+    "minute": 76,
+    "timestamp": "01:16",
+    "concurrency": 2,
+    "complexity": 1140343
+  },
+  {
+    "minute": 77,
+    "timestamp": "01:17",
+    "concurrency": 4,
+    "complexity": 1155128
+  },
+  {
+    "minute": 78,
+    "timestamp": "01:18",
+    "concurrency": 1,
+    "complexity": 1138754
+  },
+  {
+    "minute": 79,
+    "timestamp": "01:19",
+    "concurrency": 3,
+    "complexity": 1141547
+  },
+  {
+    "minute": 80,
+    "timestamp": "01:20",
+    "concurrency": 4,
+    "complexity": 1164336
+  },
+  {
+    "minute": 81,
+    "timestamp": "01:21",
+    "concurrency": 2,
+    "complexity": 1142050
+  },
+  {
+    "minute": 82,
+    "timestamp": "01:22",
+    "concurrency": 2,
+    "complexity": 1133990
+  },
+  {
+    "minute": 83,
+    "timestamp": "01:23",
+    "concurrency": 3,
+    "complexity": 1155273
+  },
+  {
+    "minute": 84,
+    "timestamp": "01:24",
+    "concurrency": 2,
+    "complexity": 1138309
+  },
+  {
+    "minute": 85,
+    "timestamp": "01:25",
+    "concurrency": 5,
+    "complexity": 1137714
+  },
+  {
+    "minute": 86,
+    "timestamp": "01:26",
+    "concurrency": 1,
+    "complexity": 1172172
+  },
+  {
+    "minute": 87,
+    "timestamp": "01:27",
+    "concurrency": 21,
+    "complexity": 1142481
+  },
+  {
+    "minute": 88,
+    "timestamp": "01:28",
+    "concurrency": 22,
+    "complexity": 1096838
+  },
+  {
+    "minute": 89,
+    "timestamp": "01:29",
+    "concurrency": 21,
+    "complexity": 1158469
+  },
+  {
+    "minute": 90,
+    "timestamp": "01:30",
+    "concurrency": 17,
+    "complexity": 1145263
+  },
+  {
+    "minute": 91,
+    "timestamp": "01:31",
+    "concurrency": 21,
+    "complexity": 1149003
+  },
+  {
+    "minute": 92,
+    "timestamp": "01:32",
+    "concurrency": 23,
+    "complexity": 1165453
+  },
+  {
+    "minute": 93,
+    "timestamp": "01:33",
+    "concurrency": 23,
+    "complexity": 1154679
+  },
+  {
+    "minute": 94,
+    "timestamp": "01:34",
+    "concurrency": 22,
+    "complexity": 1163902
+  },
+  {
+    "minute": 95,
+    "timestamp": "01:35",
+    "concurrency": 20,
+    "complexity": 1120757
+  },
+  {
+    "minute": 96,
+    "timestamp": "01:36",
+    "concurrency": 22,
+    "complexity": 1143939
+  },
+  {
+    "minute": 97,
+    "timestamp": "01:37",
+    "concurrency": 21,
+    "complexity": 1192473
+  },
+  {
+    "minute": 98,
+    "timestamp": "01:38",
+    "concurrency": 22,
+    "complexity": 1165614
+  },
+  {
+    "minute": 99,
+    "timestamp": "01:39",
+    "concurrency": 22,
+    "complexity": 1134102
+  },
+  {
+    "minute": 100,
+    "timestamp": "01:40",
+    "concurrency": 20,
+    "complexity": 1147706
+  },
+  {
+    "minute": 101,
+    "timestamp": "01:41",
+    "concurrency": 20,
+    "complexity": 1150886
+  },
+  {
+    "minute": 102,
+    "timestamp": "01:42",
+    "concurrency": 22,
+    "complexity": 1174363
+  },
+  {
+    "minute": 103,
+    "timestamp": "01:43",
+    "concurrency": 21,
+    "complexity": 1165238
+  },
+  {
+    "minute": 104,
+    "timestamp": "01:44",
+    "concurrency": 20,
+    "complexity": 1162278
+  },
+  {
+    "minute": 105,
+    "timestamp": "01:45",
+    "concurrency": 20,
+    "complexity": 1177108
+  },
+  {
+    "minute": 106,
+    "timestamp": "01:46",
+    "concurrency": 21,
+    "complexity": 1188149
+  },
+  {
+    "minute": 107,
+    "timestamp": "01:47",
+    "concurrency": 24,
+    "complexity": 1174974
+  },
+  {
+    "minute": 108,
+    "timestamp": "01:48",
+    "concurrency": 21,
+    "complexity": 1170218
+  },
+  {
+    "minute": 109,
+    "timestamp": "01:49",
+    "concurrency": 22,
+    "complexity": 1174837
+  },
+  {
+    "minute": 110,
+    "timestamp": "01:50",
+    "concurrency": 22,
+    "complexity": 1191614
+  },
+  {
+    "minute": 111,
+    "timestamp": "01:51",
+    "concurrency": 20,
+    "complexity": 1186217
+  },
+  {
+    "minute": 112,
+    "timestamp": "01:52",
+    "concurrency": 19,
+    "complexity": 1203254
+  },
+  {
+    "minute": 113,
+    "timestamp": "01:53",
+    "concurrency": 20,
+    "complexity": 1166452
+  },
+  {
+    "minute": 114,
+    "timestamp": "01:54",
+    "concurrency": 22,
+    "complexity": 1175478
+  },
+  {
+    "minute": 115,
+    "timestamp": "01:55",
+    "concurrency": 22,
+    "complexity": 1207980
+  },
+  {
+    "minute": 116,
+    "timestamp": "01:56",
+    "concurrency": 23,
+    "complexity": 1178010
+  },
+  {
+    "minute": 117,
+    "timestamp": "01:57",
+    "concurrency": 22,
+    "complexity": 1223252
+  },
+  {
+    "minute": 118,
+    "timestamp": "01:58",
+    "concurrency": 21,
+    "complexity": 1225198
+  },
+  {
+    "minute": 119,
+    "timestamp": "01:59",
+    "concurrency": 21,
+    "complexity": 1226458
+  },
+  {
+    "minute": 120,
+    "timestamp": "02:00",
+    "concurrency": 23,
+    "complexity": 1182513
+  },
+  {
+    "minute": 121,
+    "timestamp": "02:01",
+    "concurrency": 20,
+    "complexity": 1203174
+  },
+  {
+    "minute": 122,
+    "timestamp": "02:02",
+    "concurrency": 20,
+    "complexity": 1193274
+  },
+  {
+    "minute": 123,
+    "timestamp": "02:03",
+    "concurrency": 22,
+    "complexity": 1223108
+  },
+  {
+    "minute": 124,
+    "timestamp": "02:04",
+    "concurrency": 20,
+    "complexity": 1240276
+  },
+  {
+    "minute": 125,
+    "timestamp": "02:05",
+    "concurrency": 25,
+    "complexity": 1225110
+  },
+  {
+    "minute": 126,
+    "timestamp": "02:06",
+    "concurrency": 22,
+    "complexity": 1209312
+  },
+  {
+    "minute": 127,
+    "timestamp": "02:07",
+    "concurrency": 15,
+    "complexity": 1203305
+  },
+  {
+    "minute": 128,
+    "timestamp": "02:08",
+    "concurrency": 13,
+    "complexity": 1225081
+  },
+  {
+    "minute": 129,
+    "timestamp": "02:09",
+    "concurrency": 14,
+    "complexity": 1189120
+  },
+  {
+    "minute": 130,
+    "timestamp": "02:10",
+    "concurrency": 13,
+    "complexity": 1225779
+  },
+  {
+    "minute": 131,
+    "timestamp": "02:11",
+    "concurrency": 13,
+    "complexity": 1198229
+  },
+  {
+    "minute": 132,
+    "timestamp": "02:12",
+    "concurrency": 15,
+    "complexity": 1230400
+  },
+  {
+    "minute": 133,
+    "timestamp": "02:13",
+    "concurrency": 13,
+    "complexity": 1216233
+  },
+  {
+    "minute": 134,
+    "timestamp": "02:14",
+    "concurrency": 16,
+    "complexity": 1213145
+  },
+  {
+    "minute": 135,
+    "timestamp": "02:15",
+    "concurrency": 18,
+    "complexity": 1204653
+  },
+  {
+    "minute": 136,
+    "timestamp": "02:16",
+    "concurrency": 14,
+    "complexity": 1216678
+  },
+  {
+    "minute": 137,
+    "timestamp": "02:17",
+    "concurrency": 14,
+    "complexity": 1236381
+  },
+  {
+    "minute": 138,
+    "timestamp": "02:18",
+    "concurrency": 15,
+    "complexity": 1247577
+  },
+  {
+    "minute": 139,
+    "timestamp": "02:19",
+    "concurrency": 17,
+    "complexity": 1238666
+  },
+  {
+    "minute": 140,
+    "timestamp": "02:20",
+    "concurrency": 14,
+    "complexity": 1256847
+  },
+  {
+    "minute": 141,
+    "timestamp": "02:21",
+    "concurrency": 13,
+    "complexity": 1281780
+  },
+  {
+    "minute": 142,
+    "timestamp": "02:22",
+    "concurrency": 12,
+    "complexity": 1225931
+  },
+  {
+    "minute": 143,
+    "timestamp": "02:23",
+    "concurrency": 14,
+    "complexity": 1229723
+  },
+  {
+    "minute": 144,
+    "timestamp": "02:24",
+    "concurrency": 13,
+    "complexity": 1206454
+  },
+  {
+    "minute": 145,
+    "timestamp": "02:25",
+    "concurrency": 17,
+    "complexity": 1260480
+  },
+  {
+    "minute": 146,
+    "timestamp": "02:26",
+    "concurrency": 17,
+    "complexity": 1264059
+  },
+  {
+    "minute": 147,
+    "timestamp": "02:27",
+    "concurrency": 12,
+    "complexity": 1222129
+  },
+  {
+    "minute": 148,
+    "timestamp": "02:28",
+    "concurrency": 13,
+    "complexity": 1253222
+  },
+  {
+    "minute": 149,
+    "timestamp": "02:29",
+    "concurrency": 14,
+    "complexity": 1266602
+  },
+  {
+    "minute": 150,
+    "timestamp": "02:30",
+    "concurrency": 16,
+    "complexity": 1248174
+  },
+  {
+    "minute": 151,
+    "timestamp": "02:31",
+    "concurrency": 14,
+    "complexity": 1261979
+  },
+  {
+    "minute": 152,
+    "timestamp": "02:32",
+    "concurrency": 13,
+    "complexity": 1249906
+  },
+  {
+    "minute": 153,
+    "timestamp": "02:33",
+    "concurrency": 14,
+    "complexity": 1223446
+  },
+  {
+    "minute": 154,
+    "timestamp": "02:34",
+    "concurrency": 13,
+    "complexity": 1270138
+  },
+  {
+    "minute": 155,
+    "timestamp": "02:35",
+    "concurrency": 15,
+    "complexity": 1277018
+  },
+  {
+    "minute": 156,
+    "timestamp": "02:36",
+    "concurrency": 13,
+    "complexity": 1266565
+  },
+  {
+    "minute": 157,
+    "timestamp": "02:37",
+    "concurrency": 13,
+    "complexity": 1234139
+  },
+  {
+    "minute": 158,
+    "timestamp": "02:38",
+    "concurrency": 16,
+    "complexity": 1239555
+  },
+  {
+    "minute": 159,
+    "timestamp": "02:39",
+    "concurrency": 1,
+    "complexity": 1233315
+  },
+  {
+    "minute": 160,
+    "timestamp": "02:40",
+    "concurrency": 1,
+    "complexity": 1272663
+  },
+  {
+    "minute": 161,
+    "timestamp": "02:41",
+    "concurrency": 3,
+    "complexity": 1283966
+  },
+  {
+    "minute": 162,
+    "timestamp": "02:42",
+    "concurrency": 2,
+    "complexity": 1268418
+  },
+  {
+    "minute": 163,
+    "timestamp": "02:43",
+    "concurrency": 3,
+    "complexity": 1280064
+  },
+  {
+    "minute": 164,
+    "timestamp": "02:44",
+    "concurrency": 3,
+    "complexity": 1245220
+  },
+  {
+    "minute": 165,
+    "timestamp": "02:45",
+    "concurrency": 3,
+    "complexity": 1266805
+  },
+  {
+    "minute": 166,
+    "timestamp": "02:46",
+    "concurrency": 2,
+    "complexity": 1237801
+  },
+  {
+    "minute": 167,
+    "timestamp": "02:47",
+    "concurrency": 1,
+    "complexity": 1251068
+  },
+  {
+    "minute": 168,
+    "timestamp": "02:48",
+    "concurrency": 3,
+    "complexity": 1285377
+  },
+  {
+    "minute": 169,
+    "timestamp": "02:49",
+    "concurrency": 4,
+    "complexity": 1264306
+  },
+  {
+    "minute": 170,
+    "timestamp": "02:50",
+    "concurrency": 1,
+    "complexity": 1294575
+  },
+  {
+    "minute": 171,
+    "timestamp": "02:51",
+    "concurrency": 3,
+    "complexity": 1282431
+  },
+  {
+    "minute": 172,
+    "timestamp": "02:52",
+    "concurrency": 4,
+    "complexity": 1327640
+  },
+  {
+    "minute": 173,
+    "timestamp": "02:53",
+    "concurrency": 3,
+    "complexity": 1276101
+  },
+  {
+    "minute": 174,
+    "timestamp": "02:54",
+    "concurrency": 5,
+    "complexity": 1247366
+  },
+  {
+    "minute": 175,
+    "timestamp": "02:55",
+    "concurrency": 2,
+    "complexity": 1276067
+  },
+  {
+    "minute": 176,
+    "timestamp": "02:56",
+    "concurrency": 1,
+    "complexity": 1258756
+  },
+  {
+    "minute": 177,
+    "timestamp": "02:57",
+    "concurrency": 3,
+    "complexity": 1298813
+  },
+  {
+    "minute": 178,
+    "timestamp": "02:58",
+    "concurrency": 3,
+    "complexity": 1281357
+  },
+  {
+    "minute": 179,
+    "timestamp": "02:59",
+    "concurrency": 5,
+    "complexity": 1279014
+  },
+  {
+    "minute": 180,
+    "timestamp": "03:00",
+    "concurrency": 4,
+    "complexity": 1280514
+  },
+  {
+    "minute": 181,
+    "timestamp": "03:01",
+    "concurrency": 3,
+    "complexity": 1299035
+  },
+  {
+    "minute": 182,
+    "timestamp": "03:02",
+    "concurrency": 4,
+    "complexity": 1276405
+  },
+  {
+    "minute": 183,
+    "timestamp": "03:03",
+    "concurrency": 2,
+    "complexity": 1302216
+  },
+  {
+    "minute": 184,
+    "timestamp": "03:04",
+    "concurrency": 1,
+    "complexity": 1308802
+  },
+  {
+    "minute": 185,
+    "timestamp": "03:05",
+    "concurrency": 3,
+    "complexity": 1282257
+  },
+  {
+    "minute": 186,
+    "timestamp": "03:06",
+    "concurrency": 4,
+    "complexity": 1271784
+  },
+  {
+    "minute": 187,
+    "timestamp": "03:07",
+    "concurrency": 4,
+    "complexity": 1281244
+  },
+  {
+    "minute": 188,
+    "timestamp": "03:08",
+    "concurrency": 4,
+    "complexity": 1306899
+  },
+  {
+    "minute": 189,
+    "timestamp": "03:09",
+    "concurrency": 2,
+    "complexity": 1295734
+  },
+  {
+    "minute": 190,
+    "timestamp": "03:10",
+    "concurrency": 2,
+    "complexity": 1307668
+  },
+  {
+    "minute": 191,
+    "timestamp": "03:11",
+    "concurrency": 3,
+    "complexity": 1331501
+  },
+  {
+    "minute": 192,
+    "timestamp": "03:12",
+    "concurrency": 2,
+    "complexity": 1302032
+  },
+  {
+    "minute": 193,
+    "timestamp": "03:13",
+    "concurrency": 2,
+    "complexity": 1282400
+  },
+  {
+    "minute": 194,
+    "timestamp": "03:14",
+    "concurrency": 3,
+    "complexity": 1320886
+  },
+  {
+    "minute": 195,
+    "timestamp": "03:15",
+    "concurrency": 4,
+    "complexity": 1301919
+  },
+  {
+    "minute": 196,
+    "timestamp": "03:16",
+    "concurrency": 2,
+    "complexity": 1319488
+  },
+  {
+    "minute": 197,
+    "timestamp": "03:17",
+    "concurrency": 1,
+    "complexity": 1324505
+  },
+  {
+    "minute": 198,
+    "timestamp": "03:18",
+    "concurrency": 2,
+    "complexity": 1285138
+  },
+  {
+    "minute": 199,
+    "timestamp": "03:19",
+    "concurrency": 3,
+    "complexity": 1333088
+  },
+  {
+    "minute": 200,
+    "timestamp": "03:20",
+    "concurrency": 3,
+    "complexity": 1324676
+  },
+  {
+    "minute": 201,
+    "timestamp": "03:21",
+    "concurrency": 3,
+    "complexity": 1295614
+  },
+  {
+    "minute": 202,
+    "timestamp": "03:22",
+    "concurrency": 3,
+    "complexity": 1314894
+  },
+  {
+    "minute": 203,
+    "timestamp": "03:23",
+    "concurrency": 3,
+    "complexity": 1315056
+  },
+  {
+    "minute": 204,
+    "timestamp": "03:24",
+    "concurrency": 3,
+    "complexity": 1311492
+  },
+  {
+    "minute": 205,
+    "timestamp": "03:25",
+    "concurrency": 3,
+    "complexity": 1329547
+  },
+  {
+    "minute": 206,
+    "timestamp": "03:26",
+    "concurrency": 4,
+    "complexity": 1341945
+  },
+  {
+    "minute": 207,
+    "timestamp": "03:27",
+    "concurrency": 5,
+    "complexity": 1314428
+  },
+  {
+    "minute": 208,
+    "timestamp": "03:28",
+    "concurrency": 1,
+    "complexity": 1341977
+  },
+  {
+    "minute": 209,
+    "timestamp": "03:29",
+    "concurrency": 2,
+    "complexity": 1336195
+  },
+  {
+    "minute": 210,
+    "timestamp": "03:30",
+    "concurrency": 3,
+    "complexity": 1322142
+  },
+  {
+    "minute": 211,
+    "timestamp": "03:31",
+    "concurrency": 2,
+    "complexity": 1322079
+  },
+  {
+    "minute": 212,
+    "timestamp": "03:32",
+    "concurrency": 5,
+    "complexity": 1296557
+  },
+  {
+    "minute": 213,
+    "timestamp": "03:33",
+    "concurrency": 3,
+    "complexity": 1290640
+  },
+  {
+    "minute": 214,
+    "timestamp": "03:34",
+    "concurrency": 1,
+    "complexity": 1324997
+  },
+  {
+    "minute": 215,
+    "timestamp": "03:35",
+    "concurrency": 4,
+    "complexity": 1305613
+  },
+  {
+    "minute": 216,
+    "timestamp": "03:36",
+    "concurrency": 3,
+    "complexity": 1322967
+  },
+  {
+    "minute": 217,
+    "timestamp": "03:37",
+    "concurrency": 3,
+    "complexity": 1314090
+  },
+  {
+    "minute": 218,
+    "timestamp": "03:38",
+    "concurrency": 5,
+    "complexity": 1290029
+  },
+  {
+    "minute": 219,
+    "timestamp": "03:39",
+    "concurrency": 3,
+    "complexity": 1333955
+  },
+  {
+    "minute": 220,
+    "timestamp": "03:40",
+    "concurrency": 2,
+    "complexity": 1319523
+  },
+  {
+    "minute": 221,
+    "timestamp": "03:41",
+    "concurrency": 1,
+    "complexity": 1330415
+  },
+  {
+    "minute": 222,
+    "timestamp": "03:42",
+    "concurrency": 2,
+    "complexity": 1311940
+  },
+  {
+    "minute": 223,
+    "timestamp": "03:43",
+    "concurrency": 5,
+    "complexity": 1324091
+  },
+  {
+    "minute": 224,
+    "timestamp": "03:44",
+    "concurrency": 3,
+    "complexity": 1362974
+  },
+  {
+    "minute": 225,
+    "timestamp": "03:45",
+    "concurrency": 1,
+    "complexity": 1335310
+  },
+  {
+    "minute": 226,
+    "timestamp": "03:46",
+    "concurrency": 2,
+    "complexity": 1344697
+  },
+  {
+    "minute": 227,
+    "timestamp": "03:47",
+    "concurrency": 4,
+    "complexity": 1309247
+  },
+  {
+    "minute": 228,
+    "timestamp": "03:48",
+    "concurrency": 4,
+    "complexity": 1383399
+  },
+  {
+    "minute": 229,
+    "timestamp": "03:49",
+    "concurrency": 2,
+    "complexity": 1373434
+  },
+  {
+    "minute": 230,
+    "timestamp": "03:50",
+    "concurrency": 2,
+    "complexity": 1364775
+  },
+  {
+    "minute": 231,
+    "timestamp": "03:51",
+    "concurrency": 2,
+    "complexity": 1355015
+  },
+  {
+    "minute": 232,
+    "timestamp": "03:52",
+    "concurrency": 2,
+    "complexity": 1339671
+  },
+  {
+    "minute": 233,
+    "timestamp": "03:53",
+    "concurrency": 1,
+    "complexity": 1349130
+  },
+  {
+    "minute": 234,
+    "timestamp": "03:54",
+    "concurrency": 4,
+    "complexity": 1362164
+  },
+  {
+    "minute": 235,
+    "timestamp": "03:55",
+    "concurrency": 5,
+    "complexity": 1329541
+  },
+  {
+    "minute": 236,
+    "timestamp": "03:56",
+    "concurrency": 1,
+    "complexity": 1334124
+  },
+  {
+    "minute": 237,
+    "timestamp": "03:57",
+    "concurrency": 5,
+    "complexity": 1310526
+  },
+  {
+    "minute": 238,
+    "timestamp": "03:58",
+    "concurrency": 3,
+    "complexity": 1329361
+  },
+  {
+    "minute": 239,
+    "timestamp": "03:59",
+    "concurrency": 5,
+    "complexity": 1378906
+  },
+  {
+    "minute": 240,
+    "timestamp": "04:00",
+    "concurrency": 3,
+    "complexity": 1339870
+  },
+  {
+    "minute": 241,
+    "timestamp": "04:01",
+    "concurrency": 3,
+    "complexity": 1341067
+  },
+  {
+    "minute": 242,
+    "timestamp": "04:02",
+    "concurrency": 3,
+    "complexity": 1354642
+  },
+  {
+    "minute": 243,
+    "timestamp": "04:03",
+    "concurrency": 2,
+    "complexity": 1316897
+  },
+  {
+    "minute": 244,
+    "timestamp": "04:04",
+    "concurrency": 5,
+    "complexity": 1368898
+  },
+  {
+    "minute": 245,
+    "timestamp": "04:05",
+    "concurrency": 1,
+    "complexity": 1376161
+  },
+  {
+    "minute": 246,
+    "timestamp": "04:06",
+    "concurrency": 2,
+    "complexity": 1359215
+  },
+  {
+    "minute": 247,
+    "timestamp": "04:07",
+    "concurrency": 4,
+    "complexity": 1385525
+  },
+  {
+    "minute": 248,
+    "timestamp": "04:08",
+    "concurrency": 2,
+    "complexity": 1326783
+  },
+  {
+    "minute": 249,
+    "timestamp": "04:09",
+    "concurrency": 4,
+    "complexity": 1391009
+  },
+  {
+    "minute": 250,
+    "timestamp": "04:10",
+    "concurrency": 5,
+    "complexity": 1340329
+  },
+  {
+    "minute": 251,
+    "timestamp": "04:11",
+    "concurrency": 4,
+    "complexity": 1330147
+  },
+  {
+    "minute": 252,
+    "timestamp": "04:12",
+    "concurrency": 1,
+    "complexity": 1351793
+  },
+  {
+    "minute": 253,
+    "timestamp": "04:13",
+    "concurrency": 3,
+    "complexity": 1394769
+  },
+  {
+    "minute": 254,
+    "timestamp": "04:14",
+    "concurrency": 5,
+    "complexity": 1357722
+  },
+  {
+    "minute": 255,
+    "timestamp": "04:15",
+    "concurrency": 1,
+    "complexity": 1340233
+  },
+  {
+    "minute": 256,
+    "timestamp": "04:16",
+    "concurrency": 4,
+    "complexity": 1333754
+  },
+  {
+    "minute": 257,
+    "timestamp": "04:17",
+    "concurrency": 4,
+    "complexity": 1358312
+  },
+  {
+    "minute": 258,
+    "timestamp": "04:18",
+    "concurrency": 1,
+    "complexity": 1321269
+  },
+  {
+    "minute": 259,
+    "timestamp": "04:19",
+    "concurrency": 4,
+    "complexity": 1335912
+  },
+  {
+    "minute": 260,
+    "timestamp": "04:20",
+    "concurrency": 3,
+    "complexity": 1393517
+  },
+  {
+    "minute": 261,
+    "timestamp": "04:21",
+    "concurrency": 4,
+    "complexity": 1389854
+  },
+  {
+    "minute": 262,
+    "timestamp": "04:22",
+    "concurrency": 2,
+    "complexity": 1361547
+  },
+  {
+    "minute": 263,
+    "timestamp": "04:23",
+    "concurrency": 3,
+    "complexity": 1355522
+  },
+  {
+    "minute": 264,
+    "timestamp": "04:24",
+    "concurrency": 1,
+    "complexity": 1366718
+  },
+  {
+    "minute": 265,
+    "timestamp": "04:25",
+    "concurrency": 1,
+    "complexity": 1413213
+  },
+  {
+    "minute": 266,
+    "timestamp": "04:26",
+    "concurrency": 3,
+    "complexity": 1375052
+  },
+  {
+    "minute": 267,
+    "timestamp": "04:27",
+    "concurrency": 5,
+    "complexity": 1385838
+  },
+  {
+    "minute": 268,
+    "timestamp": "04:28",
+    "concurrency": 3,
+    "complexity": 1364279
+  },
+  {
+    "minute": 269,
+    "timestamp": "04:29",
+    "concurrency": 3,
+    "complexity": 1370224
+  },
+  {
+    "minute": 270,
+    "timestamp": "04:30",
+    "concurrency": 3,
+    "complexity": 1382620
+  },
+  {
+    "minute": 271,
+    "timestamp": "04:31",
+    "concurrency": 2,
+    "complexity": 1372862
+  },
+  {
+    "minute": 272,
+    "timestamp": "04:32",
+    "concurrency": 3,
+    "complexity": 1333049
+  },
+  {
+    "minute": 273,
+    "timestamp": "04:33",
+    "concurrency": 4,
+    "complexity": 1397257
+  },
+  {
+    "minute": 274,
+    "timestamp": "04:34",
+    "concurrency": 3,
+    "complexity": 1359986
+  },
+  {
+    "minute": 275,
+    "timestamp": "04:35",
+    "concurrency": 4,
+    "complexity": 1415150
+  },
+  {
+    "minute": 276,
+    "timestamp": "04:36",
+    "concurrency": 4,
+    "complexity": 1387288
+  },
+  {
+    "minute": 277,
+    "timestamp": "04:37",
+    "concurrency": 4,
+    "complexity": 1375592
+  },
+  {
+    "minute": 278,
+    "timestamp": "04:38",
+    "concurrency": 5,
+    "complexity": 1383573
+  },
+  {
+    "minute": 279,
+    "timestamp": "04:39",
+    "concurrency": 2,
+    "complexity": 1373223
+  },
+  {
+    "minute": 280,
+    "timestamp": "04:40",
+    "concurrency": 4,
+    "complexity": 1366264
+  },
+  {
+    "minute": 281,
+    "timestamp": "04:41",
+    "concurrency": 3,
+    "complexity": 1380737
+  },
+  {
+    "minute": 282,
+    "timestamp": "04:42",
+    "concurrency": 4,
+    "complexity": 1394870
+  },
+  {
+    "minute": 283,
+    "timestamp": "04:43",
+    "concurrency": 2,
+    "complexity": 1368458
+  },
+  {
+    "minute": 284,
+    "timestamp": "04:44",
+    "concurrency": 2,
+    "complexity": 1365874
+  },
+  {
+    "minute": 285,
+    "timestamp": "04:45",
+    "concurrency": 3,
+    "complexity": 1371773
+  },
+  {
+    "minute": 286,
+    "timestamp": "04:46",
+    "concurrency": 1,
+    "complexity": 1398479
+  },
+  {
+    "minute": 287,
+    "timestamp": "04:47",
+    "concurrency": 3,
+    "complexity": 1409039
+  },
+  {
+    "minute": 288,
+    "timestamp": "04:48",
+    "concurrency": 1,
+    "complexity": 1387770
+  },
+  {
+    "minute": 289,
+    "timestamp": "04:49",
+    "concurrency": 5,
+    "complexity": 1392691
+  },
+  {
+    "minute": 290,
+    "timestamp": "04:50",
+    "concurrency": 5,
+    "complexity": 1368998
+  },
+  {
+    "minute": 291,
+    "timestamp": "04:51",
+    "concurrency": 2,
+    "complexity": 1399647
+  },
+  {
+    "minute": 292,
+    "timestamp": "04:52",
+    "concurrency": 4,
+    "complexity": 1393660
+  },
+  {
+    "minute": 293,
+    "timestamp": "04:53",
+    "concurrency": 5,
+    "complexity": 1368928
+  },
+  {
+    "minute": 294,
+    "timestamp": "04:54",
+    "concurrency": 5,
+    "complexity": 1347875
+  },
+  {
+    "minute": 295,
+    "timestamp": "04:55",
+    "concurrency": 4,
+    "complexity": 1359708
+  },
+  {
+    "minute": 296,
+    "timestamp": "04:56",
+    "concurrency": 5,
+    "complexity": 1371219
+  },
+  {
+    "minute": 297,
+    "timestamp": "04:57",
+    "concurrency": 3,
+    "complexity": 1408318
+  },
+  {
+    "minute": 298,
+    "timestamp": "04:58",
+    "concurrency": 4,
+    "complexity": 1416605
+  },
+  {
+    "minute": 299,
+    "timestamp": "04:59",
+    "concurrency": 3,
+    "complexity": 1377219
+  },
+  {
+    "minute": 300,
+    "timestamp": "05:00",
+    "concurrency": 2,
+    "complexity": 1378306
+  },
+  {
+    "minute": 301,
+    "timestamp": "05:01",
+    "concurrency": 4,
+    "complexity": 1392143
+  },
+  {
+    "minute": 302,
+    "timestamp": "05:02",
+    "concurrency": 4,
+    "complexity": 1387593
+  },
+  {
+    "minute": 303,
+    "timestamp": "05:03",
+    "concurrency": 5,
+    "complexity": 1406401
+  },
+  {
+    "minute": 304,
+    "timestamp": "05:04",
+    "concurrency": 4,
+    "complexity": 1377743
+  },
+  {
+    "minute": 305,
+    "timestamp": "05:05",
+    "concurrency": 5,
+    "complexity": 1407607
+  },
+  {
+    "minute": 306,
+    "timestamp": "05:06",
+    "concurrency": 5,
+    "complexity": 1384249
+  },
+  {
+    "minute": 307,
+    "timestamp": "05:07",
+    "concurrency": 8,
+    "complexity": 1406516
+  },
+  {
+    "minute": 308,
+    "timestamp": "05:08",
+    "concurrency": 1,
+    "complexity": 1384411
+  },
+  {
+    "minute": 309,
+    "timestamp": "05:09",
+    "concurrency": 3,
+    "complexity": 1377957
+  },
+  {
+    "minute": 310,
+    "timestamp": "05:10",
+    "concurrency": 6,
+    "complexity": 1428845
+  },
+  {
+    "minute": 311,
+    "timestamp": "05:11",
+    "concurrency": 3,
+    "complexity": 1412276
+  },
+  {
+    "minute": 312,
+    "timestamp": "05:12",
+    "concurrency": 5,
+    "complexity": 1355496
+  },
+  {
+    "minute": 313,
+    "timestamp": "05:13",
+    "concurrency": 4,
+    "complexity": 1382759
+  },
+  {
+    "minute": 314,
+    "timestamp": "05:14",
+    "concurrency": 7,
+    "complexity": 1416144
+  },
+  {
+    "minute": 315,
+    "timestamp": "05:15",
+    "concurrency": 2,
+    "complexity": 1368455
+  },
+  {
+    "minute": 316,
+    "timestamp": "05:16",
+    "concurrency": 6,
+    "complexity": 1408137
+  },
+  {
+    "minute": 317,
+    "timestamp": "05:17",
+    "concurrency": 7,
+    "complexity": 1406392
+  },
+  {
+    "minute": 318,
+    "timestamp": "05:18",
+    "concurrency": 2,
+    "complexity": 1379389
+  },
+  {
+    "minute": 319,
+    "timestamp": "05:19",
+    "concurrency": 5,
+    "complexity": 1393508
+  },
+  {
+    "minute": 320,
+    "timestamp": "05:20",
+    "concurrency": 3,
+    "complexity": 1352189
+  },
+  {
+    "minute": 321,
+    "timestamp": "05:21",
+    "concurrency": 4,
+    "complexity": 1429696
+  },
+  {
+    "minute": 322,
+    "timestamp": "05:22",
+    "concurrency": 4,
+    "complexity": 1388396
+  },
+  {
+    "minute": 323,
+    "timestamp": "05:23",
+    "concurrency": 1,
+    "complexity": 1410937
+  },
+  {
+    "minute": 324,
+    "timestamp": "05:24",
+    "concurrency": 5,
+    "complexity": 1407413
+  },
+  {
+    "minute": 325,
+    "timestamp": "05:25",
+    "concurrency": 4,
+    "complexity": 1422561
+  },
+  {
+    "minute": 326,
+    "timestamp": "05:26",
+    "concurrency": 6,
+    "complexity": 1386998
+  },
+  {
+    "minute": 327,
+    "timestamp": "05:27",
+    "concurrency": 5,
+    "complexity": 1399993
+  },
+  {
+    "minute": 328,
+    "timestamp": "05:28",
+    "concurrency": 8,
+    "complexity": 1407344
+  },
+  {
+    "minute": 329,
+    "timestamp": "05:29",
+    "concurrency": 4,
+    "complexity": 1413850
+  },
+  {
+    "minute": 330,
+    "timestamp": "05:30",
+    "concurrency": 4,
+    "complexity": 1419717
+  },
+  {
+    "minute": 331,
+    "timestamp": "05:31",
+    "concurrency": 4,
+    "complexity": 1387304
+  },
+  {
+    "minute": 332,
+    "timestamp": "05:32",
+    "concurrency": 4,
+    "complexity": 1383782
+  },
+  {
+    "minute": 333,
+    "timestamp": "05:33",
+    "concurrency": 1,
+    "complexity": 1424476
+  },
+  {
+    "minute": 334,
+    "timestamp": "05:34",
+    "concurrency": 4,
+    "complexity": 1356732
+  },
+  {
+    "minute": 335,
+    "timestamp": "05:35",
+    "concurrency": 1,
+    "complexity": 1429067
+  },
+  {
+    "minute": 336,
+    "timestamp": "05:36",
+    "concurrency": 5,
+    "complexity": 1391804
+  },
+  {
+    "minute": 337,
+    "timestamp": "05:37",
+    "concurrency": 3,
+    "complexity": 1397936
+  },
+  {
+    "minute": 338,
+    "timestamp": "05:38",
+    "concurrency": 3,
+    "complexity": 1384550
+  },
+  {
+    "minute": 339,
+    "timestamp": "05:39",
+    "concurrency": 3,
+    "complexity": 1397395
+  },
+  {
+    "minute": 340,
+    "timestamp": "05:40",
+    "concurrency": 4,
+    "complexity": 1423936
+  },
+  {
+    "minute": 341,
+    "timestamp": "05:41",
+    "concurrency": 5,
+    "complexity": 1414077
+  },
+  {
+    "minute": 342,
+    "timestamp": "05:42",
+    "concurrency": 6,
+    "complexity": 1408652
+  },
+  {
+    "minute": 343,
+    "timestamp": "05:43",
+    "concurrency": 4,
+    "complexity": 1400708
+  },
+  {
+    "minute": 344,
+    "timestamp": "05:44",
+    "concurrency": 5,
+    "complexity": 1370142
+  },
+  {
+    "minute": 345,
+    "timestamp": "05:45",
+    "concurrency": 9,
+    "complexity": 1382287
+  },
+  {
+    "minute": 346,
+    "timestamp": "05:46",
+    "concurrency": 5,
+    "complexity": 1392415
+  },
+  {
+    "minute": 347,
+    "timestamp": "05:47",
+    "concurrency": 4,
+    "complexity": 1408533
+  },
+  {
+    "minute": 348,
+    "timestamp": "05:48",
+    "concurrency": 4,
+    "complexity": 1400866
+  },
+  {
+    "minute": 349,
+    "timestamp": "05:49",
+    "concurrency": 4,
+    "complexity": 1419229
+  },
+  {
+    "minute": 350,
+    "timestamp": "05:50",
+    "concurrency": 3,
+    "complexity": 1409110
+  },
+  {
+    "minute": 351,
+    "timestamp": "05:51",
+    "concurrency": 5,
+    "complexity": 1400795
+  },
+  {
+    "minute": 352,
+    "timestamp": "05:52",
+    "concurrency": 5,
+    "complexity": 1445286
+  },
+  {
+    "minute": 353,
+    "timestamp": "05:53",
+    "concurrency": 2,
+    "complexity": 1407950
+  },
+  {
+    "minute": 354,
+    "timestamp": "05:54",
+    "concurrency": 5,
+    "complexity": 1391235
+  },
+  {
+    "minute": 355,
+    "timestamp": "05:55",
+    "concurrency": 7,
+    "complexity": 1437113
+  },
+  {
+    "minute": 356,
+    "timestamp": "05:56",
+    "concurrency": 4,
+    "complexity": 1423954
+  },
+  {
+    "minute": 357,
+    "timestamp": "05:57",
+    "concurrency": 4,
+    "complexity": 1436292
+  },
+  {
+    "minute": 358,
+    "timestamp": "05:58",
+    "concurrency": 3,
+    "complexity": 1397769
+  },
+  {
+    "minute": 359,
+    "timestamp": "05:59",
+    "concurrency": 2,
+    "complexity": 1419524
+  },
+  {
+    "minute": 360,
+    "timestamp": "06:00",
+    "concurrency": 6,
+    "complexity": 1370942
+  },
+  {
+    "minute": 361,
+    "timestamp": "06:01",
+    "concurrency": 5,
+    "complexity": 1415674
+  },
+  {
+    "minute": 362,
+    "timestamp": "06:02",
+    "concurrency": 6,
+    "complexity": 1396826
+  },
+  {
+    "minute": 363,
+    "timestamp": "06:03",
+    "concurrency": 8,
+    "complexity": 1372858
+  },
+  {
+    "minute": 364,
+    "timestamp": "06:04",
+    "concurrency": 7,
+    "complexity": 1420583
+  },
+  {
+    "minute": 365,
+    "timestamp": "06:05",
+    "concurrency": 4,
+    "complexity": 1363692
+  },
+  {
+    "minute": 366,
+    "timestamp": "06:06",
+    "concurrency": 6,
+    "complexity": 1361596
+  },
+  {
+    "minute": 367,
+    "timestamp": "06:07",
+    "concurrency": 4,
+    "complexity": 1407049
+  },
+  {
+    "minute": 368,
+    "timestamp": "06:08",
+    "concurrency": 4,
+    "complexity": 1411167
+  },
+  {
+    "minute": 369,
+    "timestamp": "06:09",
+    "concurrency": 6,
+    "complexity": 1419084
+  },
+  {
+    "minute": 370,
+    "timestamp": "06:10",
+    "concurrency": 4,
+    "complexity": 1414438
+  },
+  {
+    "minute": 371,
+    "timestamp": "06:11",
+    "concurrency": 2,
+    "complexity": 1429050
+  },
+  {
+    "minute": 372,
+    "timestamp": "06:12",
+    "concurrency": 4,
+    "complexity": 1413432
+  },
+  {
+    "minute": 373,
+    "timestamp": "06:13",
+    "concurrency": 5,
+    "complexity": 1396684
+  },
+  {
+    "minute": 374,
+    "timestamp": "06:14",
+    "concurrency": 8,
+    "complexity": 1397753
+  },
+  {
+    "minute": 375,
+    "timestamp": "06:15",
+    "concurrency": 5,
+    "complexity": 1393469
+  },
+  {
+    "minute": 376,
+    "timestamp": "06:16",
+    "concurrency": 6,
+    "complexity": 1404903
+  },
+  {
+    "minute": 377,
+    "timestamp": "06:17",
+    "concurrency": 5,
+    "complexity": 1376919
+  },
+  {
+    "minute": 378,
+    "timestamp": "06:18",
+    "concurrency": 8,
+    "complexity": 1405549
+  },
+  {
+    "minute": 379,
+    "timestamp": "06:19",
+    "concurrency": 7,
+    "complexity": 1396859
+  },
+  {
+    "minute": 380,
+    "timestamp": "06:20",
+    "concurrency": 8,
+    "complexity": 1403950
+  },
+  {
+    "minute": 381,
+    "timestamp": "06:21",
+    "concurrency": 3,
+    "complexity": 1403853
+  },
+  {
+    "minute": 382,
+    "timestamp": "06:22",
+    "concurrency": 6,
+    "complexity": 1349068
+  },
+  {
+    "minute": 383,
+    "timestamp": "06:23",
+    "concurrency": 7,
+    "complexity": 1379914
+  },
+  {
+    "minute": 384,
+    "timestamp": "06:24",
+    "concurrency": 7,
+    "complexity": 1395587
+  },
+  {
+    "minute": 385,
+    "timestamp": "06:25",
+    "concurrency": 7,
+    "complexity": 1396461
+  },
+  {
+    "minute": 386,
+    "timestamp": "06:26",
+    "concurrency": 6,
+    "complexity": 1402563
+  },
+  {
+    "minute": 387,
+    "timestamp": "06:27",
+    "concurrency": 5,
+    "complexity": 1403218
+  },
+  {
+    "minute": 388,
+    "timestamp": "06:28",
+    "concurrency": 4,
+    "complexity": 1427285
+  },
+  {
+    "minute": 389,
+    "timestamp": "06:29",
+    "concurrency": 5,
+    "complexity": 1402991
+  },
+  {
+    "minute": 390,
+    "timestamp": "06:30",
+    "concurrency": 10,
+    "complexity": 1390255
+  },
+  {
+    "minute": 391,
+    "timestamp": "06:31",
+    "concurrency": 5,
+    "complexity": 1364299
+  },
+  {
+    "minute": 392,
+    "timestamp": "06:32",
+    "concurrency": 3,
+    "complexity": 1368668
+  },
+  {
+    "minute": 393,
+    "timestamp": "06:33",
+    "concurrency": 7,
+    "complexity": 1406501
+  },
+  {
+    "minute": 394,
+    "timestamp": "06:34",
+    "concurrency": 8,
+    "complexity": 1416744
+  },
+  {
+    "minute": 395,
+    "timestamp": "06:35",
+    "concurrency": 8,
+    "complexity": 1426098
+  },
+  {
+    "minute": 396,
+    "timestamp": "06:36",
+    "concurrency": 7,
+    "complexity": 1378442
+  },
+  {
+    "minute": 397,
+    "timestamp": "06:37",
+    "concurrency": 8,
+    "complexity": 1388643
+  },
+  {
+    "minute": 398,
+    "timestamp": "06:38",
+    "concurrency": 9,
+    "complexity": 1399280
+  },
+  {
+    "minute": 399,
+    "timestamp": "06:39",
+    "concurrency": 5,
+    "complexity": 1435088
+  },
+  {
+    "minute": 400,
+    "timestamp": "06:40",
+    "concurrency": 5,
+    "complexity": 1396135
+  },
+  {
+    "minute": 401,
+    "timestamp": "06:41",
+    "concurrency": 5,
+    "complexity": 1424554
+  },
+  {
+    "minute": 402,
+    "timestamp": "06:42",
+    "concurrency": 6,
+    "complexity": 1396612
+  },
+  {
+    "minute": 403,
+    "timestamp": "06:43",
+    "concurrency": 9,
+    "complexity": 1415953
+  },
+  {
+    "minute": 404,
+    "timestamp": "06:44",
+    "concurrency": 8,
+    "complexity": 1413088
+  },
+  {
+    "minute": 405,
+    "timestamp": "06:45",
+    "concurrency": 7,
+    "complexity": 1395539
+  },
+  {
+    "minute": 406,
+    "timestamp": "06:46",
+    "concurrency": 4,
+    "complexity": 1371463
+  },
+  {
+    "minute": 407,
+    "timestamp": "06:47",
+    "concurrency": 6,
+    "complexity": 1386135
+  },
+  {
+    "minute": 408,
+    "timestamp": "06:48",
+    "concurrency": 4,
+    "complexity": 1420936
+  },
+  {
+    "minute": 409,
+    "timestamp": "06:49",
+    "concurrency": 9,
+    "complexity": 1408343
+  },
+  {
+    "minute": 410,
+    "timestamp": "06:50",
+    "concurrency": 9,
+    "complexity": 1381737
+  },
+  {
+    "minute": 411,
+    "timestamp": "06:51",
+    "concurrency": 8,
+    "complexity": 1383180
+  },
+  {
+    "minute": 412,
+    "timestamp": "06:52",
+    "concurrency": 6,
+    "complexity": 1355017
+  },
+  {
+    "minute": 413,
+    "timestamp": "06:53",
+    "concurrency": 9,
+    "complexity": 1418123
+  },
+  {
+    "minute": 414,
+    "timestamp": "06:54",
+    "concurrency": 7,
+    "complexity": 1406551
+  },
+  {
+    "minute": 415,
+    "timestamp": "06:55",
+    "concurrency": 5,
+    "complexity": 1385675
+  },
+  {
+    "minute": 416,
+    "timestamp": "06:56",
+    "concurrency": 6,
+    "complexity": 1391998
+  },
+  {
+    "minute": 417,
+    "timestamp": "06:57",
+    "concurrency": 7,
+    "complexity": 1344150
+  },
+  {
+    "minute": 418,
+    "timestamp": "06:58",
+    "concurrency": 7,
+    "complexity": 1377397
+  },
+  {
+    "minute": 419,
+    "timestamp": "06:59",
+    "concurrency": 7,
+    "complexity": 1413377
+  },
+  {
+    "minute": 420,
+    "timestamp": "07:00",
+    "concurrency": 5,
+    "complexity": 1405869
+  },
+  {
+    "minute": 421,
+    "timestamp": "07:01",
+    "concurrency": 9,
+    "complexity": 1392394
+  },
+  {
+    "minute": 422,
+    "timestamp": "07:02",
+    "concurrency": 7,
+    "complexity": 1385020
+  },
+  {
+    "minute": 423,
+    "timestamp": "07:03",
+    "concurrency": 6,
+    "complexity": 1400770
+  },
+  {
+    "minute": 424,
+    "timestamp": "07:04",
+    "concurrency": 9,
+    "complexity": 1378734
+  },
+  {
+    "minute": 425,
+    "timestamp": "07:05",
+    "concurrency": 6,
+    "complexity": 1350581
+  },
+  {
+    "minute": 426,
+    "timestamp": "07:06",
+    "concurrency": 5,
+    "complexity": 1383256
+  },
+  {
+    "minute": 427,
+    "timestamp": "07:07",
+    "concurrency": 10,
+    "complexity": 1390941
+  },
+  {
+    "minute": 428,
+    "timestamp": "07:08",
+    "concurrency": 11,
+    "complexity": 1404823
+  },
+  {
+    "minute": 429,
+    "timestamp": "07:09",
+    "concurrency": 7,
+    "complexity": 1353029
+  },
+  {
+    "minute": 430,
+    "timestamp": "07:10",
+    "concurrency": 8,
+    "complexity": 1378871
+  },
+  {
+    "minute": 431,
+    "timestamp": "07:11",
+    "concurrency": 6,
+    "complexity": 1379292
+  },
+  {
+    "minute": 432,
+    "timestamp": "07:12",
+    "concurrency": 8,
+    "complexity": 1358235
+  },
+  {
+    "minute": 433,
+    "timestamp": "07:13",
+    "concurrency": 7,
+    "complexity": 1389468
+  },
+  {
+    "minute": 434,
+    "timestamp": "07:14",
+    "concurrency": 8,
+    "complexity": 1394109
+  },
+  {
+    "minute": 435,
+    "timestamp": "07:15",
+    "concurrency": 9,
+    "complexity": 1372788
+  },
+  {
+    "minute": 436,
+    "timestamp": "07:16",
+    "concurrency": 6,
+    "complexity": 1419136
+  },
+  {
+    "minute": 437,
+    "timestamp": "07:17",
+    "concurrency": 8,
+    "complexity": 1371073
+  },
+  {
+    "minute": 438,
+    "timestamp": "07:18",
+    "concurrency": 5,
+    "complexity": 1367945
+  },
+  {
+    "minute": 439,
+    "timestamp": "07:19",
+    "concurrency": 8,
+    "complexity": 1366776
+  },
+  {
+    "minute": 440,
+    "timestamp": "07:20",
+    "concurrency": 8,
+    "complexity": 1359384
+  },
+  {
+    "minute": 441,
+    "timestamp": "07:21",
+    "concurrency": 9,
+    "complexity": 1363910
+  },
+  {
+    "minute": 442,
+    "timestamp": "07:22",
+    "concurrency": 9,
+    "complexity": 1345799
+  },
+  {
+    "minute": 443,
+    "timestamp": "07:23",
+    "concurrency": 10,
+    "complexity": 1370032
+  },
+  {
+    "minute": 444,
+    "timestamp": "07:24",
+    "concurrency": 6,
+    "complexity": 1374388
+  },
+  {
+    "minute": 445,
+    "timestamp": "07:25",
+    "concurrency": 6,
+    "complexity": 1326951
+  },
+  {
+    "minute": 446,
+    "timestamp": "07:26",
+    "concurrency": 9,
+    "complexity": 1369929
+  },
+  {
+    "minute": 447,
+    "timestamp": "07:27",
+    "concurrency": 5,
+    "complexity": 1372165
+  },
+  {
+    "minute": 448,
+    "timestamp": "07:28",
+    "concurrency": 9,
+    "complexity": 1380961
+  },
+  {
+    "minute": 449,
+    "timestamp": "07:29",
+    "concurrency": 7,
+    "complexity": 1394102
+  },
+  {
+    "minute": 450,
+    "timestamp": "07:30",
+    "concurrency": 11,
+    "complexity": 1386369
+  },
+  {
+    "minute": 451,
+    "timestamp": "07:31",
+    "concurrency": 9,
+    "complexity": 1356261
+  },
+  {
+    "minute": 452,
+    "timestamp": "07:32",
+    "concurrency": 8,
+    "complexity": 1353259
+  },
+  {
+    "minute": 453,
+    "timestamp": "07:33",
+    "concurrency": 11,
+    "complexity": 1378889
+  },
+  {
+    "minute": 454,
+    "timestamp": "07:34",
+    "concurrency": 7,
+    "complexity": 1355658
+  },
+  {
+    "minute": 455,
+    "timestamp": "07:35",
+    "concurrency": 7,
+    "complexity": 1341340
+  },
+  {
+    "minute": 456,
+    "timestamp": "07:36",
+    "concurrency": 7,
+    "complexity": 1412675
+  },
+  {
+    "minute": 457,
+    "timestamp": "07:37",
+    "concurrency": 8,
+    "complexity": 1358262
+  },
+  {
+    "minute": 458,
+    "timestamp": "07:38",
+    "concurrency": 9,
+    "complexity": 1351223
+  },
+  {
+    "minute": 459,
+    "timestamp": "07:39",
+    "concurrency": 10,
+    "complexity": 1319181
+  },
+  {
+    "minute": 460,
+    "timestamp": "07:40",
+    "concurrency": 10,
+    "complexity": 1379315
+  },
+  {
+    "minute": 461,
+    "timestamp": "07:41",
+    "concurrency": 6,
+    "complexity": 1341784
+  },
+  {
+    "minute": 462,
+    "timestamp": "07:42",
+    "concurrency": 9,
+    "complexity": 1361364
+  },
+  {
+    "minute": 463,
+    "timestamp": "07:43",
+    "concurrency": 7,
+    "complexity": 1379407
+  },
+  {
+    "minute": 464,
+    "timestamp": "07:44",
+    "concurrency": 9,
+    "complexity": 1339825
+  },
+  {
+    "minute": 465,
+    "timestamp": "07:45",
+    "concurrency": 13,
+    "complexity": 1360088
+  },
+  {
+    "minute": 466,
+    "timestamp": "07:46",
+    "concurrency": 10,
+    "complexity": 1388196
+  },
+  {
+    "minute": 467,
+    "timestamp": "07:47",
+    "concurrency": 11,
+    "complexity": 1307801
+  },
+  {
+    "minute": 468,
+    "timestamp": "07:48",
+    "concurrency": 12,
+    "complexity": 1339934
+  },
+  {
+    "minute": 469,
+    "timestamp": "07:49",
+    "concurrency": 11,
+    "complexity": 1337255
+  },
+  {
+    "minute": 470,
+    "timestamp": "07:50",
+    "concurrency": 9,
+    "complexity": 1350802
+  },
+  {
+    "minute": 471,
+    "timestamp": "07:51",
+    "concurrency": 7,
+    "complexity": 1352772
+  },
+  {
+    "minute": 472,
+    "timestamp": "07:52",
+    "concurrency": 9,
+    "complexity": 1331684
+  },
+  {
+    "minute": 473,
+    "timestamp": "07:53",
+    "concurrency": 9,
+    "complexity": 1338996
+  },
+  {
+    "minute": 474,
+    "timestamp": "07:54",
+    "concurrency": 7,
+    "complexity": 1335787
+  },
+  {
+    "minute": 475,
+    "timestamp": "07:55",
+    "concurrency": 10,
+    "complexity": 1343397
+  },
+  {
+    "minute": 476,
+    "timestamp": "07:56",
+    "concurrency": 10,
+    "complexity": 1353932
+  },
+  {
+    "minute": 477,
+    "timestamp": "07:57",
+    "concurrency": 12,
+    "complexity": 1366926
+  },
+  {
+    "minute": 478,
+    "timestamp": "07:58",
+    "concurrency": 9,
+    "complexity": 1368963
+  },
+  {
+    "minute": 479,
+    "timestamp": "07:59",
+    "concurrency": 10,
+    "complexity": 1360063
+  },
+  {
+    "minute": 480,
+    "timestamp": "08:00",
+    "concurrency": 9,
+    "complexity": 1328639
+  },
+  {
+    "minute": 481,
+    "timestamp": "08:01",
+    "concurrency": 11,
+    "complexity": 1345174
+  },
+  {
+    "minute": 482,
+    "timestamp": "08:02",
+    "concurrency": 9,
+    "complexity": 1391841
+  },
+  {
+    "minute": 483,
+    "timestamp": "08:03",
+    "concurrency": 8,
+    "complexity": 1363753
+  },
+  {
+    "minute": 484,
+    "timestamp": "08:04",
+    "concurrency": 10,
+    "complexity": 1333754
+  },
+  {
+    "minute": 485,
+    "timestamp": "08:05",
+    "concurrency": 10,
+    "complexity": 1373299
+  },
+  {
+    "minute": 486,
+    "timestamp": "08:06",
+    "concurrency": 10,
+    "complexity": 1332986
+  },
+  {
+    "minute": 487,
+    "timestamp": "08:07",
+    "concurrency": 11,
+    "complexity": 1326461
+  },
+  {
+    "minute": 488,
+    "timestamp": "08:08",
+    "concurrency": 8,
+    "complexity": 1366819
+  },
+  {
+    "minute": 489,
+    "timestamp": "08:09",
+    "concurrency": 9,
+    "complexity": 1311781
+  },
+  {
+    "minute": 490,
+    "timestamp": "08:10",
+    "concurrency": 11,
+    "complexity": 1298761
+  },
+  {
+    "minute": 491,
+    "timestamp": "08:11",
+    "concurrency": 9,
+    "complexity": 1354918
+  },
+  {
+    "minute": 492,
+    "timestamp": "08:12",
+    "concurrency": 10,
+    "complexity": 1335696
+  },
+  {
+    "minute": 493,
+    "timestamp": "08:13",
+    "concurrency": 6,
+    "complexity": 1336733
+  },
+  {
+    "minute": 494,
+    "timestamp": "08:14",
+    "concurrency": 14,
+    "complexity": 1325994
+  },
+  {
+    "minute": 495,
+    "timestamp": "08:15",
+    "concurrency": 10,
+    "complexity": 1327484
+  },
+  {
+    "minute": 496,
+    "timestamp": "08:16",
+    "concurrency": 12,
+    "complexity": 1322116
+  },
+  {
+    "minute": 497,
+    "timestamp": "08:17",
+    "concurrency": 10,
+    "complexity": 1317776
+  },
+  {
+    "minute": 498,
+    "timestamp": "08:18",
+    "concurrency": 11,
+    "complexity": 1321669
+  },
+  {
+    "minute": 499,
+    "timestamp": "08:19",
+    "concurrency": 12,
+    "complexity": 1320044
+  },
+  {
+    "minute": 500,
+    "timestamp": "08:20",
+    "concurrency": 12,
+    "complexity": 1310740
+  },
+  {
+    "minute": 501,
+    "timestamp": "08:21",
+    "concurrency": 10,
+    "complexity": 1315402
+  },
+  {
+    "minute": 502,
+    "timestamp": "08:22",
+    "concurrency": 10,
+    "complexity": 1275237
+  },
+  {
+    "minute": 503,
+    "timestamp": "08:23",
+    "concurrency": 12,
+    "complexity": 1337965
+  },
+  {
+    "minute": 504,
+    "timestamp": "08:24",
+    "concurrency": 14,
+    "complexity": 1331052
+  },
+  {
+    "minute": 505,
+    "timestamp": "08:25",
+    "concurrency": 10,
+    "complexity": 1320517
+  },
+  {
+    "minute": 506,
+    "timestamp": "08:26",
+    "concurrency": 13,
+    "complexity": 1325923
+  },
+  {
+    "minute": 507,
+    "timestamp": "08:27",
+    "concurrency": 10,
+    "complexity": 1325604
+  },
+  {
+    "minute": 508,
+    "timestamp": "08:28",
+    "concurrency": 12,
+    "complexity": 1304602
+  },
+  {
+    "minute": 509,
+    "timestamp": "08:29",
+    "concurrency": 12,
+    "complexity": 1307375
+  },
+  {
+    "minute": 510,
+    "timestamp": "08:30",
+    "concurrency": 10,
+    "complexity": 1327530
+  },
+  {
+    "minute": 511,
+    "timestamp": "08:31",
+    "concurrency": 9,
+    "complexity": 1320046
+  },
+  {
+    "minute": 512,
+    "timestamp": "08:32",
+    "concurrency": 12,
+    "complexity": 1355688
+  },
+  {
+    "minute": 513,
+    "timestamp": "08:33",
+    "concurrency": 10,
+    "complexity": 1346133
+  },
+  {
+    "minute": 514,
+    "timestamp": "08:34",
+    "concurrency": 9,
+    "complexity": 1331315
+  },
+  {
+    "minute": 515,
+    "timestamp": "08:35",
+    "concurrency": 9,
+    "complexity": 1296327
+  },
+  {
+    "minute": 516,
+    "timestamp": "08:36",
+    "concurrency": 10,
+    "complexity": 1299173
+  },
+  {
+    "minute": 517,
+    "timestamp": "08:37",
+    "concurrency": 12,
+    "complexity": 1289319
+  },
+  {
+    "minute": 518,
+    "timestamp": "08:38",
+    "concurrency": 11,
+    "complexity": 1313844
+  },
+  {
+    "minute": 519,
+    "timestamp": "08:39",
+    "concurrency": 11,
+    "complexity": 1252314
+  },
+  {
+    "minute": 520,
+    "timestamp": "08:40",
+    "concurrency": 11,
+    "complexity": 1296839
+  },
+  {
+    "minute": 521,
+    "timestamp": "08:41",
+    "concurrency": 10,
+    "complexity": 1298749
+  },
+  {
+    "minute": 522,
+    "timestamp": "08:42",
+    "concurrency": 11,
+    "complexity": 1273265
+  },
+  {
+    "minute": 523,
+    "timestamp": "08:43",
+    "concurrency": 12,
+    "complexity": 1318566
+  },
+  {
+    "minute": 524,
+    "timestamp": "08:44",
+    "concurrency": 11,
+    "complexity": 1278683
+  },
+  {
+    "minute": 525,
+    "timestamp": "08:45",
+    "concurrency": 11,
+    "complexity": 1305670
+  },
+  {
+    "minute": 526,
+    "timestamp": "08:46",
+    "concurrency": 9,
+    "complexity": 1354834
+  },
+  {
+    "minute": 527,
+    "timestamp": "08:47",
+    "concurrency": 11,
+    "complexity": 1265776
+  },
+  {
+    "minute": 528,
+    "timestamp": "08:48",
+    "concurrency": 9,
+    "complexity": 1293858
+  },
+  {
+    "minute": 529,
+    "timestamp": "08:49",
+    "concurrency": 10,
+    "complexity": 1287506
+  },
+  {
+    "minute": 530,
+    "timestamp": "08:50",
+    "concurrency": 8,
+    "complexity": 1282436
+  },
+  {
+    "minute": 531,
+    "timestamp": "08:51",
+    "concurrency": 8,
+    "complexity": 1308496
+  },
+  {
+    "minute": 532,
+    "timestamp": "08:52",
+    "concurrency": 10,
+    "complexity": 1314227
+  },
+  {
+    "minute": 533,
+    "timestamp": "08:53",
+    "concurrency": 10,
+    "complexity": 1306337
+  },
+  {
+    "minute": 534,
+    "timestamp": "08:54",
+    "concurrency": 11,
+    "complexity": 1275236
+  },
+  {
+    "minute": 535,
+    "timestamp": "08:55",
+    "concurrency": 10,
+    "complexity": 1337173
+  },
+  {
+    "minute": 536,
+    "timestamp": "08:56",
+    "concurrency": 11,
+    "complexity": 1251879
+  },
+  {
+    "minute": 537,
+    "timestamp": "08:57",
+    "concurrency": 11,
+    "complexity": 1265413
+  },
+  {
+    "minute": 538,
+    "timestamp": "08:58",
+    "concurrency": 10,
+    "complexity": 1288237
+  },
+  {
+    "minute": 539,
+    "timestamp": "08:59",
+    "concurrency": 10,
+    "complexity": 1285401
+  },
+  {
+    "minute": 540,
+    "timestamp": "09:00",
+    "concurrency": 13,
+    "complexity": 1292140
+  },
+  {
+    "minute": 541,
+    "timestamp": "09:01",
+    "concurrency": 11,
+    "complexity": 1312742
+  },
+  {
+    "minute": 542,
+    "timestamp": "09:02",
+    "concurrency": 10,
+    "complexity": 1277497
+  },
+  {
+    "minute": 543,
+    "timestamp": "09:03",
+    "concurrency": 11,
+    "complexity": 1280918
+  },
+  {
+    "minute": 544,
+    "timestamp": "09:04",
+    "concurrency": 10,
+    "complexity": 1265498
+  },
+  {
+    "minute": 545,
+    "timestamp": "09:05",
+    "concurrency": 9,
+    "complexity": 1287893
+  },
+  {
+    "minute": 546,
+    "timestamp": "09:06",
+    "concurrency": 9,
+    "complexity": 1268491
+  },
+  {
+    "minute": 547,
+    "timestamp": "09:07",
+    "concurrency": 9,
+    "complexity": 1267208
+  },
+  {
+    "minute": 548,
+    "timestamp": "09:08",
+    "concurrency": 12,
+    "complexity": 1283182
+  },
+  {
+    "minute": 549,
+    "timestamp": "09:09",
+    "concurrency": 10,
+    "complexity": 1291729
+  },
+  {
+    "minute": 550,
+    "timestamp": "09:10",
+    "concurrency": 10,
+    "complexity": 1225581
+  },
+  {
+    "minute": 551,
+    "timestamp": "09:11",
+    "concurrency": 12,
+    "complexity": 1275667
+  },
+  {
+    "minute": 552,
+    "timestamp": "09:12",
+    "concurrency": 10,
+    "complexity": 1261750
+  },
+  {
+    "minute": 553,
+    "timestamp": "09:13",
+    "concurrency": 11,
+    "complexity": 1284804
+  },
+  {
+    "minute": 554,
+    "timestamp": "09:14",
+    "concurrency": 8,
+    "complexity": 1259541
+  },
+  {
+    "minute": 555,
+    "timestamp": "09:15",
+    "concurrency": 10,
+    "complexity": 1289252
+  },
+  {
+    "minute": 556,
+    "timestamp": "09:16",
+    "concurrency": 11,
+    "complexity": 1248386
+  },
+  {
+    "minute": 557,
+    "timestamp": "09:17",
+    "concurrency": 10,
+    "complexity": 1215985
+  },
+  {
+    "minute": 558,
+    "timestamp": "09:18",
+    "concurrency": 8,
+    "complexity": 1280296
+  },
+  {
+    "minute": 559,
+    "timestamp": "09:19",
+    "concurrency": 12,
+    "complexity": 1241060
+  },
+  {
+    "minute": 560,
+    "timestamp": "09:20",
+    "concurrency": 9,
+    "complexity": 1224989
+  },
+  {
+    "minute": 561,
+    "timestamp": "09:21",
+    "concurrency": 11,
+    "complexity": 1255573
+  },
+  {
+    "minute": 562,
+    "timestamp": "09:22",
+    "concurrency": 10,
+    "complexity": 1249121
+  },
+  {
+    "minute": 563,
+    "timestamp": "09:23",
+    "concurrency": 12,
+    "complexity": 1269015
+  },
+  {
+    "minute": 564,
+    "timestamp": "09:24",
+    "concurrency": 14,
+    "complexity": 1269044
+  },
+  {
+    "minute": 565,
+    "timestamp": "09:25",
+    "concurrency": 8,
+    "complexity": 1251746
+  },
+  {
+    "minute": 566,
+    "timestamp": "09:26",
+    "concurrency": 9,
+    "complexity": 1230771
+  },
+  {
+    "minute": 567,
+    "timestamp": "09:27",
+    "concurrency": 11,
+    "complexity": 1252835
+  },
+  {
+    "minute": 568,
+    "timestamp": "09:28",
+    "concurrency": 9,
+    "complexity": 1249025
+  },
+  {
+    "minute": 569,
+    "timestamp": "09:29",
+    "concurrency": 11,
+    "complexity": 1255719
+  },
+  {
+    "minute": 570,
+    "timestamp": "09:30",
+    "concurrency": 12,
+    "complexity": 1225459
+  },
+  {
+    "minute": 571,
+    "timestamp": "09:31",
+    "concurrency": 11,
+    "complexity": 1233558
+  },
+  {
+    "minute": 572,
+    "timestamp": "09:32",
+    "concurrency": 11,
+    "complexity": 1250359
+  },
+  {
+    "minute": 573,
+    "timestamp": "09:33",
+    "concurrency": 12,
+    "complexity": 1263719
+  },
+  {
+    "minute": 574,
+    "timestamp": "09:34",
+    "concurrency": 8,
+    "complexity": 1256687
+  },
+  {
+    "minute": 575,
+    "timestamp": "09:35",
+    "concurrency": 10,
+    "complexity": 1237602
+  },
+  {
+    "minute": 576,
+    "timestamp": "09:36",
+    "concurrency": 9,
+    "complexity": 1224800
+  },
+  {
+    "minute": 577,
+    "timestamp": "09:37",
+    "concurrency": 11,
+    "complexity": 1241207
+  },
+  {
+    "minute": 578,
+    "timestamp": "09:38",
+    "concurrency": 7,
+    "complexity": 1209882
+  },
+  {
+    "minute": 579,
+    "timestamp": "09:39",
+    "concurrency": 10,
+    "complexity": 1213944
+  },
+  {
+    "minute": 580,
+    "timestamp": "09:40",
+    "concurrency": 11,
+    "complexity": 1259049
+  },
+  {
+    "minute": 581,
+    "timestamp": "09:41",
+    "concurrency": 9,
+    "complexity": 1235460
+  },
+  {
+    "minute": 582,
+    "timestamp": "09:42",
+    "concurrency": 9,
+    "complexity": 1219029
+  },
+  {
+    "minute": 583,
+    "timestamp": "09:43",
+    "concurrency": 10,
+    "complexity": 1241119
+  },
+  {
+    "minute": 584,
+    "timestamp": "09:44",
+    "concurrency": 11,
+    "complexity": 1248829
+  },
+  {
+    "minute": 585,
+    "timestamp": "09:45",
+    "concurrency": 8,
+    "complexity": 1212745
+  },
+  {
+    "minute": 586,
+    "timestamp": "09:46",
+    "concurrency": 9,
+    "complexity": 1211633
+  },
+  {
+    "minute": 587,
+    "timestamp": "09:47",
+    "concurrency": 12,
+    "complexity": 1207668
+  },
+  {
+    "minute": 588,
+    "timestamp": "09:48",
+    "concurrency": 10,
+    "complexity": 1236534
+  },
+  {
+    "minute": 589,
+    "timestamp": "09:49",
+    "concurrency": 9,
+    "complexity": 1235259
+  },
+  {
+    "minute": 590,
+    "timestamp": "09:50",
+    "concurrency": 11,
+    "complexity": 1242034
+  },
+  {
+    "minute": 591,
+    "timestamp": "09:51",
+    "concurrency": 9,
+    "complexity": 1233011
+  },
+  {
+    "minute": 592,
+    "timestamp": "09:52",
+    "concurrency": 11,
+    "complexity": 1178714
+  },
+  {
+    "minute": 593,
+    "timestamp": "09:53",
+    "concurrency": 9,
+    "complexity": 1215492
+  },
+  {
+    "minute": 594,
+    "timestamp": "09:54",
+    "concurrency": 10,
+    "complexity": 1187217
+  },
+  {
+    "minute": 595,
+    "timestamp": "09:55",
+    "concurrency": 11,
+    "complexity": 1196633
+  },
+  {
+    "minute": 596,
+    "timestamp": "09:56",
+    "concurrency": 9,
+    "complexity": 1208807
+  },
+  {
+    "minute": 597,
+    "timestamp": "09:57",
+    "concurrency": 11,
+    "complexity": 1220605
+  },
+  {
+    "minute": 598,
+    "timestamp": "09:58",
+    "concurrency": 10,
+    "complexity": 1184573
+  },
+  {
+    "minute": 599,
+    "timestamp": "09:59",
+    "concurrency": 13,
+    "complexity": 1154387
+  },
+  {
+    "minute": 600,
+    "timestamp": "10:00",
+    "concurrency": 12,
+    "complexity": 1202980
+  },
+  {
+    "minute": 601,
+    "timestamp": "10:01",
+    "concurrency": 8,
+    "complexity": 1250724
+  },
+  {
+    "minute": 602,
+    "timestamp": "10:02",
+    "concurrency": 10,
+    "complexity": 1192276
+  },
+  {
+    "minute": 603,
+    "timestamp": "10:03",
+    "concurrency": 8,
+    "complexity": 1195748
+  },
+  {
+    "minute": 604,
+    "timestamp": "10:04",
+    "concurrency": 10,
+    "complexity": 1228926
+  },
+  {
+    "minute": 605,
+    "timestamp": "10:05",
+    "concurrency": 10,
+    "complexity": 1203557
+  },
+  {
+    "minute": 606,
+    "timestamp": "10:06",
+    "concurrency": 8,
+    "complexity": 1194554
+  },
+  {
+    "minute": 607,
+    "timestamp": "10:07",
+    "concurrency": 11,
+    "complexity": 1197521
+  },
+  {
+    "minute": 608,
+    "timestamp": "10:08",
+    "concurrency": 10,
+    "complexity": 1192142
+  },
+  {
+    "minute": 609,
+    "timestamp": "10:09",
+    "concurrency": 9,
+    "complexity": 1162796
+  },
+  {
+    "minute": 610,
+    "timestamp": "10:10",
+    "concurrency": 9,
+    "complexity": 1157213
+  },
+  {
+    "minute": 611,
+    "timestamp": "10:11",
+    "concurrency": 9,
+    "complexity": 1220226
+  },
+  {
+    "minute": 612,
+    "timestamp": "10:12",
+    "concurrency": 10,
+    "complexity": 1184612
+  },
+  {
+    "minute": 613,
+    "timestamp": "10:13",
+    "concurrency": 9,
+    "complexity": 1181377
+  },
+  {
+    "minute": 614,
+    "timestamp": "10:14",
+    "concurrency": 5,
+    "complexity": 1176007
+  },
+  {
+    "minute": 615,
+    "timestamp": "10:15",
+    "concurrency": 9,
+    "complexity": 1191867
+  },
+  {
+    "minute": 616,
+    "timestamp": "10:16",
+    "concurrency": 7,
+    "complexity": 1225450
+  },
+  {
+    "minute": 617,
+    "timestamp": "10:17",
+    "concurrency": 9,
+    "complexity": 1183582
+  },
+  {
+    "minute": 618,
+    "timestamp": "10:18",
+    "concurrency": 7,
+    "complexity": 1159765
+  },
+  {
+    "minute": 619,
+    "timestamp": "10:19",
+    "concurrency": 7,
+    "complexity": 1167280
+  },
+  {
+    "minute": 620,
+    "timestamp": "10:20",
+    "concurrency": 11,
+    "complexity": 1189785
+  },
+  {
+    "minute": 621,
+    "timestamp": "10:21",
+    "concurrency": 8,
+    "complexity": 1155123
+  },
+  {
+    "minute": 622,
+    "timestamp": "10:22",
+    "concurrency": 8,
+    "complexity": 1182235
+  },
+  {
+    "minute": 623,
+    "timestamp": "10:23",
+    "concurrency": 10,
+    "complexity": 1117183
+  },
+  {
+    "minute": 624,
+    "timestamp": "10:24",
+    "concurrency": 8,
+    "complexity": 1157405
+  },
+  {
+    "minute": 625,
+    "timestamp": "10:25",
+    "concurrency": 12,
+    "complexity": 1172967
+  },
+  {
+    "minute": 626,
+    "timestamp": "10:26",
+    "concurrency": 8,
+    "complexity": 1184205
+  },
+  {
+    "minute": 627,
+    "timestamp": "10:27",
+    "concurrency": 9,
+    "complexity": 1140829
+  },
+  {
+    "minute": 628,
+    "timestamp": "10:28",
+    "concurrency": 10,
+    "complexity": 1125535
+  },
+  {
+    "minute": 629,
+    "timestamp": "10:29",
+    "concurrency": 11,
+    "complexity": 1148765
+  },
+  {
+    "minute": 630,
+    "timestamp": "10:30",
+    "concurrency": 7,
+    "complexity": 1129858
+  },
+  {
+    "minute": 631,
+    "timestamp": "10:31",
+    "concurrency": 8,
+    "complexity": 1147770
+  },
+  {
+    "minute": 632,
+    "timestamp": "10:32",
+    "concurrency": 10,
+    "complexity": 1148998
+  },
+  {
+    "minute": 633,
+    "timestamp": "10:33",
+    "concurrency": 10,
+    "complexity": 1121126
+  },
+  {
+    "minute": 634,
+    "timestamp": "10:34",
+    "concurrency": 10,
+    "complexity": 1161973
+  },
+  {
+    "minute": 635,
+    "timestamp": "10:35",
+    "concurrency": 6,
+    "complexity": 1141112
+  },
+  {
+    "minute": 636,
+    "timestamp": "10:36",
+    "concurrency": 11,
+    "complexity": 1164235
+  },
+  {
+    "minute": 637,
+    "timestamp": "10:37",
+    "concurrency": 7,
+    "complexity": 1104095
+  },
+  {
+    "minute": 638,
+    "timestamp": "10:38",
+    "concurrency": 9,
+    "complexity": 1119014
+  },
+  {
+    "minute": 639,
+    "timestamp": "10:39",
+    "concurrency": 8,
+    "complexity": 1148052
+  },
+  {
+    "minute": 640,
+    "timestamp": "10:40",
+    "concurrency": 7,
+    "complexity": 1120096
+  },
+  {
+    "minute": 641,
+    "timestamp": "10:41",
+    "concurrency": 6,
+    "complexity": 1131143
+  },
+  {
+    "minute": 642,
+    "timestamp": "10:42",
+    "concurrency": 6,
+    "complexity": 1132802
+  },
+  {
+    "minute": 643,
+    "timestamp": "10:43",
+    "concurrency": 8,
+    "complexity": 1134304
+  },
+  {
+    "minute": 644,
+    "timestamp": "10:44",
+    "concurrency": 6,
+    "complexity": 1115937
+  },
+  {
+    "minute": 645,
+    "timestamp": "10:45",
+    "concurrency": 6,
+    "complexity": 1130820
+  },
+  {
+    "minute": 646,
+    "timestamp": "10:46",
+    "concurrency": 8,
+    "complexity": 1110527
+  },
+  {
+    "minute": 647,
+    "timestamp": "10:47",
+    "concurrency": 4,
+    "complexity": 1138005
+  },
+  {
+    "minute": 648,
+    "timestamp": "10:48",
+    "concurrency": 9,
+    "complexity": 1120562
+  },
+  {
+    "minute": 649,
+    "timestamp": "10:49",
+    "concurrency": 4,
+    "complexity": 1124296
+  },
+  {
+    "minute": 650,
+    "timestamp": "10:50",
+    "concurrency": 8,
+    "complexity": 1170928
+  },
+  {
+    "minute": 651,
+    "timestamp": "10:51",
+    "concurrency": 8,
+    "complexity": 1095720
+  },
+  {
+    "minute": 652,
+    "timestamp": "10:52",
+    "concurrency": 9,
+    "complexity": 1143963
+  },
+  {
+    "minute": 653,
+    "timestamp": "10:53",
+    "concurrency": 8,
+    "complexity": 1061332
+  },
+  {
+    "minute": 654,
+    "timestamp": "10:54",
+    "concurrency": 11,
+    "complexity": 1071277
+  },
+  {
+    "minute": 655,
+    "timestamp": "10:55",
+    "concurrency": 8,
+    "complexity": 1086355
+  },
+  {
+    "minute": 656,
+    "timestamp": "10:56",
+    "concurrency": 9,
+    "complexity": 1085939
+  },
+  {
+    "minute": 657,
+    "timestamp": "10:57",
+    "concurrency": 6,
+    "complexity": 1111883
+  },
+  {
+    "minute": 658,
+    "timestamp": "10:58",
+    "concurrency": 8,
+    "complexity": 1111922
+  },
+  {
+    "minute": 659,
+    "timestamp": "10:59",
+    "concurrency": 10,
+    "complexity": 1099344
+  },
+  {
+    "minute": 660,
+    "timestamp": "11:00",
+    "concurrency": 7,
+    "complexity": 1099756
+  },
+  {
+    "minute": 661,
+    "timestamp": "11:01",
+    "concurrency": 8,
+    "complexity": 1111620
+  },
+  {
+    "minute": 662,
+    "timestamp": "11:02",
+    "concurrency": 9,
+    "complexity": 1116038
+  },
+  {
+    "minute": 663,
+    "timestamp": "11:03",
+    "concurrency": 6,
+    "complexity": 1071150
+  },
+  {
+    "minute": 664,
+    "timestamp": "11:04",
+    "concurrency": 4,
+    "complexity": 1088749
+  },
+  {
+    "minute": 665,
+    "timestamp": "11:05",
+    "concurrency": 8,
+    "complexity": 1092898
+  },
+  {
+    "minute": 666,
+    "timestamp": "11:06",
+    "concurrency": 9,
+    "complexity": 1102298
+  },
+  {
+    "minute": 667,
+    "timestamp": "11:07",
+    "concurrency": 5,
+    "complexity": 1075439
+  },
+  {
+    "minute": 668,
+    "timestamp": "11:08",
+    "concurrency": 8,
+    "complexity": 1087406
+  },
+  {
+    "minute": 669,
+    "timestamp": "11:09",
+    "concurrency": 8,
+    "complexity": 1088087
+  },
+  {
+    "minute": 670,
+    "timestamp": "11:10",
+    "concurrency": 4,
+    "complexity": 1071692
+  },
+  {
+    "minute": 671,
+    "timestamp": "11:11",
+    "concurrency": 6,
+    "complexity": 1069509
+  },
+  {
+    "minute": 672,
+    "timestamp": "11:12",
+    "concurrency": 6,
+    "complexity": 1084342
+  },
+  {
+    "minute": 673,
+    "timestamp": "11:13",
+    "concurrency": 7,
+    "complexity": 1078050
+  },
+  {
+    "minute": 674,
+    "timestamp": "11:14",
+    "concurrency": 6,
+    "complexity": 1088955
+  },
+  {
+    "minute": 675,
+    "timestamp": "11:15",
+    "concurrency": 6,
+    "complexity": 1056167
+  },
+  {
+    "minute": 676,
+    "timestamp": "11:16",
+    "concurrency": 9,
+    "complexity": 1068504
+  },
+  {
+    "minute": 677,
+    "timestamp": "11:17",
+    "concurrency": 7,
+    "complexity": 1069218
+  },
+  {
+    "minute": 678,
+    "timestamp": "11:18",
+    "concurrency": 6,
+    "complexity": 1088362
+  },
+  {
+    "minute": 679,
+    "timestamp": "11:19",
+    "concurrency": 7,
+    "complexity": 1051558
+  },
+  {
+    "minute": 680,
+    "timestamp": "11:20",
+    "concurrency": 8,
+    "complexity": 1073339
+  },
+  {
+    "minute": 681,
+    "timestamp": "11:21",
+    "concurrency": 7,
+    "complexity": 1071980
+  },
+  {
+    "minute": 682,
+    "timestamp": "11:22",
+    "concurrency": 6,
+    "complexity": 1098131
+  },
+  {
+    "minute": 683,
+    "timestamp": "11:23",
+    "concurrency": 6,
+    "complexity": 1043337
+  },
+  {
+    "minute": 684,
+    "timestamp": "11:24",
+    "concurrency": 6,
+    "complexity": 1048609
+  },
+  {
+    "minute": 685,
+    "timestamp": "11:25",
+    "concurrency": 6,
+    "complexity": 1041280
+  },
+  {
+    "minute": 686,
+    "timestamp": "11:26",
+    "concurrency": 7,
+    "complexity": 1024905
+  },
+  {
+    "minute": 687,
+    "timestamp": "11:27",
+    "concurrency": 5,
+    "complexity": 1091866
+  },
+  {
+    "minute": 688,
+    "timestamp": "11:28",
+    "concurrency": 7,
+    "complexity": 1030012
+  },
+  {
+    "minute": 689,
+    "timestamp": "11:29",
+    "concurrency": 9,
+    "complexity": 1036786
+  },
+  {
+    "minute": 690,
+    "timestamp": "11:30",
+    "concurrency": 7,
+    "complexity": 1077695
+  },
+  {
+    "minute": 691,
+    "timestamp": "11:31",
+    "concurrency": 6,
+    "complexity": 1014585
+  },
+  {
+    "minute": 692,
+    "timestamp": "11:32",
+    "concurrency": 4,
+    "complexity": 1063041
+  },
+  {
+    "minute": 693,
+    "timestamp": "11:33",
+    "concurrency": 9,
+    "complexity": 1017919
+  },
+  {
+    "minute": 694,
+    "timestamp": "11:34",
+    "concurrency": 4,
+    "complexity": 1069378
+  },
+  {
+    "minute": 695,
+    "timestamp": "11:35",
+    "concurrency": 7,
+    "complexity": 999311
+  },
+  {
+    "minute": 696,
+    "timestamp": "11:36",
+    "concurrency": 7,
+    "complexity": 1005902
+  },
+  {
+    "minute": 697,
+    "timestamp": "11:37",
+    "concurrency": 6,
+    "complexity": 1028335
+  },
+  {
+    "minute": 698,
+    "timestamp": "11:38",
+    "concurrency": 6,
+    "complexity": 1056931
+  },
+  {
+    "minute": 699,
+    "timestamp": "11:39",
+    "concurrency": 3,
+    "complexity": 1035137
+  },
+  {
+    "minute": 700,
+    "timestamp": "11:40",
+    "concurrency": 7,
+    "complexity": 1027302
+  },
+  {
+    "minute": 701,
+    "timestamp": "11:41",
+    "concurrency": 7,
+    "complexity": 1059196
+  },
+  {
+    "minute": 702,
+    "timestamp": "11:42",
+    "concurrency": 4,
+    "complexity": 1073639
+  },
+  {
+    "minute": 703,
+    "timestamp": "11:43",
+    "concurrency": 6,
+    "complexity": 1042238
+  },
+  {
+    "minute": 704,
+    "timestamp": "11:44",
+    "concurrency": 6,
+    "complexity": 1014593
+  },
+  {
+    "minute": 705,
+    "timestamp": "11:45",
+    "concurrency": 7,
+    "complexity": 1016945
+  },
+  {
+    "minute": 706,
+    "timestamp": "11:46",
+    "concurrency": 6,
+    "complexity": 997795
+  },
+  {
+    "minute": 707,
+    "timestamp": "11:47",
+    "concurrency": 3,
+    "complexity": 1023837
+  },
+  {
+    "minute": 708,
+    "timestamp": "11:48",
+    "concurrency": 5,
+    "complexity": 987484
+  },
+  {
+    "minute": 709,
+    "timestamp": "11:49",
+    "concurrency": 6,
+    "complexity": 1029369
+  },
+  {
+    "minute": 710,
+    "timestamp": "11:50",
+    "concurrency": 7,
+    "complexity": 1056698
+  },
+  {
+    "minute": 711,
+    "timestamp": "11:51",
+    "concurrency": 5,
+    "complexity": 1029194
+  },
+  {
+    "minute": 712,
+    "timestamp": "11:52",
+    "concurrency": 9,
+    "complexity": 1003713
+  },
+  {
+    "minute": 713,
+    "timestamp": "11:53",
+    "concurrency": 3,
+    "complexity": 1021889
+  },
+  {
+    "minute": 714,
+    "timestamp": "11:54",
+    "concurrency": 5,
+    "complexity": 1042015
+  },
+  {
+    "minute": 715,
+    "timestamp": "11:55",
+    "concurrency": 5,
+    "complexity": 1039268
+  },
+  {
+    "minute": 716,
+    "timestamp": "11:56",
+    "concurrency": 5,
+    "complexity": 986037
+  },
+  {
+    "minute": 717,
+    "timestamp": "11:57",
+    "concurrency": 4,
+    "complexity": 1014572
+  },
+  {
+    "minute": 718,
+    "timestamp": "11:58",
+    "concurrency": 6,
+    "complexity": 999457
+  },
+  {
+    "minute": 719,
+    "timestamp": "11:59",
+    "concurrency": 6,
+    "complexity": 1017005
+  },
+  {
+    "minute": 720,
+    "timestamp": "12:00",
+    "concurrency": 5,
+    "complexity": 1006799
+  },
+  {
+    "minute": 721,
+    "timestamp": "12:01",
+    "concurrency": 6,
+    "complexity": 949985
+  },
+  {
+    "minute": 722,
+    "timestamp": "12:02",
+    "concurrency": 5,
+    "complexity": 988673
+  },
+  {
+    "minute": 723,
+    "timestamp": "12:03",
+    "concurrency": 3,
+    "complexity": 997858
+  },
+  {
+    "minute": 724,
+    "timestamp": "12:04",
+    "concurrency": 4,
+    "complexity": 963453
+  },
+  {
+    "minute": 725,
+    "timestamp": "12:05",
+    "concurrency": 6,
+    "complexity": 1002015
+  },
+  {
+    "minute": 726,
+    "timestamp": "12:06",
+    "concurrency": 6,
+    "complexity": 958168
+  },
+  {
+    "minute": 727,
+    "timestamp": "12:07",
+    "concurrency": 5,
+    "complexity": 970934
+  },
+  {
+    "minute": 728,
+    "timestamp": "12:08",
+    "concurrency": 6,
+    "complexity": 1011984
+  },
+  {
+    "minute": 729,
+    "timestamp": "12:09",
+    "concurrency": 4,
+    "complexity": 965737
+  },
+  {
+    "minute": 730,
+    "timestamp": "12:10",
+    "concurrency": 5,
+    "complexity": 993147
+  },
+  {
+    "minute": 731,
+    "timestamp": "12:11",
+    "concurrency": 6,
+    "complexity": 944851
+  },
+  {
+    "minute": 732,
+    "timestamp": "12:12",
+    "concurrency": 5,
+    "complexity": 1019805
+  },
+  {
+    "minute": 733,
+    "timestamp": "12:13",
+    "concurrency": 3,
+    "complexity": 970344
+  },
+  {
+    "minute": 734,
+    "timestamp": "12:14",
+    "concurrency": 4,
+    "complexity": 976598
+  },
+  {
+    "minute": 735,
+    "timestamp": "12:15",
+    "concurrency": 6,
+    "complexity": 976529
+  },
+  {
+    "minute": 736,
+    "timestamp": "12:16",
+    "concurrency": 7,
+    "complexity": 983358
+  },
+  {
+    "minute": 737,
+    "timestamp": "12:17",
+    "concurrency": 7,
+    "complexity": 939081
+  },
+  {
+    "minute": 738,
+    "timestamp": "12:18",
+    "concurrency": 5,
+    "complexity": 967617
+  },
+  {
+    "minute": 739,
+    "timestamp": "12:19",
+    "concurrency": 3,
+    "complexity": 952808
+  },
+  {
+    "minute": 740,
+    "timestamp": "12:20",
+    "concurrency": 5,
+    "complexity": 930452
+  },
+  {
+    "minute": 741,
+    "timestamp": "12:21",
+    "concurrency": 7,
+    "complexity": 982246
+  },
+  {
+    "minute": 742,
+    "timestamp": "12:22",
+    "concurrency": 6,
+    "complexity": 953722
+  },
+  {
+    "minute": 743,
+    "timestamp": "12:23",
+    "concurrency": 5,
+    "complexity": 963878
+  },
+  {
+    "minute": 744,
+    "timestamp": "12:24",
+    "concurrency": 6,
+    "complexity": 960888
+  },
+  {
+    "minute": 745,
+    "timestamp": "12:25",
+    "concurrency": 3,
+    "complexity": 948858
+  },
+  {
+    "minute": 746,
+    "timestamp": "12:26",
+    "concurrency": 4,
+    "complexity": 993320
+  },
+  {
+    "minute": 747,
+    "timestamp": "12:27",
+    "concurrency": 3,
+    "complexity": 951140
+  },
+  {
+    "minute": 748,
+    "timestamp": "12:28",
+    "concurrency": 5,
+    "complexity": 919192
+  },
+  {
+    "minute": 749,
+    "timestamp": "12:29",
+    "concurrency": 6,
+    "complexity": 940611
+  },
+  {
+    "minute": 750,
+    "timestamp": "12:30",
+    "concurrency": 5,
+    "complexity": 956882
+  },
+  {
+    "minute": 751,
+    "timestamp": "12:31",
+    "concurrency": 3,
+    "complexity": 955809
+  },
+  {
+    "minute": 752,
+    "timestamp": "12:32",
+    "concurrency": 5,
+    "complexity": 921672
+  },
+  {
+    "minute": 753,
+    "timestamp": "12:33",
+    "concurrency": 4,
+    "complexity": 960288
+  },
+  {
+    "minute": 754,
+    "timestamp": "12:34",
+    "concurrency": 3,
+    "complexity": 904714
+  },
+  {
+    "minute": 755,
+    "timestamp": "12:35",
+    "concurrency": 5,
+    "complexity": 961128
+  },
+  {
+    "minute": 756,
+    "timestamp": "12:36",
+    "concurrency": 4,
+    "complexity": 910133
+  },
+  {
+    "minute": 757,
+    "timestamp": "12:37",
+    "concurrency": 2,
+    "complexity": 930272
+  },
+  {
+    "minute": 758,
+    "timestamp": "12:38",
+    "concurrency": 3,
+    "complexity": 954365
+  },
+  {
+    "minute": 759,
+    "timestamp": "12:39",
+    "concurrency": 2,
+    "complexity": 933745
+  },
+  {
+    "minute": 760,
+    "timestamp": "12:40",
+    "concurrency": 5,
+    "complexity": 945967
+  },
+  {
+    "minute": 761,
+    "timestamp": "12:41",
+    "concurrency": 5,
+    "complexity": 940287
+  },
+  {
+    "minute": 762,
+    "timestamp": "12:42",
+    "concurrency": 5,
+    "complexity": 951922
+  },
+  {
+    "minute": 763,
+    "timestamp": "12:43",
+    "concurrency": 5,
+    "complexity": 945725
+  },
+  {
+    "minute": 764,
+    "timestamp": "12:44",
+    "concurrency": 6,
+    "complexity": 913692
+  },
+  {
+    "minute": 765,
+    "timestamp": "12:45",
+    "concurrency": 4,
+    "complexity": 933712
+  },
+  {
+    "minute": 766,
+    "timestamp": "12:46",
+    "concurrency": 5,
+    "complexity": 888811
+  },
+  {
+    "minute": 767,
+    "timestamp": "12:47",
+    "concurrency": 2,
+    "complexity": 916474
+  },
+  {
+    "minute": 768,
+    "timestamp": "12:48",
+    "concurrency": 7,
+    "complexity": 932294
+  },
+  {
+    "minute": 769,
+    "timestamp": "12:49",
+    "concurrency": 3,
+    "complexity": 916894
+  },
+  {
+    "minute": 770,
+    "timestamp": "12:50",
+    "concurrency": 3,
+    "complexity": 921445
+  },
+  {
+    "minute": 771,
+    "timestamp": "12:51",
+    "concurrency": 4,
+    "complexity": 906543
+  },
+  {
+    "minute": 772,
+    "timestamp": "12:52",
+    "concurrency": 2,
+    "complexity": 931688
+  },
+  {
+    "minute": 773,
+    "timestamp": "12:53",
+    "concurrency": 4,
+    "complexity": 905799
+  },
+  {
+    "minute": 774,
+    "timestamp": "12:54",
+    "concurrency": 5,
+    "complexity": 896400
+  },
+  {
+    "minute": 775,
+    "timestamp": "12:55",
+    "concurrency": 4,
+    "complexity": 921743
+  },
+  {
+    "minute": 776,
+    "timestamp": "12:56",
+    "concurrency": 2,
+    "complexity": 874215
+  },
+  {
+    "minute": 777,
+    "timestamp": "12:57",
+    "concurrency": 7,
+    "complexity": 910646
+  },
+  {
+    "minute": 778,
+    "timestamp": "12:58",
+    "concurrency": 5,
+    "complexity": 878085
+  },
+  {
+    "minute": 779,
+    "timestamp": "12:59",
+    "concurrency": 8,
+    "complexity": 922804
+  },
+  {
+    "minute": 780,
+    "timestamp": "13:00",
+    "concurrency": 3,
+    "complexity": 890338
+  },
+  {
+    "minute": 781,
+    "timestamp": "13:01",
+    "concurrency": 6,
+    "complexity": 896573
+  },
+  {
+    "minute": 782,
+    "timestamp": "13:02",
+    "concurrency": 6,
+    "complexity": 900442
+  },
+  {
+    "minute": 783,
+    "timestamp": "13:03",
+    "concurrency": 4,
+    "complexity": 851916
+  },
+  {
+    "minute": 784,
+    "timestamp": "13:04",
+    "concurrency": 6,
+    "complexity": 875819
+  },
+  {
+    "minute": 785,
+    "timestamp": "13:05",
+    "concurrency": 4,
+    "complexity": 908025
+  },
+  {
+    "minute": 786,
+    "timestamp": "13:06",
+    "concurrency": 4,
+    "complexity": 902835
+  },
+  {
+    "minute": 787,
+    "timestamp": "13:07",
+    "concurrency": 1,
+    "complexity": 889468
+  },
+  {
+    "minute": 788,
+    "timestamp": "13:08",
+    "concurrency": 5,
+    "complexity": 855148
+  },
+  {
+    "minute": 789,
+    "timestamp": "13:09",
+    "concurrency": 2,
+    "complexity": 892179
+  },
+  {
+    "minute": 790,
+    "timestamp": "13:10",
+    "concurrency": 3,
+    "complexity": 893072
+  },
+  {
+    "minute": 791,
+    "timestamp": "13:11",
+    "concurrency": 3,
+    "complexity": 878081
+  },
+  {
+    "minute": 792,
+    "timestamp": "13:12",
+    "concurrency": 4,
+    "complexity": 899943
+  },
+  {
+    "minute": 793,
+    "timestamp": "13:13",
+    "concurrency": 5,
+    "complexity": 860152
+  },
+  {
+    "minute": 794,
+    "timestamp": "13:14",
+    "concurrency": 4,
+    "complexity": 861968
+  },
+  {
+    "minute": 795,
+    "timestamp": "13:15",
+    "concurrency": 5,
+    "complexity": 820819
+  },
+  {
+    "minute": 796,
+    "timestamp": "13:16",
+    "concurrency": 6,
+    "complexity": 887256
+  },
+  {
+    "minute": 797,
+    "timestamp": "13:17",
+    "concurrency": 4,
+    "complexity": 873488
+  },
+  {
+    "minute": 798,
+    "timestamp": "13:18",
+    "concurrency": 4,
+    "complexity": 831928
+  },
+  {
+    "minute": 799,
+    "timestamp": "13:19",
+    "concurrency": 6,
+    "complexity": 828749
+  },
+  {
+    "minute": 800,
+    "timestamp": "13:20",
+    "concurrency": 6,
+    "complexity": 844827
+  },
+  {
+    "minute": 801,
+    "timestamp": "13:21",
+    "concurrency": 5,
+    "complexity": 876515
+  },
+  {
+    "minute": 802,
+    "timestamp": "13:22",
+    "concurrency": 3,
+    "complexity": 852999
+  },
+  {
+    "minute": 803,
+    "timestamp": "13:23",
+    "concurrency": 5,
+    "complexity": 841277
+  },
+  {
+    "minute": 804,
+    "timestamp": "13:24",
+    "concurrency": 4,
+    "complexity": 835620
+  },
+  {
+    "minute": 805,
+    "timestamp": "13:25",
+    "concurrency": 6,
+    "complexity": 833096
+  },
+  {
+    "minute": 806,
+    "timestamp": "13:26",
+    "concurrency": 3,
+    "complexity": 813816
+  },
+  {
+    "minute": 807,
+    "timestamp": "13:27",
+    "concurrency": 2,
+    "complexity": 826720
+  },
+  {
+    "minute": 808,
+    "timestamp": "13:28",
+    "concurrency": 5,
+    "complexity": 827837
+  },
+  {
+    "minute": 809,
+    "timestamp": "13:29",
+    "concurrency": 1,
+    "complexity": 861285
+  },
+  {
+    "minute": 810,
+    "timestamp": "13:30",
+    "concurrency": 3,
+    "complexity": 842704
+  },
+  {
+    "minute": 811,
+    "timestamp": "13:31",
+    "concurrency": 3,
+    "complexity": 827897
+  },
+  {
+    "minute": 812,
+    "timestamp": "13:32",
+    "concurrency": 3,
+    "complexity": 888995
+  },
+  {
+    "minute": 813,
+    "timestamp": "13:33",
+    "concurrency": 3,
+    "complexity": 827919
+  },
+  {
+    "minute": 814,
+    "timestamp": "13:34",
+    "concurrency": 6,
+    "complexity": 862937
+  },
+  {
+    "minute": 815,
+    "timestamp": "13:35",
+    "concurrency": 6,
+    "complexity": 870419
+  },
+  {
+    "minute": 816,
+    "timestamp": "13:36",
+    "concurrency": 4,
+    "complexity": 805002
+  },
+  {
+    "minute": 817,
+    "timestamp": "13:37",
+    "concurrency": 6,
+    "complexity": 836288
+  },
+  {
+    "minute": 818,
+    "timestamp": "13:38",
+    "concurrency": 3,
+    "complexity": 822869
+  },
+  {
+    "minute": 819,
+    "timestamp": "13:39",
+    "concurrency": 3,
+    "complexity": 819656
+  },
+  {
+    "minute": 820,
+    "timestamp": "13:40",
+    "concurrency": 6,
+    "complexity": 841159
+  },
+  {
+    "minute": 821,
+    "timestamp": "13:41",
+    "concurrency": 5,
+    "complexity": 816014
+  },
+  {
+    "minute": 822,
+    "timestamp": "13:42",
+    "concurrency": 4,
+    "complexity": 816976
+  },
+  {
+    "minute": 823,
+    "timestamp": "13:43",
+    "concurrency": 3,
+    "complexity": 821961
+  },
+  {
+    "minute": 824,
+    "timestamp": "13:44",
+    "concurrency": 7,
+    "complexity": 816285
+  },
+  {
+    "minute": 825,
+    "timestamp": "13:45",
+    "concurrency": 2,
+    "complexity": 798716
+  },
+  {
+    "minute": 826,
+    "timestamp": "13:46",
+    "concurrency": 3,
+    "complexity": 836542
+  },
+  {
+    "minute": 827,
+    "timestamp": "13:47",
+    "concurrency": 5,
+    "complexity": 840036
+  },
+  {
+    "minute": 828,
+    "timestamp": "13:48",
+    "concurrency": 7,
+    "complexity": 824381
+  },
+  {
+    "minute": 829,
+    "timestamp": "13:49",
+    "concurrency": 5,
+    "complexity": 808426
+  },
+  {
+    "minute": 830,
+    "timestamp": "13:50",
+    "concurrency": 5,
+    "complexity": 800303
+  },
+  {
+    "minute": 831,
+    "timestamp": "13:51",
+    "concurrency": 4,
+    "complexity": 798790
+  },
+  {
+    "minute": 832,
+    "timestamp": "13:52",
+    "concurrency": 5,
+    "complexity": 858468
+  },
+  {
+    "minute": 833,
+    "timestamp": "13:53",
+    "concurrency": 5,
+    "complexity": 828539
+  },
+  {
+    "minute": 834,
+    "timestamp": "13:54",
+    "concurrency": 2,
+    "complexity": 791445
+  },
+  {
+    "minute": 835,
+    "timestamp": "13:55",
+    "concurrency": 6,
+    "complexity": 810011
+  },
+  {
+    "minute": 836,
+    "timestamp": "13:56",
+    "concurrency": 6,
+    "complexity": 797939
+  },
+  {
+    "minute": 837,
+    "timestamp": "13:57",
+    "concurrency": 6,
+    "complexity": 815342
+  },
+  {
+    "minute": 838,
+    "timestamp": "13:58",
+    "concurrency": 5,
+    "complexity": 813016
+  },
+  {
+    "minute": 839,
+    "timestamp": "13:59",
+    "concurrency": 3,
+    "complexity": 822302
+  },
+  {
+    "minute": 840,
+    "timestamp": "14:00",
+    "concurrency": 1,
+    "complexity": 782107
+  },
+  {
+    "minute": 841,
+    "timestamp": "14:01",
+    "concurrency": 5,
+    "complexity": 799704
+  },
+  {
+    "minute": 842,
+    "timestamp": "14:02",
+    "concurrency": 6,
+    "complexity": 761134
+  },
+  {
+    "minute": 843,
+    "timestamp": "14:03",
+    "concurrency": 6,
+    "complexity": 769457
+  },
+  {
+    "minute": 844,
+    "timestamp": "14:04",
+    "concurrency": 6,
+    "complexity": 810790
+  },
+  {
+    "minute": 845,
+    "timestamp": "14:05",
+    "concurrency": 4,
+    "complexity": 772601
+  },
+  {
+    "minute": 846,
+    "timestamp": "14:06",
+    "concurrency": 6,
+    "complexity": 773308
+  },
+  {
+    "minute": 847,
+    "timestamp": "14:07",
+    "concurrency": 6,
+    "complexity": 788475
+  },
+  {
+    "minute": 848,
+    "timestamp": "14:08",
+    "concurrency": 4,
+    "complexity": 801055
+  },
+  {
+    "minute": 849,
+    "timestamp": "14:09",
+    "concurrency": 6,
+    "complexity": 764467
+  },
+  {
+    "minute": 850,
+    "timestamp": "14:10",
+    "concurrency": 4,
+    "complexity": 714595
+  },
+  {
+    "minute": 851,
+    "timestamp": "14:11",
+    "concurrency": 5,
+    "complexity": 765338
+  },
+  {
+    "minute": 852,
+    "timestamp": "14:12",
+    "concurrency": 3,
+    "complexity": 805391
+  },
+  {
+    "minute": 853,
+    "timestamp": "14:13",
+    "concurrency": 3,
+    "complexity": 786680
+  },
+  {
+    "minute": 854,
+    "timestamp": "14:14",
+    "concurrency": 6,
+    "complexity": 804839
+  },
+  {
+    "minute": 855,
+    "timestamp": "14:15",
+    "concurrency": 6,
+    "complexity": 754274
+  },
+  {
+    "minute": 856,
+    "timestamp": "14:16",
+    "concurrency": 6,
+    "complexity": 742674
+  },
+  {
+    "minute": 857,
+    "timestamp": "14:17",
+    "concurrency": 5,
+    "complexity": 783270
+  },
+  {
+    "minute": 858,
+    "timestamp": "14:18",
+    "concurrency": 1,
+    "complexity": 777381
+  },
+  {
+    "minute": 859,
+    "timestamp": "14:19",
+    "concurrency": 5,
+    "complexity": 777257
+  },
+  {
+    "minute": 860,
+    "timestamp": "14:20",
+    "concurrency": 5,
+    "complexity": 788375
+  },
+  {
+    "minute": 861,
+    "timestamp": "14:21",
+    "concurrency": 4,
+    "complexity": 776723
+  },
+  {
+    "minute": 862,
+    "timestamp": "14:22",
+    "concurrency": 4,
+    "complexity": 774980
+  },
+  {
+    "minute": 863,
+    "timestamp": "14:23",
+    "concurrency": 7,
+    "complexity": 779751
+  },
+  {
+    "minute": 864,
+    "timestamp": "14:24",
+    "concurrency": 5,
+    "complexity": 774087
+  },
+  {
+    "minute": 865,
+    "timestamp": "14:25",
+    "concurrency": 6,
+    "complexity": 779779
+  },
+  {
+    "minute": 866,
+    "timestamp": "14:26",
+    "concurrency": 6,
+    "complexity": 781397
+  },
+  {
+    "minute": 867,
+    "timestamp": "14:27",
+    "concurrency": 3,
+    "complexity": 790462
+  },
+  {
+    "minute": 868,
+    "timestamp": "14:28",
+    "concurrency": 5,
+    "complexity": 745450
+  },
+  {
+    "minute": 869,
+    "timestamp": "14:29",
+    "concurrency": 7,
+    "complexity": 766655
+  },
+  {
+    "minute": 870,
+    "timestamp": "14:30",
+    "concurrency": 8,
+    "complexity": 748252
+  },
+  {
+    "minute": 871,
+    "timestamp": "14:31",
+    "concurrency": 5,
+    "complexity": 737607
+  },
+  {
+    "minute": 872,
+    "timestamp": "14:32",
+    "concurrency": 5,
+    "complexity": 739112
+  },
+  {
+    "minute": 873,
+    "timestamp": "14:33",
+    "concurrency": 5,
+    "complexity": 761430
+  },
+  {
+    "minute": 874,
+    "timestamp": "14:34",
+    "concurrency": 5,
+    "complexity": 758530
+  },
+  {
+    "minute": 875,
+    "timestamp": "14:35",
+    "concurrency": 7,
+    "complexity": 756812
+  },
+  {
+    "minute": 876,
+    "timestamp": "14:36",
+    "concurrency": 4,
+    "complexity": 742932
+  },
+  {
+    "minute": 877,
+    "timestamp": "14:37",
+    "concurrency": 5,
+    "complexity": 746163
+  },
+  {
+    "minute": 878,
+    "timestamp": "14:38",
+    "concurrency": 3,
+    "complexity": 761102
+  },
+  {
+    "minute": 879,
+    "timestamp": "14:39",
+    "concurrency": 4,
+    "complexity": 713617
+  },
+  {
+    "minute": 880,
+    "timestamp": "14:40",
+    "concurrency": 6,
+    "complexity": 742561
+  },
+  {
+    "minute": 881,
+    "timestamp": "14:41",
+    "concurrency": 6,
+    "complexity": 742534
+  },
+  {
+    "minute": 882,
+    "timestamp": "14:42",
+    "concurrency": 4,
+    "complexity": 754474
+  },
+  {
+    "minute": 883,
+    "timestamp": "14:43",
+    "concurrency": 6,
+    "complexity": 711080
+  },
+  {
+    "minute": 884,
+    "timestamp": "14:44",
+    "concurrency": 7,
+    "complexity": 766670
+  },
+  {
+    "minute": 885,
+    "timestamp": "14:45",
+    "concurrency": 8,
+    "complexity": 739728
+  },
+  {
+    "minute": 886,
+    "timestamp": "14:46",
+    "concurrency": 5,
+    "complexity": 739479
+  },
+  {
+    "minute": 887,
+    "timestamp": "14:47",
+    "concurrency": 4,
+    "complexity": 724818
+  },
+  {
+    "minute": 888,
+    "timestamp": "14:48",
+    "concurrency": 4,
+    "complexity": 742308
+  },
+  {
+    "minute": 889,
+    "timestamp": "14:49",
+    "concurrency": 4,
+    "complexity": 731215
+  },
+  {
+    "minute": 890,
+    "timestamp": "14:50",
+    "concurrency": 7,
+    "complexity": 753148
+  },
+  {
+    "minute": 891,
+    "timestamp": "14:51",
+    "concurrency": 3,
+    "complexity": 698857
+  },
+  {
+    "minute": 892,
+    "timestamp": "14:52",
+    "concurrency": 7,
+    "complexity": 729921
+  },
+  {
+    "minute": 893,
+    "timestamp": "14:53",
+    "concurrency": 4,
+    "complexity": 733309
+  },
+  {
+    "minute": 894,
+    "timestamp": "14:54",
+    "concurrency": 4,
+    "complexity": 720145
+  },
+  {
+    "minute": 895,
+    "timestamp": "14:55",
+    "concurrency": 5,
+    "complexity": 714518
+  },
+  {
+    "minute": 896,
+    "timestamp": "14:56",
+    "concurrency": 4,
+    "complexity": 714096
+  },
+  {
+    "minute": 897,
+    "timestamp": "14:57",
+    "concurrency": 7,
+    "complexity": 723598
+  },
+  {
+    "minute": 898,
+    "timestamp": "14:58",
+    "concurrency": 8,
+    "complexity": 682661
+  },
+  {
+    "minute": 899,
+    "timestamp": "14:59",
+    "concurrency": 5,
+    "complexity": 736921
+  },
+  {
+    "minute": 900,
+    "timestamp": "15:00",
+    "concurrency": 5,
+    "complexity": 706783
+  },
+  {
+    "minute": 901,
+    "timestamp": "15:01",
+    "concurrency": 5,
+    "complexity": 717713
+  },
+  {
+    "minute": 902,
+    "timestamp": "15:02",
+    "concurrency": 6,
+    "complexity": 721276
+  },
+  {
+    "minute": 903,
+    "timestamp": "15:03",
+    "concurrency": 5,
+    "complexity": 702199
+  },
+  {
+    "minute": 904,
+    "timestamp": "15:04",
+    "concurrency": 8,
+    "complexity": 708882
+  },
+  {
+    "minute": 905,
+    "timestamp": "15:05",
+    "concurrency": 7,
+    "complexity": 669591
+  },
+  {
+    "minute": 906,
+    "timestamp": "15:06",
+    "concurrency": 4,
+    "complexity": 723737
+  },
+  {
+    "minute": 907,
+    "timestamp": "15:07",
+    "concurrency": 7,
+    "complexity": 729500
+  },
+  {
+    "minute": 908,
+    "timestamp": "15:08",
+    "concurrency": 8,
+    "complexity": 672688
+  },
+  {
+    "minute": 909,
+    "timestamp": "15:09",
+    "concurrency": 5,
+    "complexity": 697393
+  },
+  {
+    "minute": 910,
+    "timestamp": "15:10",
+    "concurrency": 5,
+    "complexity": 679747
+  },
+  {
+    "minute": 911,
+    "timestamp": "15:11",
+    "concurrency": 5,
+    "complexity": 699616
+  },
+  {
+    "minute": 912,
+    "timestamp": "15:12",
+    "concurrency": 5,
+    "complexity": 714975
+  },
+  {
+    "minute": 913,
+    "timestamp": "15:13",
+    "concurrency": 3,
+    "complexity": 720587
+  },
+  {
+    "minute": 914,
+    "timestamp": "15:14",
+    "concurrency": 4,
+    "complexity": 722121
+  },
+  {
+    "minute": 915,
+    "timestamp": "15:15",
+    "concurrency": 6,
+    "complexity": 724744
+  },
+  {
+    "minute": 916,
+    "timestamp": "15:16",
+    "concurrency": 8,
+    "complexity": 692940
+  },
+  {
+    "minute": 917,
+    "timestamp": "15:17",
+    "concurrency": 5,
+    "complexity": 673310
+  },
+  {
+    "minute": 918,
+    "timestamp": "15:18",
+    "concurrency": 5,
+    "complexity": 692823
+  },
+  {
+    "minute": 919,
+    "timestamp": "15:19",
+    "concurrency": 9,
+    "complexity": 706653
+  },
+  {
+    "minute": 920,
+    "timestamp": "15:20",
+    "concurrency": 4,
+    "complexity": 668320
+  },
+  {
+    "minute": 921,
+    "timestamp": "15:21",
+    "concurrency": 4,
+    "complexity": 724952
+  },
+  {
+    "minute": 922,
+    "timestamp": "15:22",
+    "concurrency": 5,
+    "complexity": 708597
+  },
+  {
+    "minute": 923,
+    "timestamp": "15:23",
+    "concurrency": 5,
+    "complexity": 685404
+  },
+  {
+    "minute": 924,
+    "timestamp": "15:24",
+    "concurrency": 4,
+    "complexity": 674220
+  },
+  {
+    "minute": 925,
+    "timestamp": "15:25",
+    "concurrency": 6,
+    "complexity": 673962
+  },
+  {
+    "minute": 926,
+    "timestamp": "15:26",
+    "concurrency": 8,
+    "complexity": 687742
+  },
+  {
+    "minute": 927,
+    "timestamp": "15:27",
+    "concurrency": 4,
+    "complexity": 680590
+  },
+  {
+    "minute": 928,
+    "timestamp": "15:28",
+    "concurrency": 7,
+    "complexity": 703114
+  },
+  {
+    "minute": 929,
+    "timestamp": "15:29",
+    "concurrency": 7,
+    "complexity": 676176
+  },
+  {
+    "minute": 930,
+    "timestamp": "15:30",
+    "concurrency": 6,
+    "complexity": 692083
+  },
+  {
+    "minute": 931,
+    "timestamp": "15:31",
+    "concurrency": 7,
+    "complexity": 680338
+  },
+  {
+    "minute": 932,
+    "timestamp": "15:32",
+    "concurrency": 7,
+    "complexity": 685260
+  },
+  {
+    "minute": 933,
+    "timestamp": "15:33",
+    "concurrency": 5,
+    "complexity": 674221
+  },
+  {
+    "minute": 934,
+    "timestamp": "15:34",
+    "concurrency": 9,
+    "complexity": 691939
+  },
+  {
+    "minute": 935,
+    "timestamp": "15:35",
+    "concurrency": 8,
+    "complexity": 691203
+  },
+  {
+    "minute": 936,
+    "timestamp": "15:36",
+    "concurrency": 8,
+    "complexity": 684925
+  },
+  {
+    "minute": 937,
+    "timestamp": "15:37",
+    "concurrency": 8,
+    "complexity": 686858
+  },
+  {
+    "minute": 938,
+    "timestamp": "15:38",
+    "concurrency": 4,
+    "complexity": 654807
+  },
+  {
+    "minute": 939,
+    "timestamp": "15:39",
+    "concurrency": 8,
+    "complexity": 679152
+  },
+  {
+    "minute": 940,
+    "timestamp": "15:40",
+    "concurrency": 8,
+    "complexity": 696670
+  },
+  {
+    "minute": 941,
+    "timestamp": "15:41",
+    "concurrency": 5,
+    "complexity": 680520
+  },
+  {
+    "minute": 942,
+    "timestamp": "15:42",
+    "concurrency": 7,
+    "complexity": 649089
+  },
+  {
+    "minute": 943,
+    "timestamp": "15:43",
+    "concurrency": 7,
+    "complexity": 667726
+  },
+  {
+    "minute": 944,
+    "timestamp": "15:44",
+    "concurrency": 9,
+    "complexity": 675245
+  },
+  {
+    "minute": 945,
+    "timestamp": "15:45",
+    "concurrency": 8,
+    "complexity": 651628
+  },
+  {
+    "minute": 946,
+    "timestamp": "15:46",
+    "concurrency": 6,
+    "complexity": 638648
+  },
+  {
+    "minute": 947,
+    "timestamp": "15:47",
+    "concurrency": 10,
+    "complexity": 658535
+  },
+  {
+    "minute": 948,
+    "timestamp": "15:48",
+    "concurrency": 7,
+    "complexity": 649090
+  },
+  {
+    "minute": 949,
+    "timestamp": "15:49",
+    "concurrency": 7,
+    "complexity": 662677
+  },
+  {
+    "minute": 950,
+    "timestamp": "15:50",
+    "concurrency": 7,
+    "complexity": 630197
+  },
+  {
+    "minute": 951,
+    "timestamp": "15:51",
+    "concurrency": 5,
+    "complexity": 672388
+  },
+  {
+    "minute": 952,
+    "timestamp": "15:52",
+    "concurrency": 7,
+    "complexity": 647478
+  },
+  {
+    "minute": 953,
+    "timestamp": "15:53",
+    "concurrency": 8,
+    "complexity": 679167
+  },
+  {
+    "minute": 954,
+    "timestamp": "15:54",
+    "concurrency": 7,
+    "complexity": 652802
+  },
+  {
+    "minute": 955,
+    "timestamp": "15:55",
+    "concurrency": 8,
+    "complexity": 656928
+  },
+  {
+    "minute": 956,
+    "timestamp": "15:56",
+    "concurrency": 6,
+    "complexity": 653076
+  },
+  {
+    "minute": 957,
+    "timestamp": "15:57",
+    "concurrency": 7,
+    "complexity": 641882
+  },
+  {
+    "minute": 958,
+    "timestamp": "15:58",
+    "concurrency": 8,
+    "complexity": 704205
+  },
+  {
+    "minute": 959,
+    "timestamp": "15:59",
+    "concurrency": 8,
+    "complexity": 643963
+  },
+  {
+    "minute": 960,
+    "timestamp": "16:00",
+    "concurrency": 5,
+    "complexity": 673479
+  },
+  {
+    "minute": 961,
+    "timestamp": "16:01",
+    "concurrency": 7,
+    "complexity": 630270
+  },
+  {
+    "minute": 962,
+    "timestamp": "16:02",
+    "concurrency": 10,
+    "complexity": 658727
+  },
+  {
+    "minute": 963,
+    "timestamp": "16:03",
+    "concurrency": 7,
+    "complexity": 660009
+  },
+  {
+    "minute": 964,
+    "timestamp": "16:04",
+    "concurrency": 8,
+    "complexity": 649103
+  },
+  {
+    "minute": 965,
+    "timestamp": "16:05",
+    "concurrency": 8,
+    "complexity": 637327
+  },
+  {
+    "minute": 966,
+    "timestamp": "16:06",
+    "concurrency": 10,
+    "complexity": 642649
+  },
+  {
+    "minute": 967,
+    "timestamp": "16:07",
+    "concurrency": 10,
+    "complexity": 639024
+  },
+  {
+    "minute": 968,
+    "timestamp": "16:08",
+    "concurrency": 9,
+    "complexity": 694311
+  },
+  {
+    "minute": 969,
+    "timestamp": "16:09",
+    "concurrency": 6,
+    "complexity": 645007
+  },
+  {
+    "minute": 970,
+    "timestamp": "16:10",
+    "concurrency": 8,
+    "complexity": 655151
+  },
+  {
+    "minute": 971,
+    "timestamp": "16:11",
+    "concurrency": 9,
+    "complexity": 679487
+  },
+  {
+    "minute": 972,
+    "timestamp": "16:12",
+    "concurrency": 7,
+    "complexity": 625537
+  },
+  {
+    "minute": 973,
+    "timestamp": "16:13",
+    "concurrency": 7,
+    "complexity": 643032
+  },
+  {
+    "minute": 974,
+    "timestamp": "16:14",
+    "concurrency": 11,
+    "complexity": 636116
+  },
+  {
+    "minute": 975,
+    "timestamp": "16:15",
+    "concurrency": 8,
+    "complexity": 639006
+  },
+  {
+    "minute": 976,
+    "timestamp": "16:16",
+    "concurrency": 10,
+    "complexity": 636384
+  },
+  {
+    "minute": 977,
+    "timestamp": "16:17",
+    "concurrency": 10,
+    "complexity": 624569
+  },
+  {
+    "minute": 978,
+    "timestamp": "16:18",
+    "concurrency": 9,
+    "complexity": 642365
+  },
+  {
+    "minute": 979,
+    "timestamp": "16:19",
+    "concurrency": 9,
+    "complexity": 616460
+  },
+  {
+    "minute": 980,
+    "timestamp": "16:20",
+    "concurrency": 6,
+    "complexity": 656753
+  },
+  {
+    "minute": 981,
+    "timestamp": "16:21",
+    "concurrency": 9,
+    "complexity": 648712
+  },
+  {
+    "minute": 982,
+    "timestamp": "16:22",
+    "concurrency": 10,
+    "complexity": 625653
+  },
+  {
+    "minute": 983,
+    "timestamp": "16:23",
+    "concurrency": 9,
+    "complexity": 625907
+  },
+  {
+    "minute": 984,
+    "timestamp": "16:24",
+    "concurrency": 9,
+    "complexity": 639608
+  },
+  {
+    "minute": 985,
+    "timestamp": "16:25",
+    "concurrency": 11,
+    "complexity": 617424
+  },
+  {
+    "minute": 986,
+    "timestamp": "16:26",
+    "concurrency": 8,
+    "complexity": 668940
+  },
+  {
+    "minute": 987,
+    "timestamp": "16:27",
+    "concurrency": 8,
+    "complexity": 639171
+  },
+  {
+    "minute": 988,
+    "timestamp": "16:28",
+    "concurrency": 9,
+    "complexity": 639196
+  },
+  {
+    "minute": 989,
+    "timestamp": "16:29",
+    "concurrency": 10,
+    "complexity": 644286
+  },
+  {
+    "minute": 990,
+    "timestamp": "16:30",
+    "concurrency": 6,
+    "complexity": 618401
+  },
+  {
+    "minute": 991,
+    "timestamp": "16:31",
+    "concurrency": 9,
+    "complexity": 651110
+  },
+  {
+    "minute": 992,
+    "timestamp": "16:32",
+    "concurrency": 10,
+    "complexity": 630968
+  },
+  {
+    "minute": 993,
+    "timestamp": "16:33",
+    "concurrency": 8,
+    "complexity": 647034
+  },
+  {
+    "minute": 994,
+    "timestamp": "16:34",
+    "concurrency": 10,
+    "complexity": 623433
+  },
+  {
+    "minute": 995,
+    "timestamp": "16:35",
+    "concurrency": 10,
+    "complexity": 653106
+  },
+  {
+    "minute": 996,
+    "timestamp": "16:36",
+    "concurrency": 12,
+    "complexity": 634163
+  },
+  {
+    "minute": 997,
+    "timestamp": "16:37",
+    "concurrency": 8,
+    "complexity": 669169
+  },
+  {
+    "minute": 998,
+    "timestamp": "16:38",
+    "concurrency": 10,
+    "complexity": 617518
+  },
+  {
+    "minute": 999,
+    "timestamp": "16:39",
+    "concurrency": 7,
+    "complexity": 628396
+  },
+  {
+    "minute": 1000,
+    "timestamp": "16:40",
+    "concurrency": 7,
+    "complexity": 603078
+  },
+  {
+    "minute": 1001,
+    "timestamp": "16:41",
+    "concurrency": 6,
+    "complexity": 612535
+  },
+  {
+    "minute": 1002,
+    "timestamp": "16:42",
+    "concurrency": 10,
+    "complexity": 634913
+  },
+  {
+    "minute": 1003,
+    "timestamp": "16:43",
+    "concurrency": 9,
+    "complexity": 644551
+  },
+  {
+    "minute": 1004,
+    "timestamp": "16:44",
+    "concurrency": 8,
+    "complexity": 680698
+  },
+  {
+    "minute": 1005,
+    "timestamp": "16:45",
+    "concurrency": 7,
+    "complexity": 618905
+  },
+  {
+    "minute": 1006,
+    "timestamp": "16:46",
+    "concurrency": 8,
+    "complexity": 601620
+  },
+  {
+    "minute": 1007,
+    "timestamp": "16:47",
+    "concurrency": 9,
+    "complexity": 634806
+  },
+  {
+    "minute": 1008,
+    "timestamp": "16:48",
+    "concurrency": 11,
+    "complexity": 596644
+  },
+  {
+    "minute": 1009,
+    "timestamp": "16:49",
+    "concurrency": 9,
+    "complexity": 629955
+  },
+  {
+    "minute": 1010,
+    "timestamp": "16:50",
+    "concurrency": 10,
+    "complexity": 608101
+  },
+  {
+    "minute": 1011,
+    "timestamp": "16:51",
+    "concurrency": 9,
+    "complexity": 621862
+  },
+  {
+    "minute": 1012,
+    "timestamp": "16:52",
+    "concurrency": 12,
+    "complexity": 638941
+  },
+  {
+    "minute": 1013,
+    "timestamp": "16:53",
+    "concurrency": 8,
+    "complexity": 614404
+  },
+  {
+    "minute": 1014,
+    "timestamp": "16:54",
+    "concurrency": 9,
+    "complexity": 634782
+  },
+  {
+    "minute": 1015,
+    "timestamp": "16:55",
+    "concurrency": 9,
+    "complexity": 633100
+  },
+  {
+    "minute": 1016,
+    "timestamp": "16:56",
+    "concurrency": 10,
+    "complexity": 577870
+  },
+  {
+    "minute": 1017,
+    "timestamp": "16:57",
+    "concurrency": 8,
+    "complexity": 596652
+  },
+  {
+    "minute": 1018,
+    "timestamp": "16:58",
+    "concurrency": 10,
+    "complexity": 582983
+  },
+  {
+    "minute": 1019,
+    "timestamp": "16:59",
+    "concurrency": 10,
+    "complexity": 653796
+  },
+  {
+    "minute": 1020,
+    "timestamp": "17:00",
+    "concurrency": 9,
+    "complexity": 611203
+  },
+  {
+    "minute": 1021,
+    "timestamp": "17:01",
+    "concurrency": 10,
+    "complexity": 648484
+  },
+  {
+    "minute": 1022,
+    "timestamp": "17:02",
+    "concurrency": 8,
+    "complexity": 579773
+  },
+  {
+    "minute": 1023,
+    "timestamp": "17:03",
+    "concurrency": 8,
+    "complexity": 600548
+  },
+  {
+    "minute": 1024,
+    "timestamp": "17:04",
+    "concurrency": 10,
+    "complexity": 627593
+  },
+  {
+    "minute": 1025,
+    "timestamp": "17:05",
+    "concurrency": 8,
+    "complexity": 614755
+  },
+  {
+    "minute": 1026,
+    "timestamp": "17:06",
+    "concurrency": 7,
+    "complexity": 621420
+  },
+  {
+    "minute": 1027,
+    "timestamp": "17:07",
+    "concurrency": 11,
+    "complexity": 585288
+  },
+  {
+    "minute": 1028,
+    "timestamp": "17:08",
+    "concurrency": 12,
+    "complexity": 637509
+  },
+  {
+    "minute": 1029,
+    "timestamp": "17:09",
+    "concurrency": 9,
+    "complexity": 625129
+  },
+  {
+    "minute": 1030,
+    "timestamp": "17:10",
+    "concurrency": 9,
+    "complexity": 617245
+  },
+  {
+    "minute": 1031,
+    "timestamp": "17:11",
+    "concurrency": 12,
+    "complexity": 595131
+  },
+  {
+    "minute": 1032,
+    "timestamp": "17:12",
+    "concurrency": 9,
+    "complexity": 614958
+  },
+  {
+    "minute": 1033,
+    "timestamp": "17:13",
+    "concurrency": 8,
+    "complexity": 602298
+  },
+  {
+    "minute": 1034,
+    "timestamp": "17:14",
+    "concurrency": 11,
+    "complexity": 574772
+  },
+  {
+    "minute": 1035,
+    "timestamp": "17:15",
+    "concurrency": 10,
+    "complexity": 606434
+  },
+  {
+    "minute": 1036,
+    "timestamp": "17:16",
+    "concurrency": 12,
+    "complexity": 603976
+  },
+  {
+    "minute": 1037,
+    "timestamp": "17:17",
+    "concurrency": 7,
+    "complexity": 628035
+  },
+  {
+    "minute": 1038,
+    "timestamp": "17:18",
+    "concurrency": 8,
+    "complexity": 561782
+  },
+  {
+    "minute": 1039,
+    "timestamp": "17:19",
+    "concurrency": 11,
+    "complexity": 610865
+  },
+  {
+    "minute": 1040,
+    "timestamp": "17:20",
+    "concurrency": 11,
+    "complexity": 582748
+  },
+  {
+    "minute": 1041,
+    "timestamp": "17:21",
+    "concurrency": 12,
+    "complexity": 611950
+  },
+  {
+    "minute": 1042,
+    "timestamp": "17:22",
+    "concurrency": 11,
+    "complexity": 612764
+  },
+  {
+    "minute": 1043,
+    "timestamp": "17:23",
+    "concurrency": 11,
+    "complexity": 603263
+  },
+  {
+    "minute": 1044,
+    "timestamp": "17:24",
+    "concurrency": 10,
+    "complexity": 620874
+  },
+  {
+    "minute": 1045,
+    "timestamp": "17:25",
+    "concurrency": 13,
+    "complexity": 579549
+  },
+  {
+    "minute": 1046,
+    "timestamp": "17:26",
+    "concurrency": 9,
+    "complexity": 626362
+  },
+  {
+    "minute": 1047,
+    "timestamp": "17:27",
+    "concurrency": 11,
+    "complexity": 589797
+  },
+  {
+    "minute": 1048,
+    "timestamp": "17:28",
+    "concurrency": 9,
+    "complexity": 572599
+  },
+  {
+    "minute": 1049,
+    "timestamp": "17:29",
+    "concurrency": 12,
+    "complexity": 598036
+  },
+  {
+    "minute": 1050,
+    "timestamp": "17:30",
+    "concurrency": 9,
+    "complexity": 561354
+  },
+  {
+    "minute": 1051,
+    "timestamp": "17:31",
+    "concurrency": 12,
+    "complexity": 608122
+  },
+  {
+    "minute": 1052,
+    "timestamp": "17:32",
+    "concurrency": 11,
+    "complexity": 597643
+  },
+  {
+    "minute": 1053,
+    "timestamp": "17:33",
+    "concurrency": 14,
+    "complexity": 627298
+  },
+  {
+    "minute": 1054,
+    "timestamp": "17:34",
+    "concurrency": 11,
+    "complexity": 615407
+  },
+  {
+    "minute": 1055,
+    "timestamp": "17:35",
+    "concurrency": 12,
+    "complexity": 574400
+  },
+  {
+    "minute": 1056,
+    "timestamp": "17:36",
+    "concurrency": 10,
+    "complexity": 585291
+  },
+  {
+    "minute": 1057,
+    "timestamp": "17:37",
+    "concurrency": 11,
+    "complexity": 612299
+  },
+  {
+    "minute": 1058,
+    "timestamp": "17:38",
+    "concurrency": 11,
+    "complexity": 618662
+  },
+  {
+    "minute": 1059,
+    "timestamp": "17:39",
+    "concurrency": 9,
+    "complexity": 626012
+  },
+  {
+    "minute": 1060,
+    "timestamp": "17:40",
+    "concurrency": 9,
+    "complexity": 625702
+  },
+  {
+    "minute": 1061,
+    "timestamp": "17:41",
+    "concurrency": 12,
+    "complexity": 599478
+  },
+  {
+    "minute": 1062,
+    "timestamp": "17:42",
+    "concurrency": 11,
+    "complexity": 608387
+  },
+  {
+    "minute": 1063,
+    "timestamp": "17:43",
+    "concurrency": 11,
+    "complexity": 626981
+  },
+  {
+    "minute": 1064,
+    "timestamp": "17:44",
+    "concurrency": 10,
+    "complexity": 594820
+  },
+  {
+    "minute": 1065,
+    "timestamp": "17:45",
+    "concurrency": 11,
+    "complexity": 608368
+  },
+  {
+    "minute": 1066,
+    "timestamp": "17:46",
+    "concurrency": 12,
+    "complexity": 594131
+  },
+  {
+    "minute": 1067,
+    "timestamp": "17:47",
+    "concurrency": 12,
+    "complexity": 589553
+  },
+  {
+    "minute": 1068,
+    "timestamp": "17:48",
+    "concurrency": 9,
+    "complexity": 601450
+  },
+  {
+    "minute": 1069,
+    "timestamp": "17:49",
+    "concurrency": 14,
+    "complexity": 586649
+  },
+  {
+    "minute": 1070,
+    "timestamp": "17:50",
+    "concurrency": 14,
+    "complexity": 597707
+  },
+  {
+    "minute": 1071,
+    "timestamp": "17:51",
+    "concurrency": 8,
+    "complexity": 579560
+  },
+  {
+    "minute": 1072,
+    "timestamp": "17:52",
+    "concurrency": 13,
+    "complexity": 596400
+  },
+  {
+    "minute": 1073,
+    "timestamp": "17:53",
+    "concurrency": 13,
+    "complexity": 609116
+  },
+  {
+    "minute": 1074,
+    "timestamp": "17:54",
+    "concurrency": 12,
+    "complexity": 588329
+  },
+  {
+    "minute": 1075,
+    "timestamp": "17:55",
+    "concurrency": 10,
+    "complexity": 600254
+  },
+  {
+    "minute": 1076,
+    "timestamp": "17:56",
+    "concurrency": 14,
+    "complexity": 602827
+  },
+  {
+    "minute": 1077,
+    "timestamp": "17:57",
+    "concurrency": 12,
+    "complexity": 609070
+  },
+  {
+    "minute": 1078,
+    "timestamp": "17:58",
+    "concurrency": 13,
+    "complexity": 597334
+  },
+  {
+    "minute": 1079,
+    "timestamp": "17:59",
+    "concurrency": 15,
+    "complexity": 621717
+  },
+  {
+    "minute": 1080,
+    "timestamp": "18:00",
+    "concurrency": 13,
+    "complexity": 557983
+  },
+  {
+    "minute": 1081,
+    "timestamp": "18:01",
+    "concurrency": 11,
+    "complexity": 658766
+  },
+  {
+    "minute": 1082,
+    "timestamp": "18:02",
+    "concurrency": 12,
+    "complexity": 582606
+  },
+  {
+    "minute": 1083,
+    "timestamp": "18:03",
+    "concurrency": 11,
+    "complexity": 608121
+  },
+  {
+    "minute": 1084,
+    "timestamp": "18:04",
+    "concurrency": 13,
+    "complexity": 581316
+  },
+  {
+    "minute": 1085,
+    "timestamp": "18:05",
+    "concurrency": 11,
+    "complexity": 613011
+  },
+  {
+    "minute": 1086,
+    "timestamp": "18:06",
+    "concurrency": 12,
+    "complexity": 605705
+  },
+  {
+    "minute": 1087,
+    "timestamp": "18:07",
+    "concurrency": 10,
+    "complexity": 587214
+  },
+  {
+    "minute": 1088,
+    "timestamp": "18:08",
+    "concurrency": 12,
+    "complexity": 621753
+  },
+  {
+    "minute": 1089,
+    "timestamp": "18:09",
+    "concurrency": 13,
+    "complexity": 597083
+  },
+  {
+    "minute": 1090,
+    "timestamp": "18:10",
+    "concurrency": 8,
+    "complexity": 611384
+  },
+  {
+    "minute": 1091,
+    "timestamp": "18:11",
+    "concurrency": 13,
+    "complexity": 582183
+  },
+  {
+    "minute": 1092,
+    "timestamp": "18:12",
+    "concurrency": 12,
+    "complexity": 600001
+  },
+  {
+    "minute": 1093,
+    "timestamp": "18:13",
+    "concurrency": 11,
+    "complexity": 640788
+  },
+  {
+    "minute": 1094,
+    "timestamp": "18:14",
+    "concurrency": 16,
+    "complexity": 620088
+  },
+  {
+    "minute": 1095,
+    "timestamp": "18:15",
+    "concurrency": 14,
+    "complexity": 607097
+  },
+  {
+    "minute": 1096,
+    "timestamp": "18:16",
+    "concurrency": 11,
+    "complexity": 592090
+  },
+  {
+    "minute": 1097,
+    "timestamp": "18:17",
+    "concurrency": 14,
+    "complexity": 602550
+  },
+  {
+    "minute": 1098,
+    "timestamp": "18:18",
+    "concurrency": 15,
+    "complexity": 605291
+  },
+  {
+    "minute": 1099,
+    "timestamp": "18:19",
+    "concurrency": 13,
+    "complexity": 610470
+  },
+  {
+    "minute": 1100,
+    "timestamp": "18:20",
+    "concurrency": 13,
+    "complexity": 580107
+  },
+  {
+    "minute": 1101,
+    "timestamp": "18:21",
+    "concurrency": 13,
+    "complexity": 615170
+  },
+  {
+    "minute": 1102,
+    "timestamp": "18:22",
+    "concurrency": 10,
+    "complexity": 580179
+  },
+  {
+    "minute": 1103,
+    "timestamp": "18:23",
+    "concurrency": 13,
+    "complexity": 634771
+  },
+  {
+    "minute": 1104,
+    "timestamp": "18:24",
+    "concurrency": 13,
+    "complexity": 586900
+  },
+  {
+    "minute": 1105,
+    "timestamp": "18:25",
+    "concurrency": 15,
+    "complexity": 608458
+  },
+  {
+    "minute": 1106,
+    "timestamp": "18:26",
+    "concurrency": 13,
+    "complexity": 622828
+  },
+  {
+    "minute": 1107,
+    "timestamp": "18:27",
+    "concurrency": 13,
+    "complexity": 597885
+  },
+  {
+    "minute": 1108,
+    "timestamp": "18:28",
+    "concurrency": 13,
+    "complexity": 609959
+  },
+  {
+    "minute": 1109,
+    "timestamp": "18:29",
+    "concurrency": 15,
+    "complexity": 632073
+  },
+  {
+    "minute": 1110,
+    "timestamp": "18:30",
+    "concurrency": 13,
+    "complexity": 614888
+  },
+  {
+    "minute": 1111,
+    "timestamp": "18:31",
+    "concurrency": 12,
+    "complexity": 610948
+  },
+  {
+    "minute": 1112,
+    "timestamp": "18:32",
+    "concurrency": 13,
+    "complexity": 570387
+  },
+  {
+    "minute": 1113,
+    "timestamp": "18:33",
+    "concurrency": 15,
+    "complexity": 585660
+  },
+  {
+    "minute": 1114,
+    "timestamp": "18:34",
+    "concurrency": 14,
+    "complexity": 625534
+  },
+  {
+    "minute": 1115,
+    "timestamp": "18:35",
+    "concurrency": 13,
+    "complexity": 616262
+  },
+  {
+    "minute": 1116,
+    "timestamp": "18:36",
+    "concurrency": 14,
+    "complexity": 619567
+  },
+  {
+    "minute": 1117,
+    "timestamp": "18:37",
+    "concurrency": 12,
+    "complexity": 618129
+  },
+  {
+    "minute": 1118,
+    "timestamp": "18:38",
+    "concurrency": 13,
+    "complexity": 631506
+  },
+  {
+    "minute": 1119,
+    "timestamp": "18:39",
+    "concurrency": 12,
+    "complexity": 600781
+  },
+  {
+    "minute": 1120,
+    "timestamp": "18:40",
+    "concurrency": 13,
+    "complexity": 608725
+  },
+  {
+    "minute": 1121,
+    "timestamp": "18:41",
+    "concurrency": 15,
+    "complexity": 586054
+  },
+  {
+    "minute": 1122,
+    "timestamp": "18:42",
+    "concurrency": 12,
+    "complexity": 581387
+  },
+  {
+    "minute": 1123,
+    "timestamp": "18:43",
+    "concurrency": 12,
+    "complexity": 574401
+  },
+  {
+    "minute": 1124,
+    "timestamp": "18:44",
+    "concurrency": 12,
+    "complexity": 589908
+  },
+  {
+    "minute": 1125,
+    "timestamp": "18:45",
+    "concurrency": 11,
+    "complexity": 639005
+  },
+  {
+    "minute": 1126,
+    "timestamp": "18:46",
+    "concurrency": 38,
+    "complexity": 577250
+  },
+  {
+    "minute": 1127,
+    "timestamp": "18:47",
+    "concurrency": 37,
+    "complexity": 602591
+  },
+  {
+    "minute": 1128,
+    "timestamp": "18:48",
+    "concurrency": 40,
+    "complexity": 583164
+  },
+  {
+    "minute": 1129,
+    "timestamp": "18:49",
+    "concurrency": 37,
+    "complexity": 597380
+  },
+  {
+    "minute": 1130,
+    "timestamp": "18:50",
+    "concurrency": 35,
+    "complexity": 613174
+  },
+  {
+    "minute": 1131,
+    "timestamp": "18:51",
+    "concurrency": 34,
+    "complexity": 596165
+  },
+  {
+    "minute": 1132,
+    "timestamp": "18:52",
+    "concurrency": 32,
+    "complexity": 632356
+  },
+  {
+    "minute": 1133,
+    "timestamp": "18:53",
+    "concurrency": 36,
+    "complexity": 641645
+  },
+  {
+    "minute": 1134,
+    "timestamp": "18:54",
+    "concurrency": 33,
+    "complexity": 566393
+  },
+  {
+    "minute": 1135,
+    "timestamp": "18:55",
+    "concurrency": 35,
+    "complexity": 598132
+  },
+  {
+    "minute": 1136,
+    "timestamp": "18:56",
+    "concurrency": 35,
+    "complexity": 613400
+  },
+  {
+    "minute": 1137,
+    "timestamp": "18:57",
+    "concurrency": 33,
+    "complexity": 635171
+  },
+  {
+    "minute": 1138,
+    "timestamp": "18:58",
+    "concurrency": 34,
+    "complexity": 604003
+  },
+  {
+    "minute": 1139,
+    "timestamp": "18:59",
+    "concurrency": 34,
+    "complexity": 613136
+  },
+  {
+    "minute": 1140,
+    "timestamp": "19:00",
+    "concurrency": 31,
+    "complexity": 590854
+  },
+  {
+    "minute": 1141,
+    "timestamp": "19:01",
+    "concurrency": 33,
+    "complexity": 583795
+  },
+  {
+    "minute": 1142,
+    "timestamp": "19:02",
+    "concurrency": 35,
+    "complexity": 643827
+  },
+  {
+    "minute": 1143,
+    "timestamp": "19:03",
+    "concurrency": 35,
+    "complexity": 578915
+  },
+  {
+    "minute": 1144,
+    "timestamp": "19:04",
+    "concurrency": 32,
+    "complexity": 662452
+  },
+  {
+    "minute": 1145,
+    "timestamp": "19:05",
+    "concurrency": 34,
+    "complexity": 630874
+  },
+  {
+    "minute": 1146,
+    "timestamp": "19:06",
+    "concurrency": 33,
+    "complexity": 630468
+  },
+  {
+    "minute": 1147,
+    "timestamp": "19:07",
+    "concurrency": 33,
+    "complexity": 628884
+  },
+  {
+    "minute": 1148,
+    "timestamp": "19:08",
+    "concurrency": 34,
+    "complexity": 612833
+  },
+  {
+    "minute": 1149,
+    "timestamp": "19:09",
+    "concurrency": 33,
+    "complexity": 626249
+  },
+  {
+    "minute": 1150,
+    "timestamp": "19:10",
+    "concurrency": 34,
+    "complexity": 615157
+  },
+  {
+    "minute": 1151,
+    "timestamp": "19:11",
+    "concurrency": 35,
+    "complexity": 630531
+  },
+  {
+    "minute": 1152,
+    "timestamp": "19:12",
+    "concurrency": 34,
+    "complexity": 619337
+  },
+  {
+    "minute": 1153,
+    "timestamp": "19:13",
+    "concurrency": 34,
+    "complexity": 601553
+  },
+  {
+    "minute": 1154,
+    "timestamp": "19:14",
+    "concurrency": 36,
+    "complexity": 603705
+  },
+  {
+    "minute": 1155,
+    "timestamp": "19:15",
+    "concurrency": 35,
+    "complexity": 601995
+  },
+  {
+    "minute": 1156,
+    "timestamp": "19:16",
+    "concurrency": 33,
+    "complexity": 641669
+  },
+  {
+    "minute": 1157,
+    "timestamp": "19:17",
+    "concurrency": 37,
+    "complexity": 610480
+  },
+  {
+    "minute": 1158,
+    "timestamp": "19:18",
+    "concurrency": 37,
+    "complexity": 585172
+  },
+  {
+    "minute": 1159,
+    "timestamp": "19:19",
+    "concurrency": 40,
+    "complexity": 631943
+  },
+  {
+    "minute": 1160,
+    "timestamp": "19:20",
+    "concurrency": 38,
+    "complexity": 654896
+  },
+  {
+    "minute": 1161,
+    "timestamp": "19:21",
+    "concurrency": 37,
+    "complexity": 640674
+  },
+  {
+    "minute": 1162,
+    "timestamp": "19:22",
+    "concurrency": 37,
+    "complexity": 613760
+  },
+  {
+    "minute": 1163,
+    "timestamp": "19:23",
+    "concurrency": 37,
+    "complexity": 594711
+  },
+  {
+    "minute": 1164,
+    "timestamp": "19:24",
+    "concurrency": 40,
+    "complexity": 624390
+  },
+  {
+    "minute": 1165,
+    "timestamp": "19:25",
+    "concurrency": 14,
+    "complexity": 624526
+  },
+  {
+    "minute": 1166,
+    "timestamp": "19:26",
+    "concurrency": 12,
+    "complexity": 608969
+  },
+  {
+    "minute": 1167,
+    "timestamp": "19:27",
+    "concurrency": 14,
+    "complexity": 640023
+  },
+  {
+    "minute": 1168,
+    "timestamp": "19:28",
+    "concurrency": 15,
+    "complexity": 666591
+  },
+  {
+    "minute": 1169,
+    "timestamp": "19:29",
+    "concurrency": 14,
+    "complexity": 634768
+  },
+  {
+    "minute": 1170,
+    "timestamp": "19:30",
+    "concurrency": 16,
+    "complexity": 634203
+  },
+  {
+    "minute": 1171,
+    "timestamp": "19:31",
+    "concurrency": 14,
+    "complexity": 612926
+  },
+  {
+    "minute": 1172,
+    "timestamp": "19:32",
+    "concurrency": 16,
+    "complexity": 660304
+  },
+  {
+    "minute": 1173,
+    "timestamp": "19:33",
+    "concurrency": 15,
+    "complexity": 631544
+  },
+  {
+    "minute": 1174,
+    "timestamp": "19:34",
+    "concurrency": 16,
+    "complexity": 622166
+  },
+  {
+    "minute": 1175,
+    "timestamp": "19:35",
+    "concurrency": 13,
+    "complexity": 635725
+  },
+  {
+    "minute": 1176,
+    "timestamp": "19:36",
+    "concurrency": 15,
+    "complexity": 644603
+  },
+  {
+    "minute": 1177,
+    "timestamp": "19:37",
+    "concurrency": 14,
+    "complexity": 638668
+  },
+  {
+    "minute": 1178,
+    "timestamp": "19:38",
+    "concurrency": 12,
+    "complexity": 660733
+  },
+  {
+    "minute": 1179,
+    "timestamp": "19:39",
+    "concurrency": 16,
+    "complexity": 645023
+  },
+  {
+    "minute": 1180,
+    "timestamp": "19:40",
+    "concurrency": 13,
+    "complexity": 632405
+  },
+  {
+    "minute": 1181,
+    "timestamp": "19:41",
+    "concurrency": 14,
+    "complexity": 646855
+  },
+  {
+    "minute": 1182,
+    "timestamp": "19:42",
+    "concurrency": 13,
+    "complexity": 649578
+  },
+  {
+    "minute": 1183,
+    "timestamp": "19:43",
+    "concurrency": 16,
+    "complexity": 614418
+  },
+  {
+    "minute": 1184,
+    "timestamp": "19:44",
+    "concurrency": 12,
+    "complexity": 664102
+  },
+  {
+    "minute": 1185,
+    "timestamp": "19:45",
+    "concurrency": 15,
+    "complexity": 635870
+  },
+  {
+    "minute": 1186,
+    "timestamp": "19:46",
+    "concurrency": 16,
+    "complexity": 637163
+  },
+  {
+    "minute": 1187,
+    "timestamp": "19:47",
+    "concurrency": 15,
+    "complexity": 658486
+  },
+  {
+    "minute": 1188,
+    "timestamp": "19:48",
+    "concurrency": 16,
+    "complexity": 659197
+  },
+  {
+    "minute": 1189,
+    "timestamp": "19:49",
+    "concurrency": 16,
+    "complexity": 631039
+  },
+  {
+    "minute": 1190,
+    "timestamp": "19:50",
+    "concurrency": 13,
+    "complexity": 661922
+  },
+  {
+    "minute": 1191,
+    "timestamp": "19:51",
+    "concurrency": 17,
+    "complexity": 635470
+  },
+  {
+    "minute": 1192,
+    "timestamp": "19:52",
+    "concurrency": 14,
+    "complexity": 683893
+  },
+  {
+    "minute": 1193,
+    "timestamp": "19:53",
+    "concurrency": 14,
+    "complexity": 631767
+  },
+  {
+    "minute": 1194,
+    "timestamp": "19:54",
+    "concurrency": 14,
+    "complexity": 653956
+  },
+  {
+    "minute": 1195,
+    "timestamp": "19:55",
+    "concurrency": 15,
+    "complexity": 634368
+  },
+  {
+    "minute": 1196,
+    "timestamp": "19:56",
+    "concurrency": 14,
+    "complexity": 695311
+  },
+  {
+    "minute": 1197,
+    "timestamp": "19:57",
+    "concurrency": 15,
+    "complexity": 626956
+  },
+  {
+    "minute": 1198,
+    "timestamp": "19:58",
+    "concurrency": 13,
+    "complexity": 663062
+  },
+  {
+    "minute": 1199,
+    "timestamp": "19:59",
+    "concurrency": 16,
+    "complexity": 638746
+  },
+  {
+    "minute": 1200,
+    "timestamp": "20:00",
+    "concurrency": 16,
+    "complexity": 647237
+  },
+  {
+    "minute": 1201,
+    "timestamp": "20:01",
+    "concurrency": 14,
+    "complexity": 664272
+  },
+  {
+    "minute": 1202,
+    "timestamp": "20:02",
+    "concurrency": 14,
+    "complexity": 680582
+  },
+  {
+    "minute": 1203,
+    "timestamp": "20:03",
+    "concurrency": 15,
+    "complexity": 689453
+  },
+  {
+    "minute": 1204,
+    "timestamp": "20:04",
+    "concurrency": 13,
+    "complexity": 627148
+  },
+  {
+    "minute": 1205,
+    "timestamp": "20:05",
+    "concurrency": 15,
+    "complexity": 664150
+  },
+  {
+    "minute": 1206,
+    "timestamp": "20:06",
+    "concurrency": 16,
+    "complexity": 688900
+  },
+  {
+    "minute": 1207,
+    "timestamp": "20:07",
+    "concurrency": 13,
+    "complexity": 626925
+  },
+  {
+    "minute": 1208,
+    "timestamp": "20:08",
+    "concurrency": 15,
+    "complexity": 667847
+  },
+  {
+    "minute": 1209,
+    "timestamp": "20:09",
+    "concurrency": 15,
+    "complexity": 662451
+  },
+  {
+    "minute": 1210,
+    "timestamp": "20:10",
+    "concurrency": 14,
+    "complexity": 671725
+  },
+  {
+    "minute": 1211,
+    "timestamp": "20:11",
+    "concurrency": 14,
+    "complexity": 648935
+  },
+  {
+    "minute": 1212,
+    "timestamp": "20:12",
+    "concurrency": 16,
+    "complexity": 636622
+  },
+  {
+    "minute": 1213,
+    "timestamp": "20:13",
+    "concurrency": 14,
+    "complexity": 628032
+  },
+  {
+    "minute": 1214,
+    "timestamp": "20:14",
+    "concurrency": 12,
+    "complexity": 686788
+  },
+  {
+    "minute": 1215,
+    "timestamp": "20:15",
+    "concurrency": 15,
+    "complexity": 690314
+  },
+  {
+    "minute": 1216,
+    "timestamp": "20:16",
+    "concurrency": 13,
+    "complexity": 675265
+  },
+  {
+    "minute": 1217,
+    "timestamp": "20:17",
+    "concurrency": 15,
+    "complexity": 659514
+  },
+  {
+    "minute": 1218,
+    "timestamp": "20:18",
+    "concurrency": 16,
+    "complexity": 638727
+  },
+  {
+    "minute": 1219,
+    "timestamp": "20:19",
+    "concurrency": 15,
+    "complexity": 683453
+  },
+  {
+    "minute": 1220,
+    "timestamp": "20:20",
+    "concurrency": 16,
+    "complexity": 651174
+  },
+  {
+    "minute": 1221,
+    "timestamp": "20:21",
+    "concurrency": 17,
+    "complexity": 659974
+  },
+  {
+    "minute": 1222,
+    "timestamp": "20:22",
+    "concurrency": 16,
+    "complexity": 663485
+  },
+  {
+    "minute": 1223,
+    "timestamp": "20:23",
+    "concurrency": 15,
+    "complexity": 672288
+  },
+  {
+    "minute": 1224,
+    "timestamp": "20:24",
+    "concurrency": 17,
+    "complexity": 662087
+  },
+  {
+    "minute": 1225,
+    "timestamp": "20:25",
+    "concurrency": 17,
+    "complexity": 678972
+  },
+  {
+    "minute": 1226,
+    "timestamp": "20:26",
+    "concurrency": 17,
+    "complexity": 666907
+  },
+  {
+    "minute": 1227,
+    "timestamp": "20:27",
+    "concurrency": 14,
+    "complexity": 694418
+  },
+  {
+    "minute": 1228,
+    "timestamp": "20:28",
+    "concurrency": 12,
+    "complexity": 702065
+  },
+  {
+    "minute": 1229,
+    "timestamp": "20:29",
+    "concurrency": 14,
+    "complexity": 684674
+  },
+  {
+    "minute": 1230,
+    "timestamp": "20:30",
+    "concurrency": 15,
+    "complexity": 692821
+  },
+  {
+    "minute": 1231,
+    "timestamp": "20:31",
+    "concurrency": 15,
+    "complexity": 726997
+  },
+  {
+    "minute": 1232,
+    "timestamp": "20:32",
+    "concurrency": 14,
+    "complexity": 662265
+  },
+  {
+    "minute": 1233,
+    "timestamp": "20:33",
+    "concurrency": 15,
+    "complexity": 662131
+  },
+  {
+    "minute": 1234,
+    "timestamp": "20:34",
+    "concurrency": 12,
+    "complexity": 701790
+  },
+  {
+    "minute": 1235,
+    "timestamp": "20:35",
+    "concurrency": 14,
+    "complexity": 727916
+  },
+  {
+    "minute": 1236,
+    "timestamp": "20:36",
+    "concurrency": 16,
+    "complexity": 684877
+  },
+  {
+    "minute": 1237,
+    "timestamp": "20:37",
+    "concurrency": 15,
+    "complexity": 725731
+  },
+  {
+    "minute": 1238,
+    "timestamp": "20:38",
+    "concurrency": 15,
+    "complexity": 694236
+  },
+  {
+    "minute": 1239,
+    "timestamp": "20:39",
+    "concurrency": 17,
+    "complexity": 679808
+  },
+  {
+    "minute": 1240,
+    "timestamp": "20:40",
+    "concurrency": 14,
+    "complexity": 674737
+  },
+  {
+    "minute": 1241,
+    "timestamp": "20:41",
+    "concurrency": 13,
+    "complexity": 708269
+  },
+  {
+    "minute": 1242,
+    "timestamp": "20:42",
+    "concurrency": 16,
+    "complexity": 678518
+  },
+  {
+    "minute": 1243,
+    "timestamp": "20:43",
+    "concurrency": 16,
+    "complexity": 699585
+  },
+  {
+    "minute": 1244,
+    "timestamp": "20:44",
+    "concurrency": 15,
+    "complexity": 730777
+  },
+  {
+    "minute": 1245,
+    "timestamp": "20:45",
+    "concurrency": 14,
+    "complexity": 694126
+  },
+  {
+    "minute": 1246,
+    "timestamp": "20:46",
+    "concurrency": 14,
+    "complexity": 727701
+  },
+  {
+    "minute": 1247,
+    "timestamp": "20:47",
+    "concurrency": 12,
+    "complexity": 678295
+  },
+  {
+    "minute": 1248,
+    "timestamp": "20:48",
+    "concurrency": 16,
+    "complexity": 693078
+  },
+  {
+    "minute": 1249,
+    "timestamp": "20:49",
+    "concurrency": 16,
+    "complexity": 676790
+  },
+  {
+    "minute": 1250,
+    "timestamp": "20:50",
+    "concurrency": 12,
+    "complexity": 707575
+  },
+  {
+    "minute": 1251,
+    "timestamp": "20:51",
+    "concurrency": 15,
+    "complexity": 722904
+  },
+  {
+    "minute": 1252,
+    "timestamp": "20:52",
+    "concurrency": 15,
+    "complexity": 709999
+  },
+  {
+    "minute": 1253,
+    "timestamp": "20:53",
+    "concurrency": 12,
+    "complexity": 734236
+  },
+  {
+    "minute": 1254,
+    "timestamp": "20:54",
+    "concurrency": 12,
+    "complexity": 695915
+  },
+  {
+    "minute": 1255,
+    "timestamp": "20:55",
+    "concurrency": 14,
+    "complexity": 716615
+  },
+  {
+    "minute": 1256,
+    "timestamp": "20:56",
+    "concurrency": 13,
+    "complexity": 702775
+  },
+  {
+    "minute": 1257,
+    "timestamp": "20:57",
+    "concurrency": 17,
+    "complexity": 721778
+  },
+  {
+    "minute": 1258,
+    "timestamp": "20:58",
+    "concurrency": 15,
+    "complexity": 725846
+  },
+  {
+    "minute": 1259,
+    "timestamp": "20:59",
+    "concurrency": 15,
+    "complexity": 728650
+  },
+  {
+    "minute": 1260,
+    "timestamp": "21:00",
+    "concurrency": 15,
+    "complexity": 696828
+  },
+  {
+    "minute": 1261,
+    "timestamp": "21:01",
+    "concurrency": 16,
+    "complexity": 701687
+  },
+  {
+    "minute": 1262,
+    "timestamp": "21:02",
+    "concurrency": 15,
+    "complexity": 706644
+  },
+  {
+    "minute": 1263,
+    "timestamp": "21:03",
+    "concurrency": 15,
+    "complexity": 717205
+  },
+  {
+    "minute": 1264,
+    "timestamp": "21:04",
+    "concurrency": 12,
+    "complexity": 724985
+  },
+  {
+    "minute": 1265,
+    "timestamp": "21:05",
+    "concurrency": 18,
+    "complexity": 738666
+  },
+  {
+    "minute": 1266,
+    "timestamp": "21:06",
+    "concurrency": 12,
+    "complexity": 708812
+  },
+  {
+    "minute": 1267,
+    "timestamp": "21:07",
+    "concurrency": 13,
+    "complexity": 695027
+  },
+  {
+    "minute": 1268,
+    "timestamp": "21:08",
+    "concurrency": 11,
+    "complexity": 771442
+  },
+  {
+    "minute": 1269,
+    "timestamp": "21:09",
+    "concurrency": 14,
+    "complexity": 706982
+  },
+  {
+    "minute": 1270,
+    "timestamp": "21:10",
+    "concurrency": 14,
+    "complexity": 747628
+  },
+  {
+    "minute": 1271,
+    "timestamp": "21:11",
+    "concurrency": 15,
+    "complexity": 732821
+  },
+  {
+    "minute": 1272,
+    "timestamp": "21:12",
+    "concurrency": 11,
+    "complexity": 738522
+  },
+  {
+    "minute": 1273,
+    "timestamp": "21:13",
+    "concurrency": 15,
+    "complexity": 734770
+  },
+  {
+    "minute": 1274,
+    "timestamp": "21:14",
+    "concurrency": 12,
+    "complexity": 728414
+  },
+  {
+    "minute": 1275,
+    "timestamp": "21:15",
+    "concurrency": 13,
+    "complexity": 746705
+  },
+  {
+    "minute": 1276,
+    "timestamp": "21:16",
+    "concurrency": 15,
+    "complexity": 729974
+  },
+  {
+    "minute": 1277,
+    "timestamp": "21:17",
+    "concurrency": 14,
+    "complexity": 763397
+  },
+  {
+    "minute": 1278,
+    "timestamp": "21:18",
+    "concurrency": 14,
+    "complexity": 752770
+  },
+  {
+    "minute": 1279,
+    "timestamp": "21:19",
+    "concurrency": 15,
+    "complexity": 754728
+  },
+  {
+    "minute": 1280,
+    "timestamp": "21:20",
+    "concurrency": 14,
+    "complexity": 733933
+  },
+  {
+    "minute": 1281,
+    "timestamp": "21:21",
+    "concurrency": 13,
+    "complexity": 740693
+  },
+  {
+    "minute": 1282,
+    "timestamp": "21:22",
+    "concurrency": 13,
+    "complexity": 723012
+  },
+  {
+    "minute": 1283,
+    "timestamp": "21:23",
+    "concurrency": 14,
+    "complexity": 741064
+  },
+  {
+    "minute": 1284,
+    "timestamp": "21:24",
+    "concurrency": 12,
+    "complexity": 728752
+  },
+  {
+    "minute": 1285,
+    "timestamp": "21:25",
+    "concurrency": 15,
+    "complexity": 777109
+  },
+  {
+    "minute": 1286,
+    "timestamp": "21:26",
+    "concurrency": 14,
+    "complexity": 753227
+  },
+  {
+    "minute": 1287,
+    "timestamp": "21:27",
+    "concurrency": 13,
+    "complexity": 757000
+  },
+  {
+    "minute": 1288,
+    "timestamp": "21:28",
+    "concurrency": 15,
+    "complexity": 750465
+  },
+  {
+    "minute": 1289,
+    "timestamp": "21:29",
+    "concurrency": 13,
+    "complexity": 760302
+  },
+  {
+    "minute": 1290,
+    "timestamp": "21:30",
+    "concurrency": 13,
+    "complexity": 807036
+  },
+  {
+    "minute": 1291,
+    "timestamp": "21:31",
+    "concurrency": 12,
+    "complexity": 753127
+  },
+  {
+    "minute": 1292,
+    "timestamp": "21:32",
+    "concurrency": 14,
+    "complexity": 747519
+  },
+  {
+    "minute": 1293,
+    "timestamp": "21:33",
+    "concurrency": 13,
+    "complexity": 772522
+  },
+  {
+    "minute": 1294,
+    "timestamp": "21:34",
+    "concurrency": 12,
+    "complexity": 712819
+  },
+  {
+    "minute": 1295,
+    "timestamp": "21:35",
+    "concurrency": 13,
+    "complexity": 766023
+  },
+  {
+    "minute": 1296,
+    "timestamp": "21:36",
+    "concurrency": 12,
+    "complexity": 758725
+  },
+  {
+    "minute": 1297,
+    "timestamp": "21:37",
+    "concurrency": 12,
+    "complexity": 747732
+  },
+  {
+    "minute": 1298,
+    "timestamp": "21:38",
+    "concurrency": 10,
+    "complexity": 779157
+  },
+  {
+    "minute": 1299,
+    "timestamp": "21:39",
+    "concurrency": 12,
+    "complexity": 771510
+  },
+  {
+    "minute": 1300,
+    "timestamp": "21:40",
+    "concurrency": 10,
+    "complexity": 735814
+  },
+  {
+    "minute": 1301,
+    "timestamp": "21:41",
+    "concurrency": 12,
+    "complexity": 760368
+  },
+  {
+    "minute": 1302,
+    "timestamp": "21:42",
+    "concurrency": 12,
+    "complexity": 716975
+  },
+  {
+    "minute": 1303,
+    "timestamp": "21:43",
+    "concurrency": 14,
+    "complexity": 782051
+  },
+  {
+    "minute": 1304,
+    "timestamp": "21:44",
+    "concurrency": 11,
+    "complexity": 783301
+  },
+  {
+    "minute": 1305,
+    "timestamp": "21:45",
+    "concurrency": 11,
+    "complexity": 763224
+  },
+  {
+    "minute": 1306,
+    "timestamp": "21:46",
+    "concurrency": 12,
+    "complexity": 791350
+  },
+  {
+    "minute": 1307,
+    "timestamp": "21:47",
+    "concurrency": 12,
+    "complexity": 756360
+  },
+  {
+    "minute": 1308,
+    "timestamp": "21:48",
+    "concurrency": 15,
+    "complexity": 764146
+  },
+  {
+    "minute": 1309,
+    "timestamp": "21:49",
+    "concurrency": 11,
+    "complexity": 793291
+  },
+  {
+    "minute": 1310,
+    "timestamp": "21:50",
+    "concurrency": 12,
+    "complexity": 772648
+  },
+  {
+    "minute": 1311,
+    "timestamp": "21:51",
+    "concurrency": 13,
+    "complexity": 786647
+  },
+  {
+    "minute": 1312,
+    "timestamp": "21:52",
+    "concurrency": 14,
+    "complexity": 778110
+  },
+  {
+    "minute": 1313,
+    "timestamp": "21:53",
+    "concurrency": 12,
+    "complexity": 782651
+  },
+  {
+    "minute": 1314,
+    "timestamp": "21:54",
+    "concurrency": 9,
+    "complexity": 785016
+  },
+  {
+    "minute": 1315,
+    "timestamp": "21:55",
+    "concurrency": 12,
+    "complexity": 779720
+  },
+  {
+    "minute": 1316,
+    "timestamp": "21:56",
+    "concurrency": 14,
+    "complexity": 801403
+  },
+  {
+    "minute": 1317,
+    "timestamp": "21:57",
+    "concurrency": 13,
+    "complexity": 784298
+  },
+  {
+    "minute": 1318,
+    "timestamp": "21:58",
+    "concurrency": 13,
+    "complexity": 798677
+  },
+  {
+    "minute": 1319,
+    "timestamp": "21:59",
+    "concurrency": 11,
+    "complexity": 785299
+  },
+  {
+    "minute": 1320,
+    "timestamp": "22:00",
+    "concurrency": 10,
+    "complexity": 770702
+  },
+  {
+    "minute": 1321,
+    "timestamp": "22:01",
+    "concurrency": 12,
+    "complexity": 821154
+  },
+  {
+    "minute": 1322,
+    "timestamp": "22:02",
+    "concurrency": 10,
+    "complexity": 814418
+  },
+  {
+    "minute": 1323,
+    "timestamp": "22:03",
+    "concurrency": 13,
+    "complexity": 851726
+  },
+  {
+    "minute": 1324,
+    "timestamp": "22:04",
+    "concurrency": 11,
+    "complexity": 786602
+  },
+  {
+    "minute": 1325,
+    "timestamp": "22:05",
+    "concurrency": 12,
+    "complexity": 804835
+  },
+  {
+    "minute": 1326,
+    "timestamp": "22:06",
+    "concurrency": 9,
+    "complexity": 807981
+  },
+  {
+    "minute": 1327,
+    "timestamp": "22:07",
+    "concurrency": 11,
+    "complexity": 831878
+  },
+  {
+    "minute": 1328,
+    "timestamp": "22:08",
+    "concurrency": 10,
+    "complexity": 803492
+  },
+  {
+    "minute": 1329,
+    "timestamp": "22:09",
+    "concurrency": 8,
+    "complexity": 791761
+  },
+  {
+    "minute": 1330,
+    "timestamp": "22:10",
+    "concurrency": 13,
+    "complexity": 840889
+  },
+  {
+    "minute": 1331,
+    "timestamp": "22:11",
+    "concurrency": 14,
+    "complexity": 811954
+  },
+  {
+    "minute": 1332,
+    "timestamp": "22:12",
+    "concurrency": 13,
+    "complexity": 837417
+  },
+  {
+    "minute": 1333,
+    "timestamp": "22:13",
+    "concurrency": 13,
+    "complexity": 836649
+  },
+  {
+    "minute": 1334,
+    "timestamp": "22:14",
+    "concurrency": 11,
+    "complexity": 822372
+  },
+  {
+    "minute": 1335,
+    "timestamp": "22:15",
+    "concurrency": 13,
+    "complexity": 821051
+  },
+  {
+    "minute": 1336,
+    "timestamp": "22:16",
+    "concurrency": 13,
+    "complexity": 818278
+  },
+  {
+    "minute": 1337,
+    "timestamp": "22:17",
+    "concurrency": 12,
+    "complexity": 827380
+  },
+  {
+    "minute": 1338,
+    "timestamp": "22:18",
+    "concurrency": 10,
+    "complexity": 846523
+  },
+  {
+    "minute": 1339,
+    "timestamp": "22:19",
+    "concurrency": 11,
+    "complexity": 814913
+  },
+  {
+    "minute": 1340,
+    "timestamp": "22:20",
+    "concurrency": 14,
+    "complexity": 834603
+  },
+  {
+    "minute": 1341,
+    "timestamp": "22:21",
+    "concurrency": 11,
+    "complexity": 811641
+  },
+  {
+    "minute": 1342,
+    "timestamp": "22:22",
+    "concurrency": 6,
+    "complexity": 815723
+  },
+  {
+    "minute": 1343,
+    "timestamp": "22:23",
+    "concurrency": 9,
+    "complexity": 836580
+  },
+  {
+    "minute": 1344,
+    "timestamp": "22:24",
+    "concurrency": 11,
+    "complexity": 799592
+  },
+  {
+    "minute": 1345,
+    "timestamp": "22:25",
+    "concurrency": 13,
+    "complexity": 881606
+  },
+  {
+    "minute": 1346,
+    "timestamp": "22:26",
+    "concurrency": 11,
+    "complexity": 818137
+  },
+  {
+    "minute": 1347,
+    "timestamp": "22:27",
+    "concurrency": 13,
+    "complexity": 842803
+  },
+  {
+    "minute": 1348,
+    "timestamp": "22:28",
+    "concurrency": 10,
+    "complexity": 868578
+  },
+  {
+    "minute": 1349,
+    "timestamp": "22:29",
+    "concurrency": 8,
+    "complexity": 829567
+  },
+  {
+    "minute": 1350,
+    "timestamp": "22:30",
+    "concurrency": 10,
+    "complexity": 802386
+  },
+  {
+    "minute": 1351,
+    "timestamp": "22:31",
+    "concurrency": 11,
+    "complexity": 841159
+  },
+  {
+    "minute": 1352,
+    "timestamp": "22:32",
+    "concurrency": 11,
+    "complexity": 834182
+  },
+  {
+    "minute": 1353,
+    "timestamp": "22:33",
+    "concurrency": 9,
+    "complexity": 807774
+  },
+  {
+    "minute": 1354,
+    "timestamp": "22:34",
+    "concurrency": 10,
+    "complexity": 860626
+  },
+  {
+    "minute": 1355,
+    "timestamp": "22:35",
+    "concurrency": 15,
+    "complexity": 860699
+  },
+  {
+    "minute": 1356,
+    "timestamp": "22:36",
+    "concurrency": 9,
+    "complexity": 881035
+  },
+  {
+    "minute": 1357,
+    "timestamp": "22:37",
+    "concurrency": 12,
+    "complexity": 837407
+  },
+  {
+    "minute": 1358,
+    "timestamp": "22:38",
+    "concurrency": 7,
+    "complexity": 829478
+  },
+  {
+    "minute": 1359,
+    "timestamp": "22:39",
+    "concurrency": 12,
+    "complexity": 854966
+  },
+  {
+    "minute": 1360,
+    "timestamp": "22:40",
+    "concurrency": 9,
+    "complexity": 862976
+  },
+  {
+    "minute": 1361,
+    "timestamp": "22:41",
+    "concurrency": 11,
+    "complexity": 884815
+  },
+  {
+    "minute": 1362,
+    "timestamp": "22:42",
+    "concurrency": 9,
+    "complexity": 896246
+  },
+  {
+    "minute": 1363,
+    "timestamp": "22:43",
+    "concurrency": 11,
+    "complexity": 893975
+  },
+  {
+    "minute": 1364,
+    "timestamp": "22:44",
+    "concurrency": 9,
+    "complexity": 876868
+  },
+  {
+    "minute": 1365,
+    "timestamp": "22:45",
+    "concurrency": 9,
+    "complexity": 888983
+  },
+  {
+    "minute": 1366,
+    "timestamp": "22:46",
+    "concurrency": 11,
+    "complexity": 861840
+  },
+  {
+    "minute": 1367,
+    "timestamp": "22:47",
+    "concurrency": 10,
+    "complexity": 879678
+  },
+  {
+    "minute": 1368,
+    "timestamp": "22:48",
+    "concurrency": 11,
+    "complexity": 854146
+  },
+  {
+    "minute": 1369,
+    "timestamp": "22:49",
+    "concurrency": 10,
+    "complexity": 880890
+  },
+  {
+    "minute": 1370,
+    "timestamp": "22:50",
+    "concurrency": 10,
+    "complexity": 883076
+  },
+  {
+    "minute": 1371,
+    "timestamp": "22:51",
+    "concurrency": 11,
+    "complexity": 917415
+  },
+  {
+    "minute": 1372,
+    "timestamp": "22:52",
+    "concurrency": 10,
+    "complexity": 880064
+  },
+  {
+    "minute": 1373,
+    "timestamp": "22:53",
+    "concurrency": 9,
+    "complexity": 888117
+  },
+  {
+    "minute": 1374,
+    "timestamp": "22:54",
+    "concurrency": 9,
+    "complexity": 892731
+  },
+  {
+    "minute": 1375,
+    "timestamp": "22:55",
+    "concurrency": 12,
+    "complexity": 880574
+  },
+  {
+    "minute": 1376,
+    "timestamp": "22:56",
+    "concurrency": 10,
+    "complexity": 875300
+  },
+  {
+    "minute": 1377,
+    "timestamp": "22:57",
+    "concurrency": 9,
+    "complexity": 919008
+  },
+  {
+    "minute": 1378,
+    "timestamp": "22:58",
+    "concurrency": 10,
+    "complexity": 875097
+  },
+  {
+    "minute": 1379,
+    "timestamp": "22:59",
+    "concurrency": 10,
+    "complexity": 869843
+  },
+  {
+    "minute": 1380,
+    "timestamp": "23:00",
+    "concurrency": 11,
+    "complexity": 911695
+  },
+  {
+    "minute": 1381,
+    "timestamp": "23:01",
+    "concurrency": 8,
+    "complexity": 922936
+  },
+  {
+    "minute": 1382,
+    "timestamp": "23:02",
+    "concurrency": 9,
+    "complexity": 892443
+  },
+  {
+    "minute": 1383,
+    "timestamp": "23:03",
+    "concurrency": 9,
+    "complexity": 894444
+  },
+  {
+    "minute": 1384,
+    "timestamp": "23:04",
+    "concurrency": 9,
+    "complexity": 910511
+  },
+  {
+    "minute": 1385,
+    "timestamp": "23:05",
+    "concurrency": 10,
+    "complexity": 892401
+  },
+  {
+    "minute": 1386,
+    "timestamp": "23:06",
+    "concurrency": 10,
+    "complexity": 892623
+  },
+  {
+    "minute": 1387,
+    "timestamp": "23:07",
+    "concurrency": 10,
+    "complexity": 927549
+  },
+  {
+    "minute": 1388,
+    "timestamp": "23:08",
+    "concurrency": 11,
+    "complexity": 923803
+  },
+  {
+    "minute": 1389,
+    "timestamp": "23:09",
+    "concurrency": 10,
+    "complexity": 939588
+  },
+  {
+    "minute": 1390,
+    "timestamp": "23:10",
+    "concurrency": 9,
+    "complexity": 890019
+  },
+  {
+    "minute": 1391,
+    "timestamp": "23:11",
+    "concurrency": 8,
+    "complexity": 906729
+  },
+  {
+    "minute": 1392,
+    "timestamp": "23:12",
+    "concurrency": 8,
+    "complexity": 924111
+  },
+  {
+    "minute": 1393,
+    "timestamp": "23:13",
+    "concurrency": 9,
+    "complexity": 901685
+  },
+  {
+    "minute": 1394,
+    "timestamp": "23:14",
+    "concurrency": 10,
+    "complexity": 934744
+  },
+  {
+    "minute": 1395,
+    "timestamp": "23:15",
+    "concurrency": 9,
+    "complexity": 948116
+  },
+  {
+    "minute": 1396,
+    "timestamp": "23:16",
+    "concurrency": 8,
+    "complexity": 913671
+  },
+  {
+    "minute": 1397,
+    "timestamp": "23:17",
+    "concurrency": 8,
+    "complexity": 927827
+  },
+  {
+    "minute": 1398,
+    "timestamp": "23:18",
+    "concurrency": 9,
+    "complexity": 957886
+  },
+  {
+    "minute": 1399,
+    "timestamp": "23:19",
+    "concurrency": 10,
+    "complexity": 966478
+  },
+  {
+    "minute": 1400,
+    "timestamp": "23:20",
+    "concurrency": 11,
+    "complexity": 947129
+  },
+  {
+    "minute": 1401,
+    "timestamp": "23:21",
+    "concurrency": 9,
+    "complexity": 945804
+  },
+  {
+    "minute": 1402,
+    "timestamp": "23:22",
+    "concurrency": 9,
+    "complexity": 918583
+  },
+  {
+    "minute": 1403,
+    "timestamp": "23:23",
+    "concurrency": 7,
+    "complexity": 944567
+  },
+  {
+    "minute": 1404,
+    "timestamp": "23:24",
+    "concurrency": 12,
+    "complexity": 950245
+  },
+  {
+    "minute": 1405,
+    "timestamp": "23:25",
+    "concurrency": 7,
+    "complexity": 936628
+  },
+  {
+    "minute": 1406,
+    "timestamp": "23:26",
+    "concurrency": 10,
+    "complexity": 930667
+  },
+  {
+    "minute": 1407,
+    "timestamp": "23:27",
+    "concurrency": 8,
+    "complexity": 918666
+  },
+  {
+    "minute": 1408,
+    "timestamp": "23:28",
+    "concurrency": 8,
+    "complexity": 911267
+  },
+  {
+    "minute": 1409,
+    "timestamp": "23:29",
+    "concurrency": 7,
+    "complexity": 908795
+  },
+  {
+    "minute": 1410,
+    "timestamp": "23:30",
+    "concurrency": 12,
+    "complexity": 961074
+  },
+  {
+    "minute": 1411,
+    "timestamp": "23:31",
+    "concurrency": 9,
+    "complexity": 954172
+  },
+  {
+    "minute": 1412,
+    "timestamp": "23:32",
+    "concurrency": 8,
+    "complexity": 943276
+  },
+  {
+    "minute": 1413,
+    "timestamp": "23:33",
+    "concurrency": 10,
+    "complexity": 948058
+  },
+  {
+    "minute": 1414,
+    "timestamp": "23:34",
+    "concurrency": 7,
+    "complexity": 960632
+  },
+  {
+    "minute": 1415,
+    "timestamp": "23:35",
+    "concurrency": 8,
+    "complexity": 954868
+  },
+  {
+    "minute": 1416,
+    "timestamp": "23:36",
+    "concurrency": 8,
+    "complexity": 933085
+  },
+  {
+    "minute": 1417,
+    "timestamp": "23:37",
+    "concurrency": 7,
+    "complexity": 979895
+  },
+  {
+    "minute": 1418,
+    "timestamp": "23:38",
+    "concurrency": 10,
+    "complexity": 969456
+  },
+  {
+    "minute": 1419,
+    "timestamp": "23:39",
+    "concurrency": 8,
+    "complexity": 970431
+  },
+  {
+    "minute": 1420,
+    "timestamp": "23:40",
+    "concurrency": 6,
+    "complexity": 983605
+  },
+  {
+    "minute": 1421,
+    "timestamp": "23:41",
+    "concurrency": 8,
+    "complexity": 952321
+  },
+  {
+    "minute": 1422,
+    "timestamp": "23:42",
+    "concurrency": 8,
+    "complexity": 994610
+  },
+  {
+    "minute": 1423,
+    "timestamp": "23:43",
+    "concurrency": 7,
+    "complexity": 969277
+  },
+  {
+    "minute": 1424,
+    "timestamp": "23:44",
+    "concurrency": 7,
+    "complexity": 991592
+  },
+  {
+    "minute": 1425,
+    "timestamp": "23:45",
+    "concurrency": 7,
+    "complexity": 990252
+  },
+  {
+    "minute": 1426,
+    "timestamp": "23:46",
+    "concurrency": 10,
+    "complexity": 956531
+  },
+  {
+    "minute": 1427,
+    "timestamp": "23:47",
+    "concurrency": 7,
+    "complexity": 989109
+  },
+  {
+    "minute": 1428,
+    "timestamp": "23:48",
+    "concurrency": 10,
+    "complexity": 987320
+  },
+  {
+    "minute": 1429,
+    "timestamp": "23:49",
+    "concurrency": 7,
+    "complexity": 983146
+  },
+  {
+    "minute": 1430,
+    "timestamp": "23:50",
+    "concurrency": 8,
+    "complexity": 982397
+  },
+  {
+    "minute": 1431,
+    "timestamp": "23:51",
+    "concurrency": 7,
+    "complexity": 984312
+  },
+  {
+    "minute": 1432,
+    "timestamp": "23:52",
+    "concurrency": 9,
+    "complexity": 1004029
+  },
+  {
+    "minute": 1433,
+    "timestamp": "23:53",
+    "concurrency": 6,
+    "complexity": 1001080
+  },
+  {
+    "minute": 1434,
+    "timestamp": "23:54",
+    "concurrency": 9,
+    "complexity": 991877
+  },
+  {
+    "minute": 1435,
+    "timestamp": "23:55",
+    "concurrency": 8,
+    "complexity": 963175
+  },
+  {
+    "minute": 1436,
+    "timestamp": "23:56",
+    "concurrency": 7,
+    "complexity": 1004649
+  },
+  {
+    "minute": 1437,
+    "timestamp": "23:57",
+    "concurrency": 7,
+    "complexity": 1010979
+  },
+  {
+    "minute": 1438,
+    "timestamp": "23:58",
+    "concurrency": 10,
+    "complexity": 1044261
+  },
+  {
+    "minute": 1439,
+    "timestamp": "24:00",
+    "concurrency": 8,
+    "complexity": 1021508
+  }
+]
