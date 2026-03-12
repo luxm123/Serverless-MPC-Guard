@@ -5,9 +5,9 @@ import sys
 import os
 
 # 动态添加路径以便加载 benchmarks 中的函数
-# 注意：在 Lambda 运行环境中，我们将把 benchmarks 放在函数根目录下
+# 注意：在 Lambda 运行环境中，benchmarks/function_bench 被打包在 function_bench 目录下
 sys.path.append(os.path.dirname(__file__))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'benchmarks/function_bench/aws/cpu-memory'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'function_bench/aws/cpu-memory'))
 
 # 导入真实任务
 try:

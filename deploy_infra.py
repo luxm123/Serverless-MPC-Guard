@@ -223,7 +223,11 @@ def wait_for_function_update(func_name):
 def deploy_lambda(func_name, folder, role_arn, runtime='python3.9', handler='lambda_function.lambda_handler', env_vars={}):
     print(f"Deploying Lambda: {func_name} ({runtime})...")
     
-    extra_dirs = [os.path.join(os.getcwd(), 'src')]
+    # 增加 benchmarks/function_bench 到打包目录，确保云端能引用到真实负载代码
+    extra_dirs = [
+        os.path.join(os.getcwd(), 'src'),
+        os.path.join(os.getcwd(), 'benchmarks', 'function_bench')
+    ]
     zip_content = zip_function(folder, extra_dirs=extra_dirs)
     env_config = {'Variables': env_vars}
     tracing_config = {'Mode': 'Active'} # Enable X-Ray
