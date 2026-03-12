@@ -57,61 +57,68 @@ class PIDController(BaseController):
         return max(MIN_CPU, min(MAX_CPU, new_cpu))
 
 class MPCGuardController(BaseController):
-    """核心方案：MPC-Guard (终极重构版：带未来视的预测型控制)"""
+    """
+    核心方案：MPC-Guard (论文版实现)
+    1. 在线建模：使用 RLS 实时捕捉资源-性能敏感度。
+    2. 风险量化：使用 WCP 生成分布无关的置信区间 (Uncertainty Delta)。
+    3. 机会约束优化：求解满足 P(Latency <= SLO) >= 1-alpha 的最小资源分配。
+    """
     def __init__(self):
         super().__init__("MPC-Guard")
         self.state = {
-            'theta': None, 'P': None, 'last_prediction': 0.0,
-            'scores': [], 'last_update_time': time.time(),
-            'last_cpu': 1.0, 'last_y': 0.0
+            'rls_state': None, 
+            'last_prediction': 0.0,
+            'scores': [], 
+            'last_cpu': 1.0, 
+            'last_y': 0.0
         }
         
     def decide(self, obs_p90, current_cpu, concurrency=1, future_concurrency=1, **kwargs):
-        # 1. 在线系统辨识：更新模型参数 (使用当前观测到的 latency, concurrency, cpu)
-        y_hat_now, delta, debug = wcp_update(
+        # 1. 在线系统辨识：更新 RLS 模型并计算 WCP 不确定性边界 (delta)
+        # alpha=0.1 意味着我们追求 90% 的置信度满足 SLO
+        _, delta, debug = wcp_update(
             self.state, obs_p90, 
             concurrency=concurrency, 
             cpu=current_cpu, 
             backlog=0, 
-            service_time_ms=300
+            service_time_ms=300,
+            alpha=0.1 
         )
         
-        # 2. 预测未来性能 (使用未来并发量 future_concurrency)
+        # 2. 机会约束求解 (Chance-Constrained Optimization)
+        # 获取最新的 RLS 模型参数
         from wcp.wcp_update import RLS, build_phi
         rls = RLS.from_dict(self.state['rls_state'], n_features=6)
         
-        # 求解优化问题：找到最小的 cpu，使得未来预测延迟 + 置信区间 <= SLO
         best_cpu = MAX_CPU
         found = False
         
-        # 增加搜索密度
+        # 目标：找到最小的 CPU，使得：未来预测延迟 + WCP不确定性 <= SLO
+        # 预留 5% 的控制余量
+        safe_slo = SLO_TARGET_MS * 0.95
+        
         for test_cpu in np.arange(MIN_CPU, MAX_CPU + 0.01, 0.05):
-            # 构造未来时刻的特征向量
+            # 构造未来时刻特征向量
             future_phi = build_phi(future_concurrency, test_cpu, 0, 300)
-            pred_future_latency = rls.predict(future_phi)
+            pred_latency = rls.predict(future_phi)
             
-            # 考虑 WCP 计算出的不确定性 delta
-            if pred_future_latency + delta <= SLO_TARGET_MS * 0.95:
+            # 核心约束：预测值 + 风险边界 <= SLO
+            if pred_latency + delta <= safe_slo:
                 best_cpu = test_cpu
                 found = True
                 break
         
-        # 3. 平滑处理
         if not found:
             best_cpu = MAX_CPU
             
-        # 为了应对极端滞后，如果当前延迟已经很高，强制拉满
-        if obs_p90 > SLO_TARGET_MS * 1.2:
-            best_cpu = MAX_CPU
-
-        # 限制单步调整幅度 (允许更快增加，较慢减少)
+        # 3. 动态平滑 (防止资源剧烈震荡导致成本飙升)
+        # 允许快速升容，缓慢缩容
         if best_cpu > current_cpu:
-            max_change = 0.8 # 快速增加
+            max_change = 1.0  # 允许瞬间拉满
         else:
-            max_change = 0.2 # 缓慢减少
+            max_change = 0.2  # 缩容要谨慎
             
         target_cpu = max(current_cpu - max_change, min(current_cpu + max_change, best_cpu))
-        
         return max(MIN_CPU, min(MAX_CPU, target_cpu))
 
 def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=None):
@@ -181,19 +188,23 @@ if __name__ == "__main__":
         print("Error: local_testbed/workload_trace.json not found. Run azure_dataset_emulator.py first.")
         sys.exit(1)
 
-    # 构造更极端的非平稳负载 (Extreme Non-Stationary Workload)
-    # 基础负载：取 400 到 700 分钟的数据
+    # 构造极其恶劣的非平稳负载 (Extremely Adversarial Non-Stationary Workload)
+    # 1. 基础负载：取 400 到 700 分钟的数据，并施加 2 倍基础并发
     base_workload = [trace_data[i % len(trace_data)]['concurrency'] * 2 for i in range(400, 700)]
     workload = np.array(base_workload, dtype=float)
     
-    # 注入 Flash Crowds (流量突增)
-    workload[50:70] += 120   # 突发高峰 1
-    workload[180:210] += 180 # 突发高峰 2 (更猛烈)
+    # 2. 注入剧烈的 Flash Crowds (流量爆发)
+    workload[50:80] += 150   # 爆发 1：持续时间更长
+    workload[180:220] += 220 # 爆发 2：强度更高，模拟极端并发压力
     
-    # 注入长时间扰动 (Complexity Drift / 复杂度漂移)
-    # 前 120 步正常，后 180 步复杂度翻倍，模拟系统性能下降或长尾扰动
+    # 3. 注入高频抖动 (Jitter)
+    jitter = np.random.uniform(-10, 10, size=len(workload))
+    workload = np.clip(workload + jitter, 1, 500)
+    
+    # 4. 注入剧烈的协变量偏移 (Extreme Complexity Drift)
+    # 模拟在实验中后期，系统遭遇性能黑洞或外部依赖崩溃，基础耗时飙升 2.5 倍
     complexity_trace = np.ones(len(workload))
-    complexity_trace[120:] = 2.2 
+    complexity_trace[120:] = 2.5 
     
     TOTAL_STEPS = len(workload)
     
