@@ -27,11 +27,10 @@ MIN_CPU = 0.2
 LAMBDA_FUNC_NAME = "MPC_BusinessWorker"  # 对标 deploy_infra.py 中的业务函数
 USE_AWS_LAMBDA = True # 优先使用真实 Lambda 以获得真实数据
 CONTROL_LAG_STEPS = 2  # 引入 2 步的资源生效滞后
-SAMPLES_PER_STEP = 10  # 每步并发请求采样数 (核心：真实 P90 测量)
-MAX_WORKERS = 50       # 客户端线程池大小
+MAX_WORKERS = 200       # 提升并发处理能力，支持饱和负载模拟
 
-# 初始化 AWS Lambda 客户端 (预先配置连接池以降低 RTT 干扰)
-lambda_config = Config(max_pool_connections=50, retries={'max_attempts': 0})
+# 初始化 AWS Lambda 客户端 (预先配置连接池以支持高并发)
+lambda_config = Config(max_pool_connections=200, retries={'max_attempts': 0})
 lmb = boto3.client('lambda', region_name='us-east-1', config=lambda_config)
 
 class BaseController:
@@ -132,7 +131,7 @@ class MPCGuardController(BaseController):
         return max(MIN_CPU, min(MAX_CPU, target_cpu))
 
 def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=None):
-    print(f"\n>>> Running Real-Concurrency Experiment for: {controller.name}", flush=True)
+    print(f"\n>>> Running Saturation-Load Experiment for: {controller.name}", flush=True)
     results = []
     
     if complexity_trace is None:
@@ -143,51 +142,61 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
     total_cost = 0.0
     violations = 0
     
-    # 使用线程池模拟真实客户端并发负载
+    # 使用线程池模拟真实饱和负载
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for step, concurrency in enumerate(workload_trace):
-            # 1. 当前生效的 CPU 是几步之前决定的
             current_effective_cpu = cpu_buffer.pop(0)
             comp_factor = complexity_trace[step]
             
-            # --- 核心：多样本并发采集 (真实压测) ---
+            # --- 饱和负载逻辑：采样数随并发同步增加 ---
+            # 模拟每 5 个并发用户产生一个活跃采样请求
+            num_samples = max(10, int(concurrency / 5)) 
+            
             def invoke_once(_):
                 try:
                     if USE_AWS_LAMBDA:
-                        # 真实 AWS 调用
+                        # 真实负载下，Lambda 内部也会感知到并发压力 (通过 concurrency 参数模拟)
                         payload = json.dumps({"cpu_limit": current_effective_cpu, "concurrency": int(concurrency)})
                         resp = lmb.invoke(FunctionName=LAMBDA_FUNC_NAME, Payload=payload)
                         resp_payload = json.loads(resp['Payload'].read())
                         return float(resp_payload.get('latency_ms', 200.0))
                     else:
-                        return (250.0 / (current_effective_cpu + 0.1))
+                        # 仿真：资源竞争导致的非线性延迟增加
+                        base = 250.0 / (current_effective_cpu + 0.1)
+                        contention = (concurrency / 500.0) ** 2 * 100.0 # 并发越高，竞争越剧烈
+                        return base + contention
                 except Exception:
-                    # 仿真回退
-                    return (300.0 / (current_effective_cpu + 0.05))
+                    return 1000.0 # 饱和状态下的请求丢弃惩罚
 
-            # 并发执行 SAMPLES_PER_STEP 个请求，模拟真实 P90 统计
-            sample_latencies = list(executor.map(invoke_once, range(SAMPLES_PER_STEP)))
+            # 并发执行饱和采样
+            start_step_time = time.time()
+            sample_latencies = list(executor.map(invoke_once, range(num_samples)))
             
             # 计算这一步真实的 P90 延迟
             raw_p90 = np.percentile(sample_latencies, 90) * comp_factor
             
-            # --- 物理模型注入 (排队延迟 + 噪声) ---
-            # 增强排队公式：延迟随并发增加，随 CPU 减小，倍率调整为更真实的 5.0
-            queue_delay = (concurrency / (current_effective_cpu * 2.0)) * 5.0
-            obs_p90 = raw_p90 + queue_delay + random.uniform(0, 20)
+            # --- 饱和排队模型：当并发超过 CPU 承载能力时，延迟指数级上升 ---
+            # 临界容量：每个 CPU 核心支持约 100 并发
+            capacity = current_effective_cpu * 100.0
+            if concurrency > capacity:
+                # 超过容量的部分产生严重的排队
+                queue_delay = ((concurrency - capacity) / capacity) * 500.0 
+            else:
+                queue_delay = (concurrency / capacity) * 50.0
+                
+            obs_p90 = raw_p90 + queue_delay + random.uniform(0, 30)
             
-            # 4. 记录数据
+            # 记录数据
             is_violation = obs_p90 > SLO_TARGET_MS
             if is_violation: violations += 1
-            # 成本计算：CPU * 采样数 * 费率
-            total_cost += (current_effective_cpu * 0.000016) * SAMPLES_PER_STEP
+            total_cost += (current_effective_cpu * 0.000016) * num_samples
             
             results.append({
                 "Algorithm": controller.name, "Step": step, "Concurrency": concurrency,
                 "CPU": current_effective_cpu, "P90": obs_p90, "Violation": is_violation
             })
             
-            # 5. 决策 (未来视预判)
+            # 决策 (未来视预判)
             look_ahead_idx = min(step + CONTROL_LAG_STEPS + 1, len(workload_trace) - 1)
             future_concurrency = workload_trace[look_ahead_idx]
             
@@ -197,7 +206,8 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
             cpu_buffer.append(next_cpu)
             
             if step % 10 == 0:
-                 print(f"Step {step}/{len(workload_trace)} | P90: {obs_p90:.2f}ms | CPU: {current_effective_cpu:.2f} | Cost: ${total_cost:.4f}", flush=True)
+                 elapsed = time.time() - start_step_time
+                 print(f"Step {step}/{len(workload_trace)} | P90: {obs_p90:.2f}ms | CPU: {current_effective_cpu:.2f} | Samples: {num_samples} | Time: {elapsed:.2f}s", flush=True)
 
     return pd.DataFrame(results), total_cost, violations
 
@@ -211,18 +221,18 @@ if __name__ == "__main__":
         print("Error: local_testbed/workload_trace.json not found. Run azure_dataset_emulator.py first.")
         sys.exit(1)
 
-    # 构造极其恶劣的非平稳负载 (Extremely Adversarial Non-Stationary Workload)
-    # 1. 基础负载：取 400 到 700 分钟的数据，并施加 2 倍基础并发
-    base_workload = [trace_data[i % len(trace_data)]['concurrency'] * 2 for i in range(400, 700)]
+    # 构造极其恶劣的饱和负载 (Extremely Adversarial Saturated Workload)
+    # 1. 基础负载：大幅提升并发基数 (x10)
+    base_workload = [trace_data[i % len(trace_data)]['concurrency'] * 10 for i in range(400, 700)]
     workload = np.array(base_workload, dtype=float)
     
     # 2. 注入剧烈的 Flash Crowds (流量爆发)
-    workload[50:80] += 150   # 爆发 1：持续时间更长
-    workload[180:220] += 220 # 爆发 2：强度更高，模拟极端并发压力
+    workload[50:80] += 500   # 爆发 1：并发直接拉升 500
+    workload[180:220] += 800 # 爆发 2：极高并发，挑战系统极限
     
     # 3. 注入高频抖动 (Jitter)
-    jitter = np.random.uniform(-10, 10, size=len(workload))
-    workload = np.clip(workload + jitter, 1, 500)
+    jitter = np.random.uniform(-50, 50, size=len(workload))
+    workload = np.clip(workload + jitter, 10, 2000) # 最高并发可达 2000
     
     # 4. 注入剧烈的协变量偏移 (Extreme Complexity Drift)
     # 模拟在实验中后期，系统遭遇性能黑洞或外部依赖崩溃，基础耗时飙升 2.5 倍
