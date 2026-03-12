@@ -69,12 +69,14 @@ class RLS:
     Recursive Least Squares filter.
     Model: y = theta^T * phi
     """
-    def __init__(self, n_features, lambda_factor=0.99, delta=100.0):
+    def __init__(self, n_features, lambda_factor=0.98, delta=10000.0):
+        """
+        初始化 RLS。
+        delta 设为 10000.0 以实现高增益冷启动，确保模型在没有预热的情况下也能在前几步快速进化。
+        """
         self.n = n_features
         self.lambda_factor = lambda_factor
-        # Initialize theta to zeros
         self.theta = [0.0] * n_features
-        # Initialize P to delta * I (large initial covariance)
         self.P = [[0.0] * n_features for _ in range(n_features)]
         for i in range(n_features):
             self.P[i][i] = delta
@@ -191,7 +193,8 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, a
     rls_data = state.get('rls_state', {})
     rls = RLS.from_dict(rls_data, n_features=feat_len)
     if len(rls.theta) != feat_len or len(rls.P) != feat_len:
-        rls = RLS(feat_len, lambda_factor=0.97, delta=10.0)
+        # 修正：冷启动回退也必须使用高增益 delta=10000.0
+        rls = RLS(feat_len, lambda_factor=0.98, delta=10000.0)
     
     # Update RLS with current observation
     rls.update(phi, y_k)
@@ -208,16 +211,23 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, a
 
     # --- Weighted Quantile Calculation ---
     scores = state['scores']
-    sorted_scores = sorted(scores, reverse=True)
-    q_index = math.ceil((len(scores) + 1) * (1 - alpha)) - 1
-    q_index = max(0, min(len(scores) - 1, q_index))
-    uncertainty = sorted_scores[q_index]
+    q_index = 0
+    sorted_scores_len = 0
+    if len(scores) < 10:
+        # 冷启动安全边界：在样本不足的前 10 步，强制给出一个保守的 250ms 不确定性范围
+        uncertainty = 250.0
+    else:
+        sorted_scores = sorted(scores, reverse=True)
+        q_index = math.ceil((len(scores) + 1) * (1 - alpha)) - 1
+        q_index = max(0, min(len(scores) - 1, q_index))
+        uncertainty = sorted_scores[q_index]
+        sorted_scores_len = len(sorted_scores)
 
     debug_info = {
         'score_k': score_k,
         'wcp_window': window_len,
         'quantile_idx': q_index,
-        'sorted_scores_len': len(sorted_scores),
+        'sorted_scores_len': sorted_scores_len,
         'rls_theta': rls.theta
     }
 
