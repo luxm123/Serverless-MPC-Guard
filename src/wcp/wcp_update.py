@@ -53,14 +53,21 @@ def safe_get_float(d, key, default=0.0):
     except Exception:
         return float(default)
 
-def build_phi(concurrency, cpu, backlog, service_time_ms):
-    """Constructs the feature vector phi for the RLS model."""
-    # latency is roughly proportional to concurrency and inversely proportional to cpu
-    # We use concurrency and cpu_inv as core features.
-    # To handle non-linearity, we add concurrency^2 and cpu_inv^2 (Taylor expansion style)
+def build_phi(concurrency, cpu, backlog, service_time_ms, task_type='image_processing'):
+    """
+    构建 RLS 模型的特征向量，包含任务类型的 One-Hot 编码。
+    """
     c = float(concurrency)
     u_inv = 1.0 / (float(cpu) + 0.05)
-    return [1.0, c, u_inv, c * u_inv, c**2, u_inv**2]
+    
+    # 任务类型的 One-Hot 编码 (对标 4 种任务)
+    is_image = 1.0 if task_type == 'image_processing' else 0.0
+    is_pyaes = 1.0 if task_type == 'pyaes' else 0.0
+    is_linpack = 1.0 if task_type == 'linpack' else 0.0
+    is_model = 1.0 if task_type == 'model_serving' else 0.0
+    
+    # 总计 10 维特征：[1, c, u^-1, c/u, c^2, u^-2, image, pyaes, linpack, model]
+    return [1.0, c, u_inv, c * u_inv, c**2, u_inv**2, is_image, is_pyaes, is_linpack, is_model]
 
 # --- 2. RLS Class (Parameterized Dynamics Model) ---
 
@@ -141,7 +148,7 @@ class RLS:
 
 # --- 3. Main WCP Logic (Strict Implementation) ---
 
-def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, alpha=0.1):
+def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, task_type='image_processing', alpha=0.1):
     """
     Strict WCP Update for P90 Latency.
 
@@ -187,9 +194,11 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, a
 
     # --- RLS Update and Prediction ---
     # Model: y = f(concurrency, cpu)
-    phi = build_phi(concurrency, cpu, backlog, service_time_ms)
+    # 构建特征向量 (包含 One-Hot 编码)
+    phi = build_phi(concurrency, cpu, backlog, service_time_ms, task_type=task_type)
     feat_len = len(phi)
 
+    # 初始化或恢复 RLS 模型
     rls_data = state.get('rls_state', {})
     rls = RLS.from_dict(rls_data, n_features=feat_len)
     if len(rls.theta) != feat_len or len(rls.P) != feat_len:

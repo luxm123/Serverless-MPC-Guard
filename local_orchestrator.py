@@ -27,8 +27,9 @@ MIN_CPU = 0.2
 LAMBDA_FUNC_NAME = "MPC_BusinessWorker"  
 USE_AWS_LAMBDA = True 
 CONTROL_LAG_STEPS = 2  
-SAMPLES_PER_STEP = 20  # 每步采样 20 个请求计算 P90
+SAMPLES_PER_STEP = 20  
 MAX_WORKERS = 100
+REAL_WORKLOAD_PATH = "real_workload.json" # 阿里巴巴真实迹线路径
 
 # 初始化 AWS Lambda 客户端
 lambda_config = Config(
@@ -101,7 +102,7 @@ class MPCGuardController(BaseController):
             'last_y': 0.0
         }
         
-    def decide(self, obs_p90, current_cpu, concurrency=1, future_concurrency=1, **kwargs):
+    def decide(self, obs_p90, current_cpu, concurrency=1, future_concurrency=1, task_type='image_processing', **kwargs):
         # 1. 在线系统辨识：更新 RLS 模型并计算 WCP 不确定性边界 (delta)
         # alpha=0.1 意味着我们追求 90% 的置信度满足 SLO
         _, delta, debug = wcp_update(
@@ -110,12 +111,13 @@ class MPCGuardController(BaseController):
             cpu=current_cpu, 
             backlog=0, 
             service_time_ms=300,
+            task_type=task_type,
             alpha=0.1 
         )
         
         # 2. 机会约束求解 (Chance-Constrained Optimization)
-        # 获取最新的 RLS 模型参数
-        rls = RLS.from_dict(self.state['rls_state'], n_features=6)
+        # 获取最新的 RLS 模型参数 (注意特征维度已升至 10)
+        rls = RLS.from_dict(self.state['rls_state'], n_features=10)
         
         best_cpu = MAX_CPU
         found = False
@@ -126,7 +128,7 @@ class MPCGuardController(BaseController):
         
         for test_cpu in np.arange(MIN_CPU, MAX_CPU + 0.01, 0.05):
             # 构造未来时刻特征向量
-            future_phi = build_phi(future_concurrency, test_cpu, 0, 300)
+            future_phi = build_phi(future_concurrency, test_cpu, 0, 300, task_type=task_type)
             pred_latency = rls.predict(future_phi)
             
             # 核心约束：预测值 + 风险边界 <= SLO
@@ -148,16 +150,13 @@ class MPCGuardController(BaseController):
         target_cpu = max(current_cpu - max_change, min(current_cpu + max_change, best_cpu))
         return max(MIN_CPU, min(MAX_CPU, target_cpu))
 
-def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=None):
+def run_experiment_for_algorithm(controller, workload_trace, task_type_trace):
     """
     运行基于真实物理反馈的对比实验。
     所有的延迟数据均来自 Lambda 真实的执行时间，不包含任何人为数学公式。
     """
     print(f"\n>>> Running PHYSICAL-REALITY Experiment for: {controller.name}", flush=True)
     results = []
-    
-    if complexity_trace is None:
-        complexity_trace = [1.0] * len(workload_trace)
     
     # 模拟资源生效滞后的缓冲区 (由 AWS 修改 Lambda 配置的延迟决定)
     cpu_buffer = [1.0] * (CONTROL_LAG_STEPS + 1)
@@ -168,7 +167,7 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
         for step, concurrency in enumerate(workload_trace):
             step_start_time = time.time()
             current_effective_cpu = cpu_buffer.pop(0)
-            comp_factor = complexity_trace[step]
+            current_task_type = task_type_trace[step]
             
             # 物理调用函数：暴露真实错误，拒绝假数据
             def invoke_once(_):
@@ -177,7 +176,7 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
                         payload = json.dumps({
                             "cpu_limit": current_effective_cpu, 
                             "concurrency": int(concurrency),
-                            "comp_factor": float(comp_factor) # 复杂度移入云端
+                            "task_type": current_task_type # 注入任务类型
                         })
                         # 增加重试逻辑，应对 AWS 暂时的节流或网络抖动
                         for attempt in range(3):
@@ -193,7 +192,7 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
                                 if attempt == 2: raise e
                                 time.sleep(0.1 * (attempt + 1))
                     else:
-                        # 仿真路径：注意这里不乘 comp_factor，外层会统一处理
+                        # 仿真路径
                         return (220.0 / (current_effective_cpu + 0.01)) + random.uniform(5, 15)
                 except Exception as e:
                     # 在控制台打印错误摘要，不再静默
@@ -203,7 +202,7 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
             # 饱和采样：每步采样固定数量的请求来计算统计 P90
             sample_latencies = list(executor.map(invoke_once, range(SAMPLES_PER_STEP)))
             
-            # 物理测量值：完全来自真实请求采样 (comp_factor 已经在云端处理)
+            # 物理测量值：完全来自真实请求采样
             obs_p90 = np.percentile(sample_latencies, 90)
             
             # 统计与记录
@@ -215,7 +214,8 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
             
             results.append({
                 "Algorithm": controller.name, "Step": step, "Concurrency": concurrency,
-                "CPU": current_effective_cpu, "P90": obs_p90, "Violation": is_violation
+                "CPU": current_effective_cpu, "P90": obs_p90, "Violation": is_violation,
+                "TaskType": current_task_type
             })
             
             # 决策逻辑：传递真实观测值
@@ -224,47 +224,41 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
             
             next_cpu = controller.decide(obs_p90, current_effective_cpu, 
                                         concurrency=concurrency, 
-                                        future_concurrency=future_concurrency)
+                                        future_concurrency=future_concurrency,
+                                        task_type=current_task_type)
             cpu_buffer.append(next_cpu)
             
             # 动态调整实验节奏：每步保证至少有 0.5s 的物理观测窗口
-            # 理由：实验太快会导致控制信号过于密集，系统观测不稳。0.5s 是合理的步进时长。
             elapsed = time.time() - step_start_time
             if elapsed < 0.5:
                 time.sleep(0.5 - elapsed)
 
             if step % 10 == 0:
-                 print(f"Step {step}/{len(workload_trace)} | Physical P90: {obs_p90:.2f}ms | CPU: {current_effective_cpu:.2f} | Time: {time.time()-step_start_time:.2f}s", flush=True)
+                 print(f"Step {step}/{len(workload_trace)} | Type: {current_task_type} | P90: {obs_p90:.2f}ms | CPU: {current_effective_cpu:.2f}", flush=True)
 
     return pd.DataFrame(results), total_cost, violations
 
 # --- 执行主程序 ---
 if __name__ == "__main__":
-    # 1. 加载负载轨迹
+    # 1. 加载真实的、带有任务类型的负载 (Alibaba Trace 处理结果)
     try:
-        with open('local_testbed/workload_trace.json', 'r') as f:
-            trace_data = json.load(f)
+        with open(REAL_WORKLOAD_PATH, 'r') as f:
+            real_workload = json.load(f)
     except FileNotFoundError:
-        print("Error: local_testbed/workload_trace.json not found. Run azure_dataset_emulator.py first.")
-        sys.exit(1)
+        print(f"Error: {REAL_WORKLOAD_PATH} not found. Running trace_parser.py first...")
+        # 自动触发解析
+        from trace_parser import parse_alibaba_gpu_trace
+        csv_path = "benchmarks/clusterdata/cluster-trace-gpu-v2023/csv/openb_pod_list_cpu100.csv"
+        if os.path.exists(csv_path):
+            parse_alibaba_gpu_trace(csv_path, REAL_WORKLOAD_PATH)
+            with open(REAL_WORKLOAD_PATH, 'r') as f:
+                real_workload = json.load(f)
+        else:
+            print("Critical Error: ClusterData trace file not found.")
+            sys.exit(1)
 
-    # 构造真实恶劣负载 (Real Adversarial Workload)
-    # 1. 基础负载：恢复到 Lambda 可承受的范围 (x3)
-    base_workload = [trace_data[i % len(trace_data)]['concurrency'] * 3 for i in range(400, 700)]
-    workload = np.array(base_workload, dtype=float)
-    
-    # 2. 注入 Flash Crowds (流量爆发)
-    workload[50:80] += 150   
-    workload[180:220] += 200 
-    
-    # 3. 注入高频抖动 (Jitter)
-    jitter = np.random.uniform(-20, 20, size=len(workload))
-    workload = np.clip(workload + jitter, 10, 500) # 峰值 500 左右，确保 Lambda 侧有真实竞争但不会直接挂掉
-    
-    # 4. 注入剧烈的协变量偏移 (Extreme Complexity Drift)
-    # 模拟在实验中后期，系统遭遇性能黑洞或外部依赖崩溃，基础耗时飙升 2.5 倍
-    complexity_trace = np.ones(len(workload))
-    complexity_trace[120:] = 2.5 
+    workload = [item['concurrency'] for item in real_workload]
+    task_types = [item['task_type'] for item in real_workload]
     
     TOTAL_STEPS = len(workload)
     
@@ -274,7 +268,7 @@ if __name__ == "__main__":
     report = []
 
     for ctrl in controllers:
-        df, cost, v_count = run_experiment_for_algorithm(ctrl, workload, complexity_trace)
+        df, cost, v_count = run_experiment_for_algorithm(ctrl, workload, task_types)
         all_dfs.append(df)
         report.append({
             "Algorithm": ctrl.name,
@@ -289,7 +283,7 @@ if __name__ == "__main__":
     final_df.to_csv('time_cost_latency_results.csv', index=False)
     
     print("\n" + "="*60)
-    print("Final Comparative Report (Adversarial Environment)")
+    print("Final JIAGU-Level Comparative Report (Alibaba Trace + FunctionBench)")
     print("="*60)
     print(pd.DataFrame(report).to_string(index=False))
     print("="*60)
