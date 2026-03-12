@@ -54,20 +54,21 @@ def safe_get_float(d, key, default=0.0):
         return float(default)
 
 def build_phi(concurrency, cpu, backlog, service_time_ms, task_type='image_processing'):
-    """
-    构建 RLS 模型的特征向量，包含任务类型的 One-Hot 编码。
-    """
-    c = float(concurrency)
-    u_inv = 1.0 / (float(cpu) + 0.05)
-    
-    # 任务类型的 One-Hot 编码 (对标 4 种任务)
-    is_image = 1.0 if task_type == 'image_processing' else 0.0
-    is_pyaes = 1.0 if task_type == 'pyaes' else 0.0
-    is_linpack = 1.0 if task_type == 'linpack' else 0.0
-    is_model = 1.0 if task_type == 'model_serving' else 0.0
-    
-    # 总计 10 维特征：[1, c, u^-1, c/u, c^2, u^-2, image, pyaes, linpack, model]
-    return [1.0, c, u_inv, c * u_inv, c**2, u_inv**2, is_image, is_pyaes, is_linpack, is_model]
+     """
+     构建 RLS 模型的特征向量，包含任务类型的 One-Hot 编码和物理积压维度。
+     """
+     c = float(concurrency)
+     u_inv = 1.0 / (float(cpu) + 0.05)
+     b = float(backlog) # 引入真实的物理积压特征
+     
+     # 任务类型的 One-Hot 编码
+     is_image = 1.0 if task_type == 'image_processing' else 0.0
+     is_pyaes = 1.0 if task_type == 'pyaes' else 0.0
+     is_linpack = 1.0 if task_type == 'linpack' else 0.0
+     is_model = 1.0 if task_type == 'model_serving' else 0.0
+     
+     # 11 维特征：[1, c, u^-1, c/u, c^2, u^-2, backlog, image, pyaes, linpack, model]
+     return [1.0, c, u_inv, c * u_inv, c**2, u_inv**2, b, is_image, is_pyaes, is_linpack, is_model]
 
 # --- 2. RLS Class (Parameterized Dynamics Model) ---
 

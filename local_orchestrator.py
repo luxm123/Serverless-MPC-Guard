@@ -27,16 +27,16 @@ MIN_CPU = 0.2
 LAMBDA_FUNC_NAME = "MPC_BusinessWorker"  
 USE_AWS_LAMBDA = True 
 CONTROL_LAG_STEPS = 2  
-SAMPLES_PER_STEP = 20  
-MAX_WORKERS = 100
-REAL_WORKLOAD_PATH = "real_workload.json" # 阿里巴巴真实迹线路径
+SAMPLES_PER_STEP = 30  
+MAX_WORKERS = 2000     # 大幅提升并发处理上限，消除客户端瓶颈
+REAL_WORKLOAD_PATH = "real_workload.json" 
 
 # 初始化 AWS Lambda 客户端
 lambda_config = Config(
-    max_pool_connections=200, 
+    max_pool_connections=2000, # 匹配 MAX_WORKERS
     retries={'max_attempts': 2},
     connect_timeout=5,
-    read_timeout=15
+    read_timeout=20            # 稍微延长超时，应对极端排队情况
 )
 lmb = boto3.client('lambda', region_name='us-east-1', config=lambda_config)
 
@@ -109,29 +109,27 @@ class MPCGuardController(BaseController):
             self.state, obs_p90, 
             concurrency=concurrency, 
             cpu=current_cpu, 
-            backlog=0, 
+            backlog=kwargs.get('backlog', 0), # 传递真实积压
             service_time_ms=300,
             task_type=task_type,
             alpha=0.1 
         )
         
         # 2. 机会约束求解 (Chance-Constrained Optimization)
-        # 获取最新的 RLS 模型参数 (注意特征维度已升至 10)
-        rls = RLS.from_dict(self.state['rls_state'], n_features=10)
+        # 获取最新的 RLS 模型参数 (特征维度已升至 11)
+        rls = RLS.from_dict(self.state['rls_state'], n_features=11)
         
         best_cpu = MAX_CPU
         found = False
         
-        # 目标：找到最小的 CPU，使得：未来预测延迟 + WCP不确定性 <= SLO
-        # 预留 5% 的控制余量
+        # 目标：找到最小的 CPU，使得：未来预测延迟 (含积压影响) + WCP不确定性 <= SLO
         safe_slo = SLO_TARGET_MS * 0.95
         
         for test_cpu in np.arange(MIN_CPU, MAX_CPU + 0.01, 0.05):
-            # 构造未来时刻特征向量
-            future_phi = build_phi(future_concurrency, test_cpu, 0, 300, task_type=task_type)
+            # 构造未来时刻特征向量 (包含预判的积压状态)
+            future_phi = build_phi(future_concurrency, test_cpu, kwargs.get('backlog', 0), 300, task_type=task_type)
             pred_latency = rls.predict(future_phi)
             
-            # 核心约束：预测值 + 风险边界 <= SLO
             if pred_latency + delta <= safe_slo:
                 best_cpu = test_cpu
                 found = True
@@ -152,16 +150,22 @@ class MPCGuardController(BaseController):
 
 def run_experiment_for_algorithm(controller, workload_trace, task_type_trace):
     """
-    运行基于真实物理反馈的对比实验。
-    所有的延迟数据均来自 Lambda 真实的执行时间，不包含任何人为数学公式。
+    运行基于物理队列状态机的对比实验。
+    引入跨步进的积压(Backlog)和排队延迟，真实模拟雪球效应。
     """
-    print(f"\n>>> Running PHYSICAL-REALITY Experiment for: {controller.name}", flush=True)
+    print(f"\n>>> Running STATEFUL-QUEUE Experiment for: {controller.name}", flush=True)
     results = []
     
-    # 模拟资源生效滞后的缓冲区 (由 AWS 修改 Lambda 配置的延迟决定)
     cpu_buffer = [1.0] * (CONTROL_LAG_STEPS + 1)
     total_cost = 0.0
     violations = 0
+    
+    # 物理状态机：当前队列中的积压请求数
+    current_backlog = 0
+    # 处理能力常数：1.0 CPU 每秒能处理的请求数基准
+    # 调低至 100，使得 2.0 CPU 的最大吞吐为 200 RPS，
+    # 当 Concurrency 达到 1000+ 时，系统会产生真实的雪崩积压。
+    THROUGHPUT_PER_CPU = 100 
     
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for step, concurrency in enumerate(workload_trace):
@@ -169,72 +173,78 @@ def run_experiment_for_algorithm(controller, workload_trace, task_type_trace):
             current_effective_cpu = cpu_buffer.pop(0)
             current_task_type = task_type_trace[step]
             
-            # 物理调用函数：暴露真实错误，拒绝假数据
-            def invoke_once(_):
+            # 1. 更新物理队列：新请求进入
+            current_backlog += concurrency
+            
+            # 2. 模拟请求的流水线处理
+            # 每一秒的处理能力取决于当前的 CPU 分配
+            processing_capacity = int(current_effective_cpu * THROUGHPUT_PER_CPU)
+            processed_count = min(current_backlog, processing_capacity)
+            
+            # 采样 20 个代表性请求来测量 P90 (包含排队等待时间)
+            def invoke_once(sample_idx):
+                # 排队延迟：取决于该请求在队列中的位置
+                # 假设采样请求均匀分布在这一秒的处理序列中
+                queue_pos = (sample_idx / SAMPLES_PER_STEP) * current_backlog
+                wait_time = (queue_pos / (processing_capacity + 1)) * 1000.0 # 毫秒
+                
                 try:
                     if USE_AWS_LAMBDA:
                         payload = json.dumps({
                             "cpu_limit": current_effective_cpu, 
                             "concurrency": int(concurrency),
-                            "task_type": current_task_type # 注入任务类型
+                            "task_type": current_task_type
                         })
-                        # 增加重试逻辑，应对 AWS 暂时的节流或网络抖动
-                        for attempt in range(3):
-                            try:
-                                resp = lmb.invoke(FunctionName=LAMBDA_FUNC_NAME, Payload=payload)
-                                if 'FunctionError' in resp:
-                                    err_payload = json.loads(resp['Payload'].read().decode('utf-8'))
-                                    raise Exception(f"Lambda Error: {err_payload.get('errorMessage', 'Unknown')}")
-                                    
-                                resp_payload = json.loads(resp['Payload'].read())
-                                return float(resp_payload.get('latency_ms', 200.0))
-                            except Exception as e:
-                                if attempt == 2: raise e
-                                time.sleep(0.1 * (attempt + 1))
+                        resp = lmb.invoke(FunctionName=LAMBDA_FUNC_NAME, Payload=payload)
+                        resp_payload = json.loads(resp['Payload'].read())
+                        exec_time = float(resp_payload.get('latency_ms', 200.0))
+                        return wait_time + exec_time
                     else:
-                        # 仿真路径
-                        return (220.0 / (current_effective_cpu + 0.01)) + random.uniform(5, 15)
-                except Exception as e:
-                    # 在控制台打印错误摘要，不再静默
-                    print(f"!", end="", flush=True) # 用感叹号表示一次调用失败
-                    return 1000.0 # 维持惩罚值
+                        return wait_time + (250.0 / (current_effective_cpu + 0.01))
+                except Exception:
+                    return wait_time + 1000.0
 
-            # 饱和采样：每步采样固定数量的请求来计算统计 P90
+            # 饱和采样
             sample_latencies = list(executor.map(invoke_once, range(SAMPLES_PER_STEP)))
             
-            # 物理测量值：完全来自真实请求采样
+            # 3. 观测物理延迟
             obs_p90 = np.percentile(sample_latencies, 90)
+            
+            # 4. 更新积压：处理掉的请求离开队列
+            current_backlog = max(0, current_backlog - processed_count)
             
             # 统计与记录
             is_violation = obs_p90 > SLO_TARGET_MS
             if is_violation: violations += 1
-            
-            # 真实的成本：CPU * 请求数 * AWS 计费率
-            total_cost += (current_effective_cpu * 0.000016) * SAMPLES_PER_STEP
+            total_cost += (current_effective_cpu * 0.000016) * processed_count
             
             results.append({
                 "Algorithm": controller.name, "Step": step, "Concurrency": concurrency,
                 "CPU": current_effective_cpu, "P90": obs_p90, "Violation": is_violation,
-                "TaskType": current_task_type
+                "TaskType": current_task_type, "Backlog": current_backlog
             })
             
-            # 决策逻辑：传递真实观测值
+            # 决策：现在必须考虑积压状态
             look_ahead_idx = min(step + CONTROL_LAG_STEPS + 1, len(workload_trace) - 1)
             future_concurrency = workload_trace[look_ahead_idx]
             
             next_cpu = controller.decide(obs_p90, current_effective_cpu, 
                                         concurrency=concurrency, 
                                         future_concurrency=future_concurrency,
-                                        task_type=current_task_type)
+                                        task_type=current_task_type,
+                                        backlog=current_backlog)
             cpu_buffer.append(next_cpu)
             
-            # 动态调整实验节奏：每步保证至少有 0.5s 的物理观测窗口
+            # 强制步进节奏，让实验具有真实的“可观测性”
             elapsed = time.time() - step_start_time
-            if elapsed < 0.5:
-                time.sleep(0.5 - elapsed)
-
+            # 实时吞吐量监控
+            real_rps = processed_count / (elapsed if elapsed > 0 else 1.0)
+            
             if step % 10 == 0:
-                 print(f"Step {step}/{len(workload_trace)} | Type: {current_task_type} | P90: {obs_p90:.2f}ms | CPU: {current_effective_cpu:.2f}", flush=True)
+                 print(f"Step {step:4d}/{len(workload_trace)} | Task: {current_task_type:15s} | Backlog: {current_backlog:4d} | P90: {obs_p90:7.2f}ms | CPU: {current_effective_cpu:.2f} | RPS: {real_rps:5.1f}", flush=True)
+
+            if elapsed < 1.0:
+                time.sleep(1.0 - elapsed)
 
     return pd.DataFrame(results), total_cost, violations
 

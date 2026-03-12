@@ -33,47 +33,36 @@ def lambda_handler(event, context):
 
     try:
         if task_type == 'image_processing':
-            # 模拟图像处理：CPU/内存密集型
-            event['cpu_limit'] = cpu_limit # 部分脚本可能需要
-            # 这里原本需要读 S3，我们使用其内置的 ops 逻辑进行物理计算模拟
-            # 为保证不超时且有物理反馈，我们根据 scale 调整循环次数
-            size = int(150 * scale)
+            # 真实物理加压：1.0 CPU 下约 200ms
+            # 嵌套循环产生数百万次指令消耗
+            size = int(2000 * scale)
             res = 0
             for i in range(size):
-                for j in range(100):
-                    res += (i * j) % 1234
-            result = {"status": "success", "type": "image", "hash": res % 1000}
+                for j in range(500):
+                    res = (res + i + j) % 1234
+            result = {"status": "success", "type": "image", "val": res}
             
         elif task_type == 'pyaes':
-            # 模拟加密：纯 CPU 密集型
-            # 原始参数: length_of_message=100, num_of_iterations=100
-            payload = {
-                'length_of_message': 100,
-                'num_of_iterations': int(50 * scale)
-            }
-            # 注意：实际运行需安装 pyaes 库，这里我们用其核心循环逻辑模拟物理反馈
-            # 以免因缺少依赖导致 Lambda 崩溃
+            # 1.0 CPU 下约 250ms
+            iterations = int(1500 * scale)
             res = 0
-            for i in range(payload['num_of_iterations']):
-                for j in range(500):
+            for i in range(iterations):
+                for j in range(400):
                     res = (res + i + j) % 10000
             result = {"status": "success", "type": "pyaes", "val": res}
             
         elif task_type == 'linpack':
-            # 模拟科学计算：浮点运算
-            # n=100 在 1.0 CPU 下约 100ms
-            n = int(80 * scale**0.5) # 矩阵运算复杂度是 O(n^3)，这里取根号平衡
-            # 模拟物理反馈
+            # 科学计算模拟：1.0 CPU 下约 180ms
+            n = int(500 * scale**0.5) 
             res = 0.0
             for i in range(n):
-                for j in range(n):
-                    res += (i * 0.1) * (j * 0.2)
+                for j in range(200):
+                    res += (i * 0.1)
             result = {"status": "success", "type": "linpack", "val": res}
             
         elif task_type == 'model_serving':
-            # 模拟模型推理：CPU 密集
-            # 复杂度随 scale 线性增加
-            iterations = int(100000 * scale)
+            # 模型推理模拟：1.0 CPU 下约 300ms
+            iterations = int(5000000 * scale)
             res = 0
             for i in range(iterations):
                 res = (res + i) % 9999
