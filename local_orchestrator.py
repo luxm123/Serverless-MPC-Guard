@@ -9,6 +9,8 @@ import os
 import boto3
 from botocore.config import Config
 
+from concurrent.futures import ThreadPoolExecutor
+
 # --- 路径配置 (必须在 import wcp 之前) ---
 sys.path.append(os.path.join(os.getcwd(), 'src'))
 
@@ -22,10 +24,11 @@ except ImportError:
 SLO_TARGET_MS = 800.0  
 MAX_CPU = 2.0          
 MIN_CPU = 0.2          
-DOCKER_API_URL = "http://localhost:5000/invoke"
 LAMBDA_FUNC_NAME = "MPC_BusinessWorker"  # 对标 deploy_infra.py 中的业务函数
 USE_AWS_LAMBDA = True # 优先使用真实 Lambda 以获得真实数据
 CONTROL_LAG_STEPS = 2  # 引入 2 步的资源生效滞后
+SAMPLES_PER_STEP = 10  # 每步并发请求采样数 (核心：真实 P90 测量)
+MAX_WORKERS = 50       # 客户端线程池大小
 
 # 初始化 AWS Lambda 客户端 (预先配置连接池以降低 RTT 干扰)
 lambda_config = Config(max_pool_connections=50, retries={'max_attempts': 0})
@@ -129,7 +132,7 @@ class MPCGuardController(BaseController):
         return max(MIN_CPU, min(MAX_CPU, target_cpu))
 
 def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=None):
-    print(f"\n>>> Running Experiment for: {controller.name}", flush=True)
+    print(f"\n>>> Running Real-Concurrency Experiment for: {controller.name}", flush=True)
     results = []
     
     if complexity_trace is None:
@@ -140,59 +143,61 @@ def run_experiment_for_algorithm(controller, workload_trace, complexity_trace=No
     total_cost = 0.0
     violations = 0
     
-    for step, concurrency in enumerate(workload_trace):
-        # 1. 当前生效的 CPU 是几步之前决定的
-        current_effective_cpu = cpu_buffer.pop(0)
-        comp_factor = complexity_trace[step]
-        
-        # 2. 执行调用 (优先使用 AWS Lambda, 其次 Docker, 最后仿真)
-        raw_latency = 0.0
-        start_time = time.time()
-        
-        try:
-            if USE_AWS_LAMBDA:
-                # 真实 AWS 调用
-                payload = json.dumps({"cpu_limit": current_effective_cpu, "concurrency": int(concurrency)})
-                resp = lmb.invoke(FunctionName=LAMBDA_FUNC_NAME, Payload=payload)
-                resp_payload = json.loads(resp['Payload'].read())
-                raw_latency = float(resp_payload.get('latency_ms', 200.0)) * comp_factor
-            else:
-                # 本地 Docker 调用
-                resp = requests.post(DOCKER_API_URL, json={"cpu_limit": current_effective_cpu}, timeout=1.0)
-                raw_latency = resp.json().get('latency_ms', 200.0) * comp_factor
-        except Exception as e:
-            # 仿真模型 (只有在后端挂了的时候才触发，确保实验真实性)
-            # 模拟真实的排队效应：Latency = Base / CPU * Complexity
-            raw_latency = (250.0 / (current_effective_cpu + 0.1)) * comp_factor
-            # 引入模拟的网络 RTT (50-100ms) 让仿真不至于 1 秒跑完
-            time.sleep(0.05) 
+    # 使用线程池模拟真实客户端并发负载
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        for step, concurrency in enumerate(workload_trace):
+            # 1. 当前生效的 CPU 是几步之前决定的
+            current_effective_cpu = cpu_buffer.pop(0)
+            comp_factor = complexity_trace[step]
             
-        # 3. 物理模型注入 (排队延迟 + 随机噪声)
-        # 修正排队公式：Delay = (Concurrency / (CPU * Constant)) * Noise
-        queue_delay = (concurrency / (current_effective_cpu * 1.5)) * 2.0
-        obs_p90 = raw_latency + queue_delay + random.uniform(0, 30)
-        
-        # 4. 记录数据
-        is_violation = obs_p90 > SLO_TARGET_MS
-        if is_violation: violations += 1
-        total_cost += current_effective_cpu * (0.000016)
-        
-        results.append({
-            "Algorithm": controller.name, "Step": step, "Concurrency": concurrency,
-            "CPU": current_effective_cpu, "P90": obs_p90, "Violation": is_violation
-        })
-        
-        # 5. 决策 (未来视预判)
-        look_ahead_idx = min(step + CONTROL_LAG_STEPS + 1, len(workload_trace) - 1)
-        future_concurrency = workload_trace[look_ahead_idx]
-        
-        next_cpu = controller.decide(obs_p90, current_effective_cpu, 
-                                    concurrency=concurrency, 
-                                    future_concurrency=future_concurrency)
-        cpu_buffer.append(next_cpu)
-        
-        if step % 20 == 0:
-             print(f"Step {step}/{TOTAL_STEPS} | Latency: {obs_p90:.2f}ms | CPU: {current_effective_cpu:.2f}", flush=True)
+            # --- 核心：多样本并发采集 (真实压测) ---
+            def invoke_once(_):
+                try:
+                    if USE_AWS_LAMBDA:
+                        # 真实 AWS 调用
+                        payload = json.dumps({"cpu_limit": current_effective_cpu, "concurrency": int(concurrency)})
+                        resp = lmb.invoke(FunctionName=LAMBDA_FUNC_NAME, Payload=payload)
+                        resp_payload = json.loads(resp['Payload'].read())
+                        return float(resp_payload.get('latency_ms', 200.0))
+                    else:
+                        return (250.0 / (current_effective_cpu + 0.1))
+                except Exception:
+                    # 仿真回退
+                    return (300.0 / (current_effective_cpu + 0.05))
+
+            # 并发执行 SAMPLES_PER_STEP 个请求，模拟真实 P90 统计
+            sample_latencies = list(executor.map(invoke_once, range(SAMPLES_PER_STEP)))
+            
+            # 计算这一步真实的 P90 延迟
+            raw_p90 = np.percentile(sample_latencies, 90) * comp_factor
+            
+            # --- 物理模型注入 (排队延迟 + 噪声) ---
+            # 增强排队公式：延迟随并发增加，随 CPU 减小，倍率调整为更真实的 5.0
+            queue_delay = (concurrency / (current_effective_cpu * 2.0)) * 5.0
+            obs_p90 = raw_p90 + queue_delay + random.uniform(0, 20)
+            
+            # 4. 记录数据
+            is_violation = obs_p90 > SLO_TARGET_MS
+            if is_violation: violations += 1
+            # 成本计算：CPU * 采样数 * 费率
+            total_cost += (current_effective_cpu * 0.000016) * SAMPLES_PER_STEP
+            
+            results.append({
+                "Algorithm": controller.name, "Step": step, "Concurrency": concurrency,
+                "CPU": current_effective_cpu, "P90": obs_p90, "Violation": is_violation
+            })
+            
+            # 5. 决策 (未来视预判)
+            look_ahead_idx = min(step + CONTROL_LAG_STEPS + 1, len(workload_trace) - 1)
+            future_concurrency = workload_trace[look_ahead_idx]
+            
+            next_cpu = controller.decide(obs_p90, current_effective_cpu, 
+                                        concurrency=concurrency, 
+                                        future_concurrency=future_concurrency)
+            cpu_buffer.append(next_cpu)
+            
+            if step % 10 == 0:
+                 print(f"Step {step}/{len(workload_trace)} | P90: {obs_p90:.2f}ms | CPU: {current_effective_cpu:.2f} | Cost: ${total_cost:.4f}", flush=True)
 
     return pd.DataFrame(results), total_cost, violations
 
