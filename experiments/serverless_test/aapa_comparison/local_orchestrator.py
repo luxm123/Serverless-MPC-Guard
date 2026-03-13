@@ -15,12 +15,15 @@ from scipy.stats import skew, kurtosis
 from concurrent.futures import ThreadPoolExecutor
 
 # --- 路径配置 (必须在 import wcp 之前) ---
-sys.path.append(os.path.join(os.getcwd(), 'src'))
+# 确保能够找到项目根目录下的 src
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../"))
+sys.path.append(os.path.join(ROOT_DIR, 'src'))
 
 try:
     from wcp.wcp_update import RLS, build_phi, wcp_update
 except ImportError:
-    print("Error: Could not import wcp_update. Make sure you are running from the project root.")
+    print(f"Error: Could not import wcp_update. Tried path: {os.path.join(ROOT_DIR, 'src')}")
     sys.exit(1)
 
 # --- 实验超参数 ---
@@ -32,7 +35,7 @@ USE_AWS_LAMBDA = True
 CONTROL_LAG_STEPS = 2  
 SAMPLES_PER_STEP = 30  
 MAX_WORKERS = 2000     
-REAL_WORKLOAD_PATH = "real_workload.json" 
+REAL_WORKLOAD_PATH = os.path.join(BASE_DIR, "real_workload.json") 
 
 # 初始化 AWS Lambda 客户端
 lambda_config = Config(

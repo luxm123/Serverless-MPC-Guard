@@ -57,12 +57,19 @@ def parse_aapa_kswd_trace(aapa_root, output_json, max_steps=1200):
     print(f"Successfully saved {len(trace)} steps (AAPA KSWD-based) to {output_json}")
 
 if __name__ == "__main__":
-    # EC2 上的路径
-    aapa_root = "benchmarks/aapa-simulator"
-    output_json = "real_workload.json"
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../"))
+    
+    # EC2 上的路径 (相对于根目录)
+    aapa_root = os.path.join(ROOT_DIR, "benchmarks/aapa-simulator")
+    output_json = os.path.join(BASE_DIR, "real_workload.json")
+    
     if os.path.exists(aapa_root):
         parse_aapa_kswd_trace(aapa_root, output_json)
     else:
-        # 本地调试路径
-        local_aapa = "benchmarks/aapa-simulator"
-        parse_aapa_kswd_trace(local_aapa, output_json)
+        # 本地调试路径 (尝试相对于脚本路径)
+        local_aapa = os.path.join(ROOT_DIR, "benchmarks/aapa-simulator")
+        if os.path.exists(local_aapa):
+            parse_aapa_kswd_trace(local_aapa, output_json)
+        else:
+            print(f"Error: AAPA root not found at {local_aapa}")
