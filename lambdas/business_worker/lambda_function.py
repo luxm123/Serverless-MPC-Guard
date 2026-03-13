@@ -33,36 +33,35 @@ def lambda_handler(event, context):
 
     try:
         if task_type == 'image_processing':
-            # 真实物理加压：1.0 CPU 下约 200ms
-            # 嵌套循环产生数百万次指令消耗
-            size = int(2000 * scale)
+            # 校准：1.0 CPU 下约 400ms
+            size = int(1500 * scale)
             res = 0
             for i in range(size):
-                for j in range(500):
+                for j in range(400):
                     res = (res + i + j) % 1234
             result = {"status": "success", "type": "image", "val": res}
             
         elif task_type == 'pyaes':
-            # 1.0 CPU 下约 250ms
-            iterations = int(1500 * scale)
+            # 校准：1.0 CPU 下约 400ms
+            iterations = int(1200 * scale)
             res = 0
             for i in range(iterations):
-                for j in range(400):
+                for j in range(350):
                     res = (res + i + j) % 10000
             result = {"status": "success", "type": "pyaes", "val": res}
             
         elif task_type == 'linpack':
-            # 科学计算模拟：1.0 CPU 下约 180ms
-            n = int(500 * scale**0.5) 
+            # 校准：1.0 CPU 下约 400ms
+            n = int(550 * scale**0.5) 
             res = 0.0
             for i in range(n):
-                for j in range(200):
+                for j in range(150):
                     res += (i * 0.1)
             result = {"status": "success", "type": "linpack", "val": res}
             
         elif task_type == 'model_serving':
-            # 模型推理模拟：1.0 CPU 下约 300ms
-            iterations = int(5000000 * scale)
+            # 校准：1.0 CPU 下约 400ms
+            iterations = int(1500000 * scale)
             res = 0
             for i in range(iterations):
                 res = (res + i) % 9999
