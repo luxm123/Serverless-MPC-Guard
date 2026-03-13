@@ -22,21 +22,21 @@ except ImportError:
 
 # --- 实验超参数 ---
 SLO_TARGET_MS = 800.0  
-MAX_CPU = 2.0          
+MAX_CPU = 3.0          # 提高上限至 3.0
 MIN_CPU = 0.2          
 LAMBDA_FUNC_NAME = "MPC_BusinessWorker"  
 USE_AWS_LAMBDA = True 
 CONTROL_LAG_STEPS = 2  
 SAMPLES_PER_STEP = 30  
-MAX_WORKERS = 2000     # 大幅提升并发处理上限，消除客户端瓶颈
+MAX_WORKERS = 2000     
 REAL_WORKLOAD_PATH = "real_workload.json" 
 
 # 初始化 AWS Lambda 客户端
 lambda_config = Config(
-    max_pool_connections=2000, # 匹配 MAX_WORKERS
+    max_pool_connections=2000, 
     retries={'max_attempts': 2},
     connect_timeout=5,
-    read_timeout=20            # 稍微延长超时，应对极端排队情况
+    read_timeout=25            # 应对积压时的长尾延迟
 )
 lmb = boto3.client('lambda', region_name='us-east-1', config=lambda_config)
 
@@ -162,10 +162,11 @@ def run_experiment_for_algorithm(controller, workload_trace, task_type_trace):
     
     # 物理状态机：当前队列中的积压请求数
     current_backlog = 0
-    # 处理能力常数：1.0 CPU 每秒能处理的请求数基准
-    # 调低至 100，使得 2.0 CPU 的最大吞吐为 200 RPS，
-    # 当 Concurrency 达到 1000+ 时，系统会产生真实的雪崩积压。
-    THROUGHPUT_PER_CPU = 100 
+    # 处理能力：1.0 CPU 每秒能处理的请求数基准
+    # 调至 120，使得 3.0 CPU 的最大吞吐为 360 RPS。
+    # 与 trace_parser.py 配合，确保平均负载在 100-200 RPS 之间，
+    # 这样在高峰期(300+ RPS)产生的积压才能在高峰后被排水排掉。
+    THROUGHPUT_PER_CPU = 120 
     
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for step, concurrency in enumerate(workload_trace):

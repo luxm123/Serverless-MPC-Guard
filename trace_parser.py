@@ -37,16 +37,17 @@ def parse_alibaba_gpu_trace(csv_path, output_json, max_steps=1200):
         curr_step = start_step + i
         count = int(concurrency_series.get(curr_step, 0))
         
-        # 极高压缩放：基础并发 100 + 动态并发(80-120倍)
-        # 模拟“突发高峰” (Flash Crowds)
-        noise = random.uniform(0.8, 1.2)
-        scaled_count = int(count * 120 * noise) + 150 
-        scaled_count = min(scaled_count, 2000) # 封顶 2000，匹配 Client MAX_WORKERS
+        # 科学缩放：基础并发 30 + 动态并发(50-80倍)
+        # 使得“平均负载 < 最大处理能力”，但“峰值负载 > 最大处理能力”
+        # 这样才能体现出 MPC 在高峰期“提前扩容”以及高峰后“快速排水”的优势
+        noise = random.uniform(0.9, 1.1)
+        scaled_count = int(count * 60 * noise) + 30 
+        scaled_count = min(scaled_count, 1500) 
         
         # 切换任务类型阶段
         if phase_remaining <= 0:
             current_task_type = random.choice(task_types)
-            phase_remaining = random.randint(50, 150)
+            phase_remaining = random.randint(100, 200) # 稍微延长稳定期
         phase_remaining -= 1
         
         trace.append({
