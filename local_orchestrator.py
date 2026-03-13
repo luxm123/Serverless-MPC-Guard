@@ -62,30 +62,19 @@ class BaseController:
         raise NotImplementedError
 
 class HeuristicAWSController(BaseController):
-    """基准：AWS 风格的步进式调整 (Reactive)"""
+    """
+    基准：AWS/K8s 风格的 HPA (Horizontal Pod Autoscaler) 逻辑
+    公式：Desired = Current * (Current_Metric / Target_Metric)
+    """
     def __init__(self):
         super().__init__("Heuristic-AWS")
-    def decide(self, obs_p90, current_cpu, **kwargs):
-        if obs_p90 > SLO_TARGET_MS:
-            return min(MAX_CPU, current_cpu + 0.2)  # 步进加资源
-        elif obs_p90 < SLO_TARGET_MS * 0.5:
-            return max(MIN_CPU, current_cpu - 0.1)  # 缓慢缩容
-        return current_cpu
+        self.tolerance = 0.1
 
-class PIDController(BaseController):
-    """基准：传统 PID 控制器 (Proportional-Integral-Derivative)"""
-    def __init__(self):
-        super().__init__("PID")
-        self.prev_error = 0
-        self.integral = 0
-        self.kp, self.ki, self.kd = 0.5, 0.1, 0.05
     def decide(self, obs_p90, current_cpu, **kwargs):
-        error = (obs_p90 - SLO_TARGET_MS) / SLO_TARGET_MS
-        self.integral += error
-        derivative = error - self.prev_error
-        output = self.kp * error + self.ki * self.integral + self.kd * derivative
-        self.prev_error = error
-        new_cpu = current_cpu + output
+        ratio = obs_p90 / SLO_TARGET_MS
+        if abs(ratio - 1.0) < self.tolerance:
+            return current_cpu
+        new_cpu = current_cpu * ratio
         return max(MIN_CPU, min(MAX_CPU, new_cpu))
 
 class MPCGuardController(BaseController):
@@ -156,7 +145,6 @@ class AAPAController(BaseController):
     对标方案：AAPA (arXiv '25) 核心逻辑复刻
     1. 负载原型分类：SPIKE, PERIODIC, RAMP, STATIONARY
     2. 原型专属策略：SPIKE 采用激进预热(低阈值)，STATIONARY 采用保守缩容
-    3. 不确定性量化：基于分类置信度的冗余分配
     """
     def __init__(self):
         super().__init__("AAPA")
@@ -166,27 +154,24 @@ class AAPAController(BaseController):
         self.current_archetype = "STATIONARY"
         
     def classify(self):
-        if len(self.window) < 10: return "STATIONARY"
+        if len(self.window) < 20: return "STATIONARY"
         
         data = np.array(self.window)
         mean_val = np.mean(data)
         max_val = np.max(data)
         std_val = np.std(data)
         
-        # SPIKE: 峰值均值比极高
         if max_val > mean_val * 2.5:
             return "SPIKE"
         
-        # RAMP: 明显的趋势性 (简单线性回归斜率)
         x = np.arange(len(data))
         slope, _ = np.polyfit(x, data, 1)
         if abs(slope) > 0.5:
             return "RAMP"
             
-        # PERIODIC: 自相关性强 (简化版)
-        if len(data) > 20:
-            autocorr = np.corrcoef(data[:-10], data[10:])[0, 1]
-            if autocorr > 0.7:
+        if len(data) > 30:
+            autocorr = np.corrcoef(data[:-15], data[15:])[0, 1]
+            if autocorr > 0.6:
                 return "PERIODIC"
                 
         return "STATIONARY"
@@ -196,33 +181,32 @@ class AAPAController(BaseController):
         if len(self.window) > self.window_size:
             self.window.pop(0)
             
-        # 每 10 步重新分类一次
-        if len(self.window) % 10 == 0:
-            self.current_archetype = self.classify()
+        self.current_archetype = self.classify()
             
-        # 策略参数 (直接对标 AAPA 论文)
         if self.current_archetype == "SPIKE":
-            target_util = 0.3  # 激进分配以防突发
+            target_util = 0.3
             cooldown_steps = 20
         elif self.current_archetype == "PERIODIC":
             target_util = 0.6
             cooldown_steps = 5
+        elif self.current_archetype == "RAMP":
+            target_util = 0.7
+            cooldown_steps = 10
         else:
-            target_util = 0.75 # 保守分配以省钱
+            target_util = 0.75
             cooldown_steps = 3
             
-        # AAPA 核心公式：New = Current * (Observed / Target)
-        # 这里用延迟作为利用率的反向代理
         obs_util = obs_p90 / SLO_TARGET_MS
         target_cpu_raw = current_cpu * (obs_util / target_util)
         
-        # 冷却逻辑
         if target_cpu_raw < current_cpu:
             if self.cooldown_counter > 0:
                 self.cooldown_counter -= 1
                 return current_cpu
             else:
                 self.cooldown_counter = cooldown_steps
+        else:
+            self.cooldown_counter = 0
         
         return max(MIN_CPU, min(MAX_CPU, target_cpu_raw))
 
@@ -352,7 +336,7 @@ if __name__ == "__main__":
     TOTAL_STEPS = len(workload)
     
     # 2. 运行对比实验
-    controllers = [HeuristicAWSController(), PIDController(), AAPAController(), MPCGuardController()]
+    controllers = [HeuristicAWSController(), AAPAController(), MPCGuardController()]
     all_dfs = []
     report = []
 
