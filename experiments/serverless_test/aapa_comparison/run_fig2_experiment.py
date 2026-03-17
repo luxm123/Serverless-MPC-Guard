@@ -125,32 +125,36 @@ class MPCGuardController(BaseController):
         self.state = {'rls_state': None, 'scores': []}
 
     def decide(self, obs_p90, current_cpu, concurrency=1, future_concurrency=1, task_type='image_processing', **kwargs):
+        # 系统辨识校准：将参考服务时间从 400ms 校准为 550ms，以匹配真实物理环境开销
+        PHYSICAL_SERVICE_TIME = 550.0
+        
         _, delta, _ = wcp_update(self.state, obs_p90, concurrency=concurrency, cpu=current_cpu, 
-                                 backlog=kwargs.get('backlog', 0), service_time_ms=400, task_type=task_type, alpha=0.05)
+                                 backlog=kwargs.get('backlog', 0), service_time_ms=PHYSICAL_SERVICE_TIME, task_type=task_type, alpha=0.05)
         
         rls = RLS.from_dict(self.state['rls_state'], n_features=11)
         
-        # 1. 动态风险补偿 (基于反馈的约束收紧)
-        # 如果当前延迟接近阈值，自动收紧 MPC 的搜索目标
+        # 1. 动态风险补偿 (基于反馈的约束调节)
+        # 基础安全目标设为 75% SLO (600ms)，若延迟上升则动态收紧
         penalty = max(0, (obs_p90 - SLO_TARGET_MS * 0.70) * 0.5)
         dynamic_safe_slo = (SLO_TARGET_MS * 0.75) - penalty
         
         best_cpu_mpc = MAX_CPU
         for test_cpu in np.arange(MIN_CPU, MAX_CPU + 0.01, 0.05):
-            phi = build_phi(future_concurrency, test_cpu, kwargs.get('backlog', 0), 400, task_type=task_type)
+            phi = build_phi(future_concurrency, test_cpu, kwargs.get('backlog', 0), PHYSICAL_SERVICE_TIME, task_type=task_type)
             if rls.predict(phi) + delta <= dynamic_safe_slo:
                 best_cpu_mpc = test_cpu
                 break
         
-        # 2. 物理一致性底线 (Physical Consistency Bound)
-        # 考虑到 AWS 环境下的系统开销 (Overhead)，我们将稳态吞吐基准校准为 95 RPS/CPU。
-        # 这是一个基于物理常识的保底逻辑，能有效防止统计模型在学习初期的不确定性。
+        # 2. 物理一致性底线 (Queue Stability Bound)
+        # 基于排队论：u * Throughput >= Backlog + Arrival
+        # 校准基准为 95 RPS/CPU，提供物理层面的安全保底
         u_stable = (kwargs.get('backlog', 0) + future_concurrency) / 95.0
         
-        # 3. 最终决策：在 MPC 优化值和物理底线之间取最大值
-        # 升容灵敏（无步长限制），降容稳健（限制步长 0.2）
+        # 3. 混合决策优化
+        # 取 MPC 精细化控制与物理底线中的较大值，兼顾成本与稳定性
         target_cpu = max(best_cpu_mpc, u_stable)
         
+        # 异步变化率限制：升容灵敏（应对突发），降容稳健（限制单步 0.2，防止震荡）
         if target_cpu > current_cpu:
             final_cpu = target_cpu
         else:
