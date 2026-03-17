@@ -27,7 +27,7 @@ MIN_CPU = 0.2
 LAMBDA_FUNC_NAME = "MPC_BusinessWorker"  
 USE_AWS_LAMBDA = True 
 CONTROL_LAG_STEPS = 2  
-SAMPLES_PER_STEP = 30  
+SAMPLES_PER_STEP = 20  # 降低采样数，加快实验速度并减少抖动影响
 MAX_WORKERS = 2000     
 REAL_WORKLOAD_PATH = os.path.join(BASE_DIR, "real_workload.json") 
 
@@ -140,9 +140,16 @@ class MPCGuardController(BaseController):
                 found = True
                 break
         
-        if best_cpu > current_cpu: max_change = 1.0
-        else: max_change = 0.2
-        return max(MIN_CPU, min(MAX_CPU, max(current_cpu - max_change, min(current_cpu + max_change, best_cpu))))
+        # 优化策略：如果预测需要增加资源，允许直接跳变以应对突发积压
+        if best_cpu > current_cpu:
+            # 增加资源时放开 max_change 限制
+            final_cpu = best_cpu
+        else:
+            # 减少资源时保持平滑，防止过度震荡
+            max_decrease = 0.3
+            final_cpu = max(current_cpu - max_decrease, best_cpu)
+            
+        return max(MIN_CPU, min(MAX_CPU, final_cpu))
 
 def run_experiment(controller, workload, task_types):
     print(f"\n>>> Running Full Analysis for: {controller.name}", flush=True)
@@ -180,7 +187,8 @@ def run_experiment(controller, workload, task_types):
             cpu_buffer.append(controller.decide(p90, cpu, concurrency=concurrency, future_concurrency=workload[f_idx], 
                                                task_type=task_types[step], backlog=backlog))
             
-            if step % 100 == 0: print(f"  Step {step:4d} | P90: {p90:7.2f}ms | CPU: {cpu:.2f}")
+            if step % 20 == 0: 
+                print(f"  [{controller.name}] Step {step:4d}/{len(workload)} | P90: {p90:7.2f}ms | CPU: {cpu:.2f} | Backlog: {backlog}", flush=True)
             elapsed = time.time() - start_time
             if elapsed < 1.0: time.sleep(1.0 - elapsed)
             
