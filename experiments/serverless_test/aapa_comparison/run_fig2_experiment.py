@@ -131,7 +131,8 @@ class MPCGuardController(BaseController):
         rls = RLS.from_dict(self.state['rls_state'], n_features=11)
         best_cpu = MAX_CPU
         found = False
-        safe_slo = SLO_TARGET_MS * 0.85
+        # 优化：收紧安全目标，从 85% -> 75%，为物理环境抖动预留更多安全垫
+        safe_slo = SLO_TARGET_MS * 0.75
         
         for test_cpu in np.arange(MIN_CPU, MAX_CPU + 0.01, 0.05):
             phi = build_phi(future_concurrency, test_cpu, kwargs.get('backlog', 0), 400, task_type=task_type)
