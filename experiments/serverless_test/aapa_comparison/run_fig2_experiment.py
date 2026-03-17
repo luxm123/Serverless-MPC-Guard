@@ -131,8 +131,8 @@ class MPCGuardController(BaseController):
         rls = RLS.from_dict(self.state['rls_state'], n_features=11)
         best_cpu = MAX_CPU
         found = False
-        # 优化：收紧安全目标，从 85% -> 75%，为物理环境抖动预留更多安全垫
-        safe_slo = SLO_TARGET_MS * 0.75
+        # 1. 更加保守的安全目标 (65%)，确保在物理抖动下依然达标
+        safe_slo = SLO_TARGET_MS * 0.65
         
         for test_cpu in np.arange(MIN_CPU, MAX_CPU + 0.01, 0.05):
             phi = build_phi(future_concurrency, test_cpu, kwargs.get('backlog', 0), 400, task_type=task_type)
@@ -141,14 +141,19 @@ class MPCGuardController(BaseController):
                 found = True
                 break
         
-        # 优化策略：如果预测需要增加资源，允许直接跳变以应对突发积压
+        # 2. 防御性控制逻辑
         if best_cpu > current_cpu:
-            # 增加资源时放开 max_change 限制
+            # 升容：全力以赴，直接跳变
             final_cpu = best_cpu
         else:
-            # 减少资源时保持平滑，防止过度震荡
-            max_decrease = 0.3
-            final_cpu = max(current_cpu - max_decrease, best_cpu)
+            # 降容：增加防御性判断
+            # 如果当前延迟已经超过 700ms，即使模型预测可以降，我们也保持现状，防止抖动
+            if obs_p90 > SLO_TARGET_MS * 0.875:
+                final_cpu = current_cpu
+            else:
+                # 减缓降容速度，增加稳定性
+                max_decrease = 0.2
+                final_cpu = max(current_cpu - max_decrease, best_cpu)
             
         return max(MIN_CPU, min(MAX_CPU, final_cpu))
 
