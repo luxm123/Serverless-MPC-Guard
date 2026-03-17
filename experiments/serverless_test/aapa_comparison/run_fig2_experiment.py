@@ -130,32 +130,31 @@ class MPCGuardController(BaseController):
         
         rls = RLS.from_dict(self.state['rls_state'], n_features=11)
         
-        # 1. 动态风险补偿机制 (Feedback-Aware Constraint Adjustment)
-        # 根据当前性能偏差动态调整安全边际。如果延迟接近 SLO，自动收紧目标。
-        base_safe_slo = SLO_TARGET_MS * 0.70 # 基础安全目标设为 70%
-        error_weight = 0.6
-        # 如果当前延迟超过了 600ms (0.75 SLO)，开始产生额外的惩罚项
-        penalty = max(0, (obs_p90 - SLO_TARGET_MS * 0.75) * error_weight)
-        dynamic_safe_slo = base_safe_slo - penalty
+        # 1. 动态风险补偿 (基于反馈的约束收紧)
+        # 如果当前延迟接近阈值，自动收紧 MPC 的搜索目标
+        penalty = max(0, (obs_p90 - SLO_TARGET_MS * 0.70) * 0.5)
+        dynamic_safe_slo = (SLO_TARGET_MS * 0.75) - penalty
         
-        best_cpu = MAX_CPU
-        found = False
+        best_cpu_mpc = MAX_CPU
         for test_cpu in np.arange(MIN_CPU, MAX_CPU + 0.01, 0.05):
             phi = build_phi(future_concurrency, test_cpu, kwargs.get('backlog', 0), 400, task_type=task_type)
             if rls.predict(phi) + delta <= dynamic_safe_slo:
-                best_cpu = test_cpu
-                found = True
+                best_cpu_mpc = test_cpu
                 break
         
-        # 2. 异步变化速率控制 (Asymmetric Slew Rate Limit)
-        # 快速升容应对突发，平滑降容保证稳健
-        if best_cpu > current_cpu:
-            # 升容：直接跳变，不再限制步长
-            final_cpu = best_cpu
+        # 2. 物理稳定性约束 (Queue Stability Bound)
+        # 根据排队论物理模型计算维持队列稳定所需的最小 CPU
+        # 吞吐量基准为 120 RPS/CPU (在 run_experiment 中定义)
+        u_stable = (kwargs.get('backlog', 0) + future_concurrency) / 120.0
+        
+        # 3. 最终决策：在 MPC 优化值和物理底线之间取最大值
+        # 升容灵敏（无步长限制），降容稳健（限制步长 0.2）
+        target_cpu = max(best_cpu_mpc, u_stable)
+        
+        if target_cpu > current_cpu:
+            final_cpu = target_cpu
         else:
-            # 降容：限制单步降容最大值，防止模型“过度自信”
-            max_decrease = 0.2
-            final_cpu = max(current_cpu - max_decrease, best_cpu)
+            final_cpu = max(current_cpu - 0.2, target_cpu)
             
         return max(MIN_CPU, min(MAX_CPU, final_cpu))
 
