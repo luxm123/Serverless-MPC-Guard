@@ -142,10 +142,10 @@ class MPCGuardController(BaseController):
                 best_cpu_mpc = test_cpu
                 break
         
-        # 2. 物理稳定性约束 (Queue Stability Bound)
-        # 修正：将基准从 120 调低至 90。真实 AWS 环境下，1.0 CPU 的稳态吞吐量约 90-100 RPS。
-        # 调低此值会提高物理保底 CPU，防止模型过度降容。
-        u_stable = (kwargs.get('backlog', 0) + future_concurrency) / 90.0
+        # 2. 物理一致性底线 (Physical Consistency Bound)
+        # 考虑到 AWS 环境下的系统开销 (Overhead)，我们将稳态吞吐基准校准为 95 RPS/CPU。
+        # 这是一个基于物理常识的保底逻辑，能有效防止统计模型在学习初期的不确定性。
+        u_stable = (kwargs.get('backlog', 0) + future_concurrency) / 95.0
         
         # 3. 最终决策：在 MPC 优化值和物理底线之间取最大值
         # 升容灵敏（无步长限制），降容稳健（限制步长 0.2）
