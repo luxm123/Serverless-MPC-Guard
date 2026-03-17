@@ -129,31 +129,33 @@ class MPCGuardController(BaseController):
                                  backlog=kwargs.get('backlog', 0), service_time_ms=400, task_type=task_type, alpha=0.05)
         
         rls = RLS.from_dict(self.state['rls_state'], n_features=11)
+        
+        # 1. 动态风险补偿机制 (Feedback-Aware Constraint Adjustment)
+        # 根据当前性能偏差动态调整安全边际。如果延迟接近 SLO，自动收紧目标。
+        base_safe_slo = SLO_TARGET_MS * 0.70 # 基础安全目标设为 70%
+        error_weight = 0.6
+        # 如果当前延迟超过了 600ms (0.75 SLO)，开始产生额外的惩罚项
+        penalty = max(0, (obs_p90 - SLO_TARGET_MS * 0.75) * error_weight)
+        dynamic_safe_slo = base_safe_slo - penalty
+        
         best_cpu = MAX_CPU
         found = False
-        # 1. 更加保守的安全目标 (65%)，确保在物理抖动下依然达标
-        safe_slo = SLO_TARGET_MS * 0.65
-        
         for test_cpu in np.arange(MIN_CPU, MAX_CPU + 0.01, 0.05):
             phi = build_phi(future_concurrency, test_cpu, kwargs.get('backlog', 0), 400, task_type=task_type)
-            if rls.predict(phi) + delta <= safe_slo:
+            if rls.predict(phi) + delta <= dynamic_safe_slo:
                 best_cpu = test_cpu
                 found = True
                 break
         
-        # 2. 防御性控制逻辑
+        # 2. 异步变化速率控制 (Asymmetric Slew Rate Limit)
+        # 快速升容应对突发，平滑降容保证稳健
         if best_cpu > current_cpu:
-            # 升容：全力以赴，直接跳变
+            # 升容：直接跳变，不再限制步长
             final_cpu = best_cpu
         else:
-            # 降容：增加防御性判断
-            # 如果当前延迟已经超过 700ms，即使模型预测可以降，我们也保持现状，防止抖动
-            if obs_p90 > SLO_TARGET_MS * 0.875:
-                final_cpu = current_cpu
-            else:
-                # 减缓降容速度，增加稳定性
-                max_decrease = 0.2
-                final_cpu = max(current_cpu - max_decrease, best_cpu)
+            # 降容：限制单步降容最大值，防止模型“过度自信”
+            max_decrease = 0.2
+            final_cpu = max(current_cpu - max_decrease, best_cpu)
             
         return max(MIN_CPU, min(MAX_CPU, final_cpu))
 
