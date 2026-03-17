@@ -143,9 +143,9 @@ class MPCGuardController(BaseController):
                 break
         
         # 2. 物理稳定性约束 (Queue Stability Bound)
-        # 根据排队论物理模型计算维持队列稳定所需的最小 CPU
-        # 吞吐量基准为 120 RPS/CPU (在 run_experiment 中定义)
-        u_stable = (kwargs.get('backlog', 0) + future_concurrency) / 120.0
+        # 修正：将基准从 120 调低至 90。真实 AWS 环境下，1.0 CPU 的稳态吞吐量约 90-100 RPS。
+        # 调低此值会提高物理保底 CPU，防止模型过度降容。
+        u_stable = (kwargs.get('backlog', 0) + future_concurrency) / 90.0
         
         # 3. 最终决策：在 MPC 优化值和物理底线之间取最大值
         # 升容灵敏（无步长限制），降容稳健（限制步长 0.2）
