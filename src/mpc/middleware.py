@@ -464,7 +464,8 @@ class MPCMiddleware:
         
         # CRITICAL FIX: Persist state immediately if fidelity drops (Optimization Active)
         # or randomly (Heartbeat). This ensures other containers learn about the panic mode.
-        if abs(new_alloc - last_alloc) > 0.01 or new_alloc < 0.95 or random.random() < 0.1:
+        # Modified to be more proactive during experiments.
+        if abs(new_alloc - last_alloc) > 0.001 or new_alloc < 0.99 or random.random() < 0.2:
             self._async_save_state(state, version)
 
         decision_out = result['decision']

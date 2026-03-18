@@ -56,12 +56,30 @@ def lambda_handler(event, context):
         
     elif strategy == 'baseline' and _HPA:
         # 模拟 HPA (Jiagu ATC '24) 逻辑
-        # 注意：由于 Lambda 无状态，HPA 的 window_sec 效果可能较弱，除非通过 DynamoDB 持久化决策时间
-        metrics = event.get('metrics', {})
-        current_alloc = float(event.get('last_alloc', 1.0))
+        # 使用单独的 baseline_params 存储状态，避免与 MPC 冲突
+        baseline_mw = MPCMiddleware(state_id='baseline_params')
+        state, version = baseline_mw._load_state()
+        
+        # 负载观察：从全局状态中获取 P90 作为 HPA 的输入
+        # 在真实 K8s 中这对应 Metrics Server
+        global_state, _ = _MIDDLEWARE._load_state()
+        p90 = float(global_state.get('p90_belief', 100.0))
+        # 估算利用率：目标 180ms，如果 140ms 则利用率约 77% (低于 80% 阈值)
+        # 映射公式：util = (p90 / SLO) * 0.8
+        slo = 180.0
+        cpu_util = (p90 / slo) * 0.8
+        
+        metrics = {'cpu_util': cpu_util}
+        current_alloc = float(state.get('last_alloc', 1.0))
         decision = _HPA.get_decision(metrics, current_alloc)
         cpu_limit = float(decision.get('cpu_cores', 1.0))
-        debug_info = {'resource_alloc': cpu_limit, 'strategy': 'baseline'}
+        
+        # 保存 Baseline 状态
+        state['last_alloc'] = cpu_limit
+        if abs(cpu_limit - current_alloc) > 0.001 or random.random() < 0.2:
+             baseline_mw._async_save_state(state, version)
+             
+        debug_info = {'resource_alloc': cpu_limit, 'strategy': 'baseline', 'p90': p90, 'cpu_util': cpu_util}
 
     # 如果需要丢弃请求
     if should_shed:
