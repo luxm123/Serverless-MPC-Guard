@@ -530,7 +530,12 @@ class MPCMiddleware:
             _L1_CACHE['params']['p90_belief'] = updated_p90
             _L1_CACHE['last_sync'] = time.time() # Refresh timestamp
             
-            # 2. Async Persist (Sampling 20%)
+            # 2. PROACTIVE PERSIST: Write to DynamoDB more often for p90_belief sync
+            # This ensures Baseline and MPC see the same ground truth.
+            if random.random() < 0.2:
+                 self._async_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
+            
+            # 3. Async Persist (SQS feedback)
             if random.random() < 0.2:
                  self._async_update_feedback(updated_p90)
 

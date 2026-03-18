@@ -119,8 +119,14 @@ def run_single_request(idx, strategy, start_time):
             metrics=payload['metrics']
         )
         
-        # Baseline has no MPC decision data
-        decision = {}
+        # Baseline now returns its decision in the 'debug' field
+        if worker_result and 'response' in worker_result:
+            resp_body = worker_result['response']
+            decision = {
+                'resource_alloc': resp_body.get('debug', {}).get('resource_alloc', 1.0)
+            }
+        else:
+            decision = {}
         ctrl_latency = 0 # Native = 0 external controller overhead
         
     else:
