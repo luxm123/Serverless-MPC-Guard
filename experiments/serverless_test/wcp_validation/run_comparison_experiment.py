@@ -19,11 +19,6 @@ def generate_fixed_rps_arrivals(rps, duration_min):
     arrival_times = np.cumsum(intervals)
     return arrival_times
 
-def run_single_request(idx, strategy, start_time):
-    # ... (rest of the logic remains same, but using SLO_LATENCY_MS = 180)
-
-import pandas as pd
-
 def load_azure_trace(duration_min=30):
     """
     Returns a 30-minute request rate sequence (req/s) sampled from 
