@@ -128,8 +128,9 @@ class MPCGuardController(BaseController):
         # 系统辨识校准：将参考服务时间从 400ms 校准为 550ms，以匹配真实物理环境开销
         PHYSICAL_SERVICE_TIME = 550.0
         
+        # 将 alpha 调低至 0.01，追求 99% 的风险覆盖，极大增强抗抖动能力
         _, delta, _ = wcp_update(self.state, obs_p90, concurrency=concurrency, cpu=current_cpu, 
-                                 backlog=kwargs.get('backlog', 0), service_time_ms=PHYSICAL_SERVICE_TIME, task_type=task_type, alpha=0.05)
+                                 backlog=kwargs.get('backlog', 0), service_time_ms=PHYSICAL_SERVICE_TIME, task_type=task_type, alpha=0.01)
         
         rls = RLS.from_dict(self.state['rls_state'], n_features=11)
         
@@ -145,10 +146,9 @@ class MPCGuardController(BaseController):
                 best_cpu_mpc = test_cpu
                 break
         
-        # 2. 物理一致性底线 (Queue Stability Bound)
-        # 基于排队论：u * Throughput >= Backlog + Arrival
-        # 校准基准为 95 RPS/CPU，提供物理层面的安全保底
-        u_stable = (kwargs.get('backlog', 0) + future_concurrency) / 95.0
+        # 2. 物理一致性底线 (物理冗余版)
+        # 增加 1.15 的安全冗余系数，防止因“贴地飞行”导致的积压债务
+        u_stable = ((kwargs.get('backlog', 0) + future_concurrency) / 95.0) * 1.15
         
         # 3. 混合决策优化
         # 取 MPC 精细化控制与物理底线中的较大值，兼顾成本与稳定性
