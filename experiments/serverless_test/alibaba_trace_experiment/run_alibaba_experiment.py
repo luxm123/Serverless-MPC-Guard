@@ -209,17 +209,18 @@ if __name__ == "__main__":
     # 尝试加载负载，如果不存在则生成符合 Alibaba 统计特性的真实迹线
     if not os.path.exists(REAL_WORKLOAD_PATH):
         print(f"Workload file not found. Generating synthetic Alibaba-style trace...")
-        import numpy as np
-        np.random.seed(42)
+        # 局部导入 numpy 以避免与全局 time 冲突（如果之前有类似混淆）
+        import numpy as np_gen
+        np_gen.random.seed(42)
         steps = 1200
         # 模拟真实的混合负载：长时平稳 + 周期波动 + 随机毛刺
-        time = np.linspace(0, 4*np.pi, steps)
+        time_axis = np_gen.linspace(0, 4*np_gen.pi, steps)
         # 基础负载 (平稳期) + 周期性 (正弦) + 突发尖峰 (Spikes)
         base = 80
-        periodic = 50 * np.sin(time)
-        spikes = np.zeros(steps)
-        for _ in range(10): spikes[np.random.randint(0, steps)] = np.random.randint(150, 300)
-        noise = np.random.normal(0, 10, steps)
+        periodic = 50 * np_gen.sin(time_axis)
+        spikes = np_gen.zeros(steps)
+        for _ in range(10): spikes[np_gen.random.randint(0, steps)] = np_gen.random.randint(150, 300)
+        noise = np_gen.random.normal(0, 10, steps)
         
         workload_data = []
         for i in range(steps):
