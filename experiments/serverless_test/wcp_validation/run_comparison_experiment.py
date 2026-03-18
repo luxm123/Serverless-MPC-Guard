@@ -126,20 +126,6 @@ def run_single_request(idx, strategy, start_time):
         decision = {}
         ctrl_latency = 0 # Native = 0 external controller overhead
         
-    elif strategy == 'sinan':
-        # --- SINAN: Direct to Worker ---
-        # Worker handles 'sinan' strategy natively.
-        worker_result = invoke_worker_lambda(
-            decision={}, 
-            task={"id": idx, "priority": priority}, 
-            mode='auto',
-            strategy='sinan',
-            metrics=payload['metrics']
-        )
-        
-        # Sinan has no external controller decision data
-        decision = {}
-        ctrl_latency = 0 # No external controller overhead
     else:
         # --- Fallback External Controller Path (should not be hit by this script) ---
         # This path is for strategies that use an external controller lambda
@@ -379,34 +365,31 @@ def calc_priority_stats(data, use_server=False):
         out[p] = {'vio_rate': vio_rate, 'nonviol': nonviol, 'total': total}
     return out
 
-def print_comparison(baseline_data, sinan_data, mpc_data):
-    print("\n" + "="*85)
-    print(f"{'Metric':<25} | {'AWS Native (Baseline)':<20} | {'Sinan (Lit. 1)':<20} | {'MPC Integrated (Ours)':<20}")
-    print("-" * 85)
+def print_comparison(baseline_data, mpc_data):
+    print("\n" + "="*70)
+    print(f"{'Metric':<25} | {'HPA-Baseline (Jiagu)':<20} | {'MPC-Guard (Ours)':<20}")
+    print("-" * 70)
     
     b_avg, b_p90, b_alloc, b_vio, b_q1_thrpt, b_tail_std, b_overhead, b_server = calc_stats(baseline_data)
-    s_avg, s_p90, s_alloc, s_vio, s_q1_thrpt, s_tail_std, s_overhead, s_server = calc_stats(sinan_data)
     m_avg, m_p90, m_alloc, m_vio, m_q1_thrpt, m_tail_std, m_overhead, m_server = calc_stats(mpc_data)
     
-    print(f"{'Avg Latency (ms)':<25} | {b_avg:<20.2f} | {s_avg:<20.2f} | {m_avg:<20.2f}")
-    print(f"{'Avg Server Lat (ms)':<25} | {b_server:<20.2f} | {s_server:<20.2f} | {m_server:<20.2f}")
-    print(f"{'P90 Latency (ms)':<25} | {b_p90:<20.2f} | {s_p90:<20.2f} | {m_p90:<20.2f}")
-    print(f"{'Violation Rate (%)':<25} | {b_vio:<20.2f} | {s_vio:<20.2f} | {m_vio:<20.2f}")
-    print(f"{'Avg Resource Alloc':<25} | {b_alloc:<20.2f} | {s_alloc:<20.2f} | {m_alloc:<20.2f}")
-    print(f"{'Q1 Non-violating Count':<25} | {b_q1_thrpt:<20.0f} | {s_q1_thrpt:<20.0f} | {m_q1_thrpt:<20.0f}")
-    print(f"{'P99 Tail Std (ms)':<25} | {b_tail_std:<20.2f} | {s_tail_std:<20.2f} | {m_tail_std:<20.2f}")
-    print(f"{'Controller Overhead (%)':<25} | {b_overhead:<20.2f} | {s_overhead:<20.2f} | {m_overhead:<20.2f}")
-    print("="*85)
+    # Deployment Density = 1 / Avg. Allocation
+    b_density = 1.0 / b_alloc if b_alloc > 0 else 0
+    m_density = 1.0 / m_alloc if m_alloc > 0 else 0
     
-    # Check if MPC improved violations
-    if m_vio < b_vio and m_vio < s_vio:
-        print("\n[SUCCESS] MPC achieved the lowest violation rate.")
-    elif m_vio < b_vio:
-        print("\n[SUCCESS] MPC reduced violation rate compared to Baseline.")
-    elif m_q1_thrpt > b_q1_thrpt and m_q1_thrpt > s_q1_thrpt:
-        print("\n[SUCCESS] MPC achieved the highest Q1 throughput.")
-    else:
-        print("\n[NOTE] Review results for detailed comparison.")
+    print(f"{'QoS Violation Rate (%)':<25} | {b_vio:<20.2f} | {m_vio:<20.2f}")
+    print(f"{'Deployment Density':<25} | {b_density:<20.2f} | {m_density:<20.2f}")
+    print(f"{'Scheduling Overhead (ms)':<25} | {b_overhead:<20.2f} | {m_overhead:<20.2f}")
+    print(f"{'P90 Tail Latency (ms)':<25} | {b_p90:<20.2f} | {m_p90:<20.2f}")
+    print(f"{'Avg CPU Allocation':<25} | {b_alloc:<20.2f} | {m_alloc:<20.2f}")
+    print(f"{'Avg Server Latency (ms)':<25} | {b_server:<20.2f} | {m_server:<20.2f}")
+    print(f"{'E2E Avg Latency (ms)':<25} | {b_avg:<20.2f} | {m_avg:<20.2f}")
+    print("="*70)
+    
+    if m_vio < b_vio:
+        print(f"\n[SUCCESS] MPC-Guard reduced QoS violations by {b_vio - m_vio:.2f}%.")
+    if m_density > b_density:
+        print(f"[SUCCESS] MPC-Guard improved deployment density by {m_density/b_density:.2f}x.")
     
     b_prio_e2e = calc_priority_stats(baseline_data, use_server=False)
     s_prio_e2e = calc_priority_stats(sinan_data, use_server=False)
@@ -460,9 +443,7 @@ if __name__ == "__main__":
         run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50, arrival_rate=5.0)
         mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=conc, num_requests=num_requests, arrival_rate=arrival_rate)
         
-        # Mocking Sinan/Jiagu as empty for table consistency if needed, 
-        # or just compare two. Given user input, let's compare two clearly.
-        print_comparison(baseline_results, [], mpc_results) 
+        print_comparison(baseline_results, mpc_results) 
         
         # Additional Metrics for SOTA requirements
         _, _, b_alloc, _, _, _, b_ctrl, _ = calc_stats(baseline_results)

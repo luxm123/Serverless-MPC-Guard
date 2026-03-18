@@ -7,7 +7,6 @@ import random
 from decimal import Decimal
 from botocore.config import Config
 from src.wcp.wcp_update import wcp_update
-from src.controllers.sinan_controller import SinanController
 from src.controllers.hpa_baseline_controller import HpaBaselineController
 from src.wcp.wcp_update import slow_loop_calibration
 from src.wcp.wcp_update import detect_trend
@@ -427,23 +426,6 @@ def lambda_handler(event, context):
                 'uncertainty': 0.0
             },
             'meta': {'mode': 'static'}
-        }
-
-    elif strategy == 'sinan':
-        print("Strategy: Sinan (Lit. 1)")
-        # Use the simplified Sinan controller logic
-        sinan_controller = SinanController(target_slo_p90_ms=float(event.get('slo_limit', 500.0)))
-        decision = sinan_controller.get_decision(metrics)
-        return {
-            'decision': {
-                'shouldShed': False,
-                'degrade_plan': None,
-                'resource_alloc': decision.get('cpu_cores', 1.0),
-                'congestion_price': 0.0,
-                'p90_prediction': 0.0,
-                'uncertainty': 0.0
-            },
-            'meta': {'mode': 'sinan'}
         }
 
     # --- 2. Load State ---
