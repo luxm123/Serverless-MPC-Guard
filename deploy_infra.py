@@ -234,7 +234,7 @@ def wait_for_function_update(func_name):
         time.sleep(1)
     print("    Warning: Timeout waiting for update.")
 
-def deploy_lambda(func_name, folder, role_arn, runtime='python3.9', handler='lambda_function.lambda_handler', env_vars={}, extra_dirs=None):
+def deploy_lambda(func_name, folder, role_arn, runtime='python3.9', handler='lambda_function.lambda_handler', env_vars={}, extra_dirs=None, memory=128):
     print(f"Deploying Lambda: {func_name} ({runtime})...")
     
     if extra_dirs is None:
@@ -252,7 +252,7 @@ def deploy_lambda(func_name, folder, role_arn, runtime='python3.9', handler='lam
             Handler=handler,
             Code={'ZipFile': zip_content},
             Timeout=15,
-            MemorySize=128,
+            MemorySize=memory,
             Environment=env_config,
             TracingConfig=tracing_config
         )
@@ -272,6 +272,7 @@ def deploy_lambda(func_name, folder, role_arn, runtime='python3.9', handler='lam
                 Environment=env_config,
                 Runtime=runtime,
                 Handler=handler,
+                MemorySize=memory,
                 TracingConfig=tracing_config
             )
             wait_for_function_update(func_name)
@@ -285,6 +286,7 @@ def deploy_lambda(func_name, folder, role_arn, runtime='python3.9', handler='lam
                 Environment=env_config,
                 Runtime=runtime,
                 Handler=handler,
+                MemorySize=memory,
                 TracingConfig=tracing_config
             )
              wait_for_function_update(func_name)
@@ -462,7 +464,8 @@ if __name__ == '__main__':
         os.path.join(cwd, 'src'),
         os.path.join(cwd, 'benchmarks', 'function_bench')
     ]
-    worker_arn = deploy_lambda(WORKER_FUNC_NAME, os.path.join(cwd, 'lambdas', 'business_worker'), role_arn, extra_dirs=worker_extra)
+    # 使用 1024MB 内存以对齐实验方案 1
+    worker_arn = deploy_lambda(WORKER_FUNC_NAME, os.path.join(cwd, 'lambdas', 'business_worker'), role_arn, extra_dirs=worker_extra, memory=1024)
     
     # Recovery Worker 只需核心逻辑
     recovery_arn = deploy_lambda(RECOVERY_WORKER_NAME, os.path.join(cwd, 'lambdas', 'recovery_worker'), role_arn, 
