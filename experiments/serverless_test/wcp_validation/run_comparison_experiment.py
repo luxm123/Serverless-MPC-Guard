@@ -313,7 +313,7 @@ def query_cloudwatch_duration_metrics(start_ts, end_ts):
         return {'cw_p99_ms': None, 'cw_avg_ms': None}
 
 def calc_stats(data):
-    if not data: return 0,0,0,0,0,0,0
+    if not data: return 0,0,0,0,0,0,0,0
     
     # Filter for Latency Stats (only successful requests)
     success_data = [d for d in data if d.get('success', False)]
