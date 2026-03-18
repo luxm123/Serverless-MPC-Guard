@@ -194,8 +194,26 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
     
     phase_start = time.time()
     
+    def process_result(future):
+        try:
+            res = future.result()
+            results.append(res)
+            if not warm_up:
+                unc_val = res['uncertainty']
+                if isinstance(unc_val, dict): unc_val = unc_val.get('p90', 0)
+                
+                debug_info = ""
+                if res and 'response' in res and res['response'] and 'debug' in res['response']:
+                    dbg = res['response']['debug']
+                    if dbg:
+                        debug_info = f", PrevU={dbg.get('prev_u', '?')}, SLO={dbg.get('slo_limit', '?')}, Price={dbg.get('price', '?')}"
+                
+                # 实时打印每个请求的结果
+                print(f"[{strategy_name}] Req {res['id']}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Server={res['server_latency']:.1f}ms{debug_info}")
+        except Exception as e:
+            print(f"[ERROR] Request failed: {e}")
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
         for i, delay in enumerate(arrival_times):
             now = time.time() - phase_start
             wait = delay - now
@@ -203,27 +221,10 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
                 time.sleep(wait)
             
             f = executor.submit(run_single_request, i, strategy_name, phase_start)
-            futures.append(f)
+            f.add_done_callback(process_result)
             
-        for f in concurrent.futures.as_completed(futures):
-            try:
-                res = f.result()
-                results.append(res)
-                if not warm_up:
-                    unc_val = res['uncertainty']
-                    if isinstance(unc_val, dict): unc_val = unc_val.get('p90', 0)
-                    
-                    # This debug info parsing is fragile; worker might not return it.
-                    # Let's be more defensive.
-                    debug_info = ""
-                    if res and 'response' in res and res['response'] and 'debug' in res['response']:
-                        dbg = res['response']['debug']
-                        if dbg:
-                            debug_info = f", PrevU={dbg.get('prev_u', '?')}, SLO={dbg.get('slo_limit', '?')}, Price={dbg.get('price', '?')}"
-                    
-                    print(f"[{strategy_name}] Req {res['id']}: Alloc={res['alloc']:.2f}, Pred={res['pred_p90']:.0f}, Unc={unc_val:.0f}, E2E={res['e2e_latency']:.1f}ms, Ctrl={res['ctrl_latency']:.1f}ms{debug_info}")
-            except Exception as e:
-                print(f"[ERROR] Request failed in executor: {e}")
+    # 等待本阶段所有请求完成
+    print(f"\n>>> Phase {strategy_name} submission complete. Waiting for trailing requests...")
 
     phase_end = time.time()
     cw_metrics = query_cloudwatch_duration_metrics(phase_start, phase_end)
