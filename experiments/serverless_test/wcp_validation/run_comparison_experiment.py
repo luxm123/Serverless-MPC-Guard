@@ -182,13 +182,12 @@ def run_single_request(idx, strategy, start_time):
         "timestamp": t2
     }
 
-def run_phase(strategy_name, warm_up=False, max_workers=5, num_requests=NUM_REQUESTS, arrival_rate=ARRIVAL_RATE):
+def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, num_requests=100, arrival_rate=5.0):
     if warm_up:
         print(f"\n>>> Warming up WCP state ({strategy_name})...")
     else:
         print(f"\n>>> Starting Phase: {strategy_name}")
         
-    arrival_times = load_azure_trace()
     if arrival_times is None:
         arrival_times = generate_poisson_arrivals(arrival_rate, num_requests)
     results = []
