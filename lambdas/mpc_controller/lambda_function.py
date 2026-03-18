@@ -7,6 +7,8 @@ import random
 from decimal import Decimal
 from botocore.config import Config
 from src.wcp.wcp_update import wcp_update
+from src.controllers.sinan_controller import SinanController
+from src.controllers.aws_baseline_controller import AwsBaselineController
 from src.wcp.wcp_update import slow_loop_calibration
 from src.wcp.wcp_update import detect_trend
 from src.mpc.controller import MPCController
@@ -402,6 +404,29 @@ def lambda_handler(event, context):
             },
             'meta': {'mode': 'baseline'}
         }
+    elif strategy == 'baseline':
+        print("Strategy: AWS Baseline (Target Tracking)")
+        # This requires state to be passed between invocations for cooldown logic.
+        # For a stateless implementation, we'd need to persist last_scale times.
+        # As a simplification for this integration, we instantiate it fresh.
+        aws_controller = AwsBaselineController()
+        # The baseline controller needs the *current* allocation to make a decision.
+        # This is not available in the current event payload by default.
+        # We will assume a default of 1.0 for this stateless implementation.
+        current_alloc = float(event.get('last_alloc', 1.0))
+        decision = aws_controller.get_decision(metrics, current_alloc)
+        return {
+            'decision': {
+                'shouldShed': False,
+                'degrade_plan': None,
+                'resource_alloc': decision.get('cpu_cores', 1.0),
+                'congestion_price': 0.0,
+                'p90_prediction': 0.0,
+                'uncertainty': 0.0
+            },
+            'meta': {'mode': 'baseline'}
+        }
+
     elif strategy == 'static':
         print("Strategy: Static Priority")
         p = task.get('priority', 'standard')
@@ -418,6 +443,23 @@ def lambda_handler(event, context):
                 'uncertainty': 0.0
             },
             'meta': {'mode': 'static'}
+        }
+
+    elif strategy == 'sinan':
+        print("Strategy: Sinan (Lit. 1)")
+        # Use the simplified Sinan controller logic
+        sinan_controller = SinanController(target_slo_p90_ms=float(event.get('slo_limit', 500.0)))
+        decision = sinan_controller.get_decision(metrics)
+        return {
+            'decision': {
+                'shouldShed': False,
+                'degrade_plan': None,
+                'resource_alloc': decision.get('cpu_cores', 1.0),
+                'congestion_price': 0.0,
+                'p90_prediction': 0.0,
+                'uncertainty': 0.0
+            },
+            'meta': {'mode': 'sinan'}
         }
 
     wcp_mode = event.get('wcp_mode', 'strict')

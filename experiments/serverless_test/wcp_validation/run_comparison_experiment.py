@@ -82,15 +82,29 @@ def run_single_request(idx, strategy, start_time):
         decision = {}
         ctrl_latency = 0 # Native = 0 external controller overhead
         
+    elif strategy == 'sinan':
+        # --- SINAN: Direct to Worker ---
+        # Worker handles 'sinan' strategy natively.
+        worker_result = invoke_worker_lambda(
+            decision={}, 
+            task={"id": idx, "priority": priority}, 
+            mode='auto',
+            strategy='sinan',
+            metrics=payload['metrics']
+        )
+        
+        # Sinan has no external controller decision data
+        decision = {}
+        ctrl_latency = 0 # No external controller overhead
     else:
-        # --- LEGACY / LITERATURE 2: External MPC ---
-        # This path is kept only if we explicitly run 'external_mpc' strategy
-        # for comparison with Literature 2 specifically.
+        # --- Fallback External Controller Path (should not be hit by this script) ---
+        # This path is for strategies that use an external controller lambda
+        # before invoking the worker. It passes the strategy name to the controller.
         
         mode = 'strict'
         
         ctrl_start = time.time()
-        ctrl_result = invoke_controller_lambda(payload, mode=mode)
+        ctrl_result = invoke_controller_lambda(payload, mode=mode, strategy=strategy)
         ctrl_end = time.time()
         ctrl_latency = (ctrl_end - ctrl_start) * 1000
         
@@ -164,19 +178,25 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, num_requests=NUM_REQU
             futures.append(f)
             
         for f in concurrent.futures.as_completed(futures):
-            res = f.result()
-            results.append(res)
-            if not warm_up:
-                unc_val = res['uncertainty']
-                if isinstance(unc_val, dict): unc_val = unc_val.get('p90', 0)
-                
-                debug_info = ""
-                if 'response' in res and 'debug' in res['response']:
-                    dbg = res['response']['debug']
-                    debug_info = f", PrevU={dbg.get('prev_u', '?')}, SLO={dbg.get('slo_limit', '?')}, Price={dbg.get('price', '?')}"
-                
-                print(f"[{strategy_name}] Req {res['id']}: Alloc={res['alloc']:.2f}, Pred={res['pred_p90']:.0f}, Unc={unc_val:.0f}, E2E={res['e2e_latency']:.1f}ms, Ctrl={res['ctrl_latency']:.1f}ms{debug_info}")
-    
+            try:
+                res = f.result()
+                results.append(res)
+                if not warm_up:
+                    unc_val = res['uncertainty']
+                    if isinstance(unc_val, dict): unc_val = unc_val.get('p90', 0)
+                    
+                    # This debug info parsing is fragile; worker might not return it.
+                    # Let's be more defensive.
+                    debug_info = ""
+                    if res and 'response' in res and res['response'] and 'debug' in res['response']:
+                        dbg = res['response']['debug']
+                        if dbg:
+                            debug_info = f", PrevU={dbg.get('prev_u', '?')}, SLO={dbg.get('slo_limit', '?')}, Price={dbg.get('price', '?')}"
+                    
+                    print(f"[{strategy_name}] Req {res['id']}: Alloc={res['alloc']:.2f}, Pred={res['pred_p90']:.0f}, Unc={unc_val:.0f}, E2E={res['e2e_latency']:.1f}ms, Ctrl={res['ctrl_latency']:.1f}ms{debug_info}")
+            except Exception as e:
+                print(f"[ERROR] Request failed in executor: {e}")
+
     phase_end = time.time()
     cw_metrics = query_cloudwatch_duration_metrics(phase_start, phase_end)
     return results, cw_metrics
@@ -313,45 +333,50 @@ def calc_priority_stats(data, use_server=False):
         out[p] = {'vio_rate': vio_rate, 'nonviol': nonviol, 'total': total}
     return out
 
-def print_comparison(baseline_data, mpc_data):
-    print("\n" + "="*60)
-    print(f"{'Metric':<25} | {'AWS Native (Baseline)':<20} | {'MPC Integrated (Ours)':<20}")
-    print("-" * 60)
+def print_comparison(baseline_data, sinan_data, mpc_data):
+    print("\n" + "="*85)
+    print(f"{'Metric':<25} | {'AWS Native (Baseline)':<20} | {'Sinan (Lit. 1)':<20} | {'MPC Integrated (Ours)':<20}")
+    print("-" * 85)
     
     b_avg, b_p90, b_alloc, b_vio, b_q1_thrpt, b_tail_std, b_overhead, b_server = calc_stats(baseline_data)
+    s_avg, s_p90, s_alloc, s_vio, s_q1_thrpt, s_tail_std, s_overhead, s_server = calc_stats(sinan_data)
     m_avg, m_p90, m_alloc, m_vio, m_q1_thrpt, m_tail_std, m_overhead, m_server = calc_stats(mpc_data)
     
-    print(f"{'Avg Latency (ms)':<25} | {b_avg:<20.2f} | {m_avg:<20.2f}")
-    print(f"{'Avg Server Lat (ms)':<25} | {b_server:<20.2f} | {m_server:<20.2f}")
-    print(f"{'P90 Latency (ms)':<25} | {b_p90:<20.2f} | {m_p90:<20.2f}")
-    print(f"{'Violation Rate (%)':<25} | {b_vio:<20.2f} | {m_vio:<20.2f}")
-    print(f"{'Avg Resource Alloc':<25} | {b_alloc:<20.2f} | {m_alloc:<20.2f}")
-    print(f"{'Q1 Non-violating Count':<25} | {b_q1_thrpt:<20.0f} | {m_q1_thrpt:<20.0f}")
-    print(f"{'P99 Tail Std (ms)':<25} | {b_tail_std:<20.2f} | {m_tail_std:<20.2f}")
-    print(f"{'Controller Overhead (%)':<25} | {b_overhead:<20.2f} | {m_overhead:<20.2f}")
-    print("="*60)
+    print(f"{'Avg Latency (ms)':<25} | {b_avg:<20.2f} | {s_avg:<20.2f} | {m_avg:<20.2f}")
+    print(f"{'Avg Server Lat (ms)':<25} | {b_server:<20.2f} | {s_server:<20.2f} | {m_server:<20.2f}")
+    print(f"{'P90 Latency (ms)':<25} | {b_p90:<20.2f} | {s_p90:<20.2f} | {m_p90:<20.2f}")
+    print(f"{'Violation Rate (%)':<25} | {b_vio:<20.2f} | {s_vio:<20.2f} | {m_vio:<20.2f}")
+    print(f"{'Avg Resource Alloc':<25} | {b_alloc:<20.2f} | {s_alloc:<20.2f} | {m_alloc:<20.2f}")
+    print(f"{'Q1 Non-violating Count':<25} | {b_q1_thrpt:<20.0f} | {s_q1_thrpt:<20.0f} | {m_q1_thrpt:<20.0f}")
+    print(f"{'P99 Tail Std (ms)':<25} | {b_tail_std:<20.2f} | {s_tail_std:<20.2f} | {m_tail_std:<20.2f}")
+    print(f"{'Controller Overhead (%)':<25} | {b_overhead:<20.2f} | {s_overhead:<20.2f} | {m_overhead:<20.2f}")
+    print("="*85)
     
     # Check if MPC improved violations
-    if m_vio < b_vio:
+    if m_vio < b_vio and m_vio < s_vio:
+        print("\n[SUCCESS] MPC achieved the lowest violation rate.")
+    elif m_vio < b_vio:
         print("\n[SUCCESS] MPC reduced violation rate compared to Baseline.")
-    elif m_q1_thrpt > b_q1_thrpt:
-        print("\n[SUCCESS] MPC improved Q1 throughput compared to Baseline.")
-    elif m_vio == b_vio:
-        print("\n[NEUTRAL] Violation rates are identical.")
+    elif m_q1_thrpt > b_q1_thrpt and m_q1_thrpt > s_q1_thrpt:
+        print("\n[SUCCESS] MPC achieved the highest Q1 throughput.")
     else:
-        print("\n[NOTE] MPC had higher violation rate (possibly due to exploration or overhead).")
+        print("\n[NOTE] Review results for detailed comparison.")
     
     b_prio_e2e = calc_priority_stats(baseline_data, use_server=False)
+    s_prio_e2e = calc_priority_stats(sinan_data, use_server=False)
     m_prio_e2e = calc_priority_stats(mpc_data, use_server=False)
     b_prio_srv = calc_priority_stats(baseline_data, use_server=True)
+    s_prio_srv = calc_priority_stats(sinan_data, use_server=True)
     m_prio_srv = calc_priority_stats(mpc_data, use_server=True)
     
     print("\nPer-Priority Violation Rate (E2E):")
+    print(f"{'Priority':<10} | {'Baseline':<10} | {'Sinan':<10} | {'MPC':<10}")
     for p in ('platinum','gold','standard'):
-        print(f"{p:<10} | {b_prio_e2e[p]['vio_rate']:<10.2f} | {m_prio_e2e[p]['vio_rate']:<10.2f}")
+        print(f"{p:<10} | {b_prio_e2e[p]['vio_rate']:<10.2f} | {s_prio_e2e[p]['vio_rate']:<10.2f} | {m_prio_e2e[p]['vio_rate']:<10.2f}")
     print("Per-Priority Violation Rate (Server):")
+    print(f"{'Priority':<10} | {'Baseline':<10} | {'Sinan':<10} | {'MPC':<10}")
     for p in ('platinum','gold','standard'):
-        print(f"{p:<10} | {b_prio_srv[p]['vio_rate']:<10.2f} | {m_prio_srv[p]['vio_rate']:<10.2f}")
+        print(f"{p:<10} | {b_prio_srv[p]['vio_rate']:<10.2f} | {s_prio_srv[p]['vio_rate']:<10.2f} | {m_prio_srv[p]['vio_rate']:<10.2f}")
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -391,11 +416,14 @@ if __name__ == "__main__":
 
         print(f"\n--- Testing Baseline (AWS Native) @ {conc} ---")
         baseline_results, baseline_cw = run_phase('baseline', max_workers=conc, num_requests=num_requests, arrival_rate=arrival_rate)
+
+        print(f"\n--- Testing Sinan (Lit. 1) @ {conc} ---")
+        sinan_results, sinan_cw = run_phase('sinan', max_workers=conc, num_requests=num_requests, arrival_rate=arrival_rate)
         
         print(f"\n--- Testing MPC Integrated (Ours) @ {conc} ---")
         mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=conc, num_requests=num_requests, arrival_rate=arrival_rate)
         
-        print_comparison(baseline_results, mpc_results)
+        print_comparison(baseline_results, sinan_results, mpc_results)
         print("\nCloudWatch Function-level Metrics (Duration):")
-        print(f"{'CW Avg (ms)':<20}: Baseline={baseline_cw.get('cw_avg_ms')} | MPC={mpc_cw.get('cw_avg_ms')}")
-        print(f"{'CW p99 (ms)':<20}: Baseline={baseline_cw.get('cw_p99_ms')} | MPC={mpc_cw.get('cw_p99_ms')}")
+        print(f"{'CW Avg (ms)':<20}: Baseline={baseline_cw.get('cw_avg_ms')} | Sinan={sinan_cw.get('cw_avg_ms')} | MPC={mpc_cw.get('cw_avg_ms')}")
+        print(f"{'CW p99 (ms)':<20}: Baseline={baseline_cw.get('cw_p99_ms')} | Sinan={sinan_cw.get('cw_p99_ms')} | MPC={mpc_cw.get('cw_p99_ms')}")
