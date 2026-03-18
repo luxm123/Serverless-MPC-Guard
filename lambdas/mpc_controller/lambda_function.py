@@ -8,7 +8,7 @@ from decimal import Decimal
 from botocore.config import Config
 from src.wcp.wcp_update import wcp_update
 from src.controllers.sinan_controller import SinanController
-from src.controllers.aws_baseline_controller import AwsBaselineController
+from src.controllers.hpa_baseline_controller import HpaBaselineController
 from src.wcp.wcp_update import slow_loop_calibration
 from src.wcp.wcp_update import detect_trend
 from src.mpc.controller import MPCController
@@ -390,41 +390,25 @@ def lambda_handler(event, context):
     enable_feedback = event.get('enable_feedback', True)
     state_id = event.get('state_id', 'global_params')
     
-    # If not MPC, we can return early or mock the result
     if strategy == 'baseline':
-        print("Strategy: Baseline (No MPC)")
-        return {
-            'decision': {
-                'shouldShed': False,
-                'degrade_plan': None,
-                'resource_alloc': 1.0, # Full resource
-                'congestion_price': 0.0,
-                'p90_prediction': 0.0,
-                'uncertainty': 0.0
-            },
-            'meta': {'mode': 'baseline'}
-        }
-    elif strategy == 'baseline':
-        print("Strategy: AWS Baseline (Target Tracking)")
-        # This requires state to be passed between invocations for cooldown logic.
-        # For a stateless implementation, we'd need to persist last_scale times.
-        # As a simplification for this integration, we instantiate it fresh.
-        aws_controller = AwsBaselineController()
-        # The baseline controller needs the *current* allocation to make a decision.
-        # This is not available in the current event payload by default.
-        # We will assume a default of 1.0 for this stateless implementation.
+        print("Strategy: HPA-Baseline (Jiagu-ATC'24 Style)")
+        # Jiagu-ATC'24 Baseline: 80% CPU threshold, 15s window
+        hpa_controller = HpaBaselineController(target_utilization=0.8, window_sec=15)
+        
+        # 传递当前分配以维持状态（Lambda 是无状态的，我们通过 event 传递 last_alloc）
         current_alloc = float(event.get('last_alloc', 1.0))
-        decision = aws_controller.get_decision(metrics, current_alloc)
+        decision = hpa_controller.get_decision(metrics, current_alloc)
+        
         return {
             'decision': {
                 'shouldShed': False,
                 'degrade_plan': None,
-                'resource_alloc': decision.get('cpu_cores', 1.0),
+                'resource_alloc': float(decision.get('cpu_cores', 1.0)),
                 'congestion_price': 0.0,
                 'p90_prediction': 0.0,
                 'uncertainty': 0.0
             },
-            'meta': {'mode': 'baseline'}
+            'meta': {'mode': 'hpa_baseline'}
         }
 
     elif strategy == 'static':
@@ -462,6 +446,7 @@ def lambda_handler(event, context):
             'meta': {'mode': 'sinan'}
         }
 
+    # --- 2. Load State ---
     wcp_mode = event.get('wcp_mode', 'strict')
     include_scores = (wcp_mode in {'strict'})
 

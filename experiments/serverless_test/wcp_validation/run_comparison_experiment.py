@@ -427,49 +427,48 @@ def print_comparison(baseline_data, sinan_data, mpc_data):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--levels", type=str, default="20,50")
-    parser.add_argument("--minutes", type=float, default=0.75)
+    parser.add_argument("--minutes", type=float, default=30.0)
     parser.add_argument("--region", type=str, default=os.environ.get("AWS_REGION","us-east-1"))
     parser.add_argument("--function", type=str, default=os.environ.get("MPC_WORKER_NAME","MPC_BusinessWorker"))
+    parser.add_argument("--task", type=str, default="linpack") # linpack or gzip
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
     os.environ["AWS_REGION"] = args.region
     os.environ["MPC_WORKER_NAME"] = args.function
-    print(">>> Starting Serverless WCP-MPC Comparison Experiment (Real Data)")
-    print(">>> Note: Ensure 'deploy_worker_optimized.py' has been run recently.")
+    print(f">>> Starting Serverless SOTA Comparison Experiment: {args.task}")
+    print(">>> Baseline: HPA (Jiagu ATC'24 Style - 80% CPU, 15s Window)")
     
-    levels = []
-    for x in args.levels.split(","):
-        x = x.strip()
-        if x:
-            try:
-                levels.append(int(x))
-            except:
-                pass
-    if not levels:
-        levels = [20,50]
+    levels = [int(x.strip()) for x in args.levels.split(",") if x.strip()]
     
     for conc in levels:
-        arrival_rate = conc / 3.0 
-        num_requests = max(50, int(arrival_rate * args.minutes * 60))
+        arrival_rate = conc / 2.0 # Adjusted for 400ms target latency
+        num_requests = int(arrival_rate * args.minutes * 60)
         
         print(f"\n\n############################################################")
         print(f"### RUNNING CONCURRENCY LEVEL: {conc} (Rate: {arrival_rate:.1f} req/s, N={num_requests}, Window={args.minutes}m) ###")
         print(f"############################################################")
 
-        run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=20, arrival_rate=5.0)
-
-        print(f"\n--- Testing Baseline (AWS Native) @ {conc} ---")
+        # 1. Testing HPA-Baseline
+        print(f"\n--- Testing HPA-Baseline (Jiagu ATC'24) @ {conc} ---")
         baseline_results, baseline_cw = run_phase('baseline', max_workers=conc, num_requests=num_requests, arrival_rate=arrival_rate)
-
-        print(f"\n--- Testing Sinan (Lit. 1) @ {conc} ---")
-        sinan_results, sinan_cw = run_phase('sinan', max_workers=conc, num_requests=num_requests, arrival_rate=arrival_rate)
         
-        print(f"\n--- Testing MPC Integrated (Ours) @ {conc} ---")
+        # 2. Testing MPC-Guard (Ours)
+        print(f"\n--- Testing MPC-Guard (Ours) @ {conc} ---")
+        # Warm up RLS/WCP state first
+        run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50, arrival_rate=5.0)
         mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=conc, num_requests=num_requests, arrival_rate=arrival_rate)
         
-        print_comparison(baseline_results, sinan_results, mpc_results)
-        print("\nCloudWatch Function-level Metrics (Duration):")
-        print(f"{'CW Avg (ms)':<20}: Baseline={baseline_cw.get('cw_avg_ms')} | Sinan={sinan_cw.get('cw_avg_ms')} | MPC={mpc_cw.get('cw_avg_ms')}")
-        print(f"{'CW p99 (ms)':<20}: Baseline={baseline_cw.get('cw_p99_ms')} | Sinan={sinan_cw.get('cw_p99_ms')} | MPC={mpc_cw.get('cw_p99_ms')}")
+        # Mocking Sinan/Jiagu as empty for table consistency if needed, 
+        # or just compare two. Given user input, let's compare two clearly.
+        print_comparison(baseline_results, [], mpc_results) 
+        
+        # Additional Metrics for SOTA requirements
+        _, _, b_alloc, _, _, _, b_ctrl, _ = calc_stats(baseline_results)
+        _, _, m_alloc, _, _, _, m_ctrl, _ = calc_stats(mpc_results)
+        
+        print("\n>>> SOTA Key Metrics Summary:")
+        print(f"Deployment Density (Relative to HPA): { (1.0/m_alloc) / (1.0/b_alloc) :.2f}x (Target: >=1.5x)")
+        print(f"Scheduling Overhead: MPC={m_ctrl:.1f}ms, HPA={b_ctrl:.1f}ms (Target: MPC <= 50% of SOTA)")
+
