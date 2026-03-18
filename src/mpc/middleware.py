@@ -557,18 +557,27 @@ class MPCMiddleware:
         CRITICAL FIX for Distributed Amnesia (Flapping).
         """
         try:
-            # We use update_item to modify nested fields without overwriting the whole item (weights etc)
+            # Safer update: initialize params if it doesn't exist
+            # Note: params.last_alloc needs params to be a map.
+            # We use if_not_exists to handle the first-time creation.
             dynamodb.update_item(
                 TableName=TABLE_NAME,
                 Key={'id': {'S': self.state_id}},
-                UpdateExpression="SET params.last_alloc = :la, params.shadow_price = :sp, shadow_price = :sp_top, params.p90_belief = :p90, version = :v, last_updated = :t",
+                UpdateExpression=(
+                    "SET #p = if_not_exists(#p, :empty_map), "
+                    "#p.last_alloc = :la, #p.shadow_price = :sp, "
+                    "shadow_price = :sp_top, #p.p90_belief = :p90, "
+                    "version = :v, last_updated = :t"
+                ),
+                ExpressionAttributeNames={'#p': 'params'},
                 ExpressionAttributeValues={
                     ':la': {'N': str(float(params.get('last_alloc', 1.0)))},
                     ':sp': {'N': str(float(params.get('shadow_price', 0.0)))},
                     ':sp_top': {'N': str(float(params.get('shadow_price', 0.0)))},
                     ':p90': {'N': str(float(params.get('p90_belief', 100.0)))},
                     ':v': {'N': str(int(version + 1))},
-                    ':t': {'N': str(time.time())}
+                    ':t': {'N': str(time.time())},
+                    ':empty_map': {'M': {}}
                 }
             )
             print(f"[Middleware] State Saved to DB: ID={self.state_id}, Alloc={params.get('last_alloc', 1.0)}")

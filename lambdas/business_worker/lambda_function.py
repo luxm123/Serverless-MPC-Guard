@@ -150,6 +150,13 @@ def lambda_handler(event, context):
     
     end_time = time.time()
     latency_ms = (end_time - start_time) * 1000.0
+
+    # --- 3. 反馈更新 (Feedback Loop) ---
+    if _MIDDLEWARE:
+        # 确保加载了状态（如果之前没调用 decide 的话）
+        _MIDDLEWARE._load_state()
+        # 无论什么策略，都更新全局 P90 信仰，以便后续决策参考
+        _MIDDLEWARE.update_metrics({'latency': latency_ms})
     
     return {
         'statusCode': 200,
