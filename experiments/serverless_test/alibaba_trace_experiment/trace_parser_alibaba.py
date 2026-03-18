@@ -44,7 +44,7 @@ if __name__ == "__main__":
     root_dir = os.path.abspath(os.path.join(base_dir, "../../../"))
     
     # 原始数据路径
-    trace_file = os.path.join(root_dir, "benchmarks/alibaba-cluster-trace-v2018/batch_instance.csv")
+    trace_file = os.path.join(root_dir, "benchmarks/clusterdata/cluster-trace-v2018/batch_instance.csv")
     # 输出的负载文件路径
     output_json = os.path.join(base_dir, "alibaba_workload.json")
 
