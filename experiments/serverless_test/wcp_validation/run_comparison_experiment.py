@@ -389,20 +389,18 @@ def print_comparison(baseline_data, mpc_data):
         print(f"[SUCCESS] MPC-Guard improved deployment density by {m_density/b_density:.2f}x.")
     
     b_prio_e2e = calc_priority_stats(baseline_data, use_server=False)
-    s_prio_e2e = calc_priority_stats(sinan_data, use_server=False)
     m_prio_e2e = calc_priority_stats(mpc_data, use_server=False)
     b_prio_srv = calc_priority_stats(baseline_data, use_server=True)
-    s_prio_srv = calc_priority_stats(sinan_data, use_server=True)
     m_prio_srv = calc_priority_stats(mpc_data, use_server=True)
     
     print("\nPer-Priority Violation Rate (E2E):")
-    print(f"{'Priority':<10} | {'Baseline':<10} | {'Sinan':<10} | {'MPC':<10}")
+    print(f"{'Priority':<10} | {'Baseline':<10} | {'MPC':<10}")
     for p in ('platinum','gold','standard'):
-        print(f"{p:<10} | {b_prio_e2e[p]['vio_rate']:<10.2f} | {s_prio_e2e[p]['vio_rate']:<10.2f} | {m_prio_e2e[p]['vio_rate']:<10.2f}")
+        print(f"{p:<10} | {b_prio_e2e[p]['vio_rate']:<10.2f} | {m_prio_e2e[p]['vio_rate']:<10.2f}")
     print("Per-Priority Violation Rate (Server):")
-    print(f"{'Priority':<10} | {'Baseline':<10} | {'Sinan':<10} | {'MPC':<10}")
+    print(f"{'Priority':<10} | {'Baseline':<10} | {'MPC':<10}")
     for p in ('platinum','gold','standard'):
-        print(f"{p:<10} | {b_prio_srv[p]['vio_rate']:<10.2f} | {s_prio_srv[p]['vio_rate']:<10.2f} | {m_prio_srv[p]['vio_rate']:<10.2f}")
+        print(f"{p:<10} | {b_prio_srv[p]['vio_rate']:<10.2f} | {m_prio_srv[p]['vio_rate']:<10.2f}")
 
 def parse_args():
     parser = argparse.ArgumentParser()
