@@ -51,17 +51,16 @@ def lambda_handler(event, context):
             result = {"status": "success", "type": "pyaes", "val": res}
             
         elif task_type == 'linpack':
-            # 极速校准：大幅降低计算量以对齐 180ms QoS
-            # 目标：0.5 CPU 下约 80-100ms
-            n = int(500000 * scale)
+            # 终极校准：n=50,000，目标执行时间 80ms 左右
+            n = int(50000 * scale)
             res = 0.0
             for i in range(n):
                 res += (i * 0.0001)
             result = {"status": "success", "type": "linpack", "val": res}
             
         elif task_type == 'gzip':
-            # 极速校准：目标 0.5 CPU 下约 100-120ms
-            n = int(600000 * scale)
+            # 终极校准：n=60,000，目标执行时间 100ms 左右
+            n = int(60000 * scale)
             res = 0
             for i in range(n):
                 res = (res + i) % 123456
