@@ -51,18 +51,18 @@ def lambda_handler(event, context):
             result = {"status": "success", "type": "pyaes", "val": res}
             
         elif task_type == 'linpack':
-            # 校准：1.0 CPU 下约 400ms (SOTA 标准)
-            # 在 1.0 CPU 下，n 设定为 12000000 左右
-            n = int(12000000 * scale)
+            # 实验 1 校准：1.0 CPU 下约 50ms -> 0.5 CPU (1GB) 下约 100ms
+            # 满足饱和 10 RPS (1000ms / 100ms = 10)
+            n = int(3000000 * scale)
             res = 0.0
             for i in range(n):
                 res += (i * 0.0001)
             result = {"status": "success", "type": "linpack", "val": res}
             
         elif task_type == 'gzip':
-            # 校准：1.0 CPU 下约 400ms (SOTA 标准)
-            # 模拟压缩大量数据
-            n = int(10000000 * scale)
+            # 实验 1 校准：1.0 CPU 下约 62.5ms -> 0.5 CPU (1GB) 下约 125ms
+            # 满足饱和 8 RPS (1000ms / 125ms = 8)
+            n = int(3200000 * scale)
             res = 0
             for i in range(n):
                 res = (res + i) % 123456
