@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        debug_info = {'version': '20260319_v8', 'state_id': self.state_id}
+        debug_info = {'version': '20260319_v9', 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
         state, version = self._load_state()
@@ -125,6 +125,12 @@ class MPCMiddleware:
             
         # Ensure last_alloc is present and defaults to 0.8
         last_alloc = float(state.get('last_alloc', 0.8) or 0.8)
+        
+        # 破冰逻辑：如果从数据库读到了 1.0，强行将其重置为 0.8 以打破死锁
+        if last_alloc > 0.99:
+            last_alloc = 0.8
+            print(f"[Middleware] Breaking 1.0 deadlock, resetting to 0.8")
+            
         state['last_alloc'] = last_alloc
         debug_info['loaded_alloc'] = last_alloc
 
@@ -359,8 +365,8 @@ class MPCMiddleware:
         state['shadow_price'] = lam
         _L1_CACHE['params'] = state # Update cache reference
         
-        # Metadata update for version 8
-        debug_info['version'] = '20260319_v8'
+        # Metadata update for version 9
+        debug_info['version'] = '20260319_v9'
         debug_info['new_alloc'] = new_alloc
         debug_info['prev_alloc'] = last_alloc
         
