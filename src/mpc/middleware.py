@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v23'
+        current_ver = '20260319_v24'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
@@ -122,12 +122,12 @@ class MPCMiddleware:
         if not state or state.get('version') != current_ver:
             state = self._get_default_params()
             state['version'] = current_ver
-            state['last_alloc'] = 0.5 
+            state['last_alloc'] = 0.3 # v24: 从更低位开始探测
             state['shadow_price'] = 0.0
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v23] NUCLEAR RESET: Scientific Refactoring (Pure Vertical Scaling).")
+            print(f"[Middleware-v24] NUCLEAR RESET: Outlier filtering enabled.")
         else:
             debug_info['state_source'] = 'dynamodb'
             

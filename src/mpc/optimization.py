@@ -214,38 +214,41 @@ class Optimizer:
         w2 = 15.0
         grad_waste = 2.0 * w2 * prev_u
         
-        # v23: 彻底重构 - 移除干扰项，回归 Latency-Resource 博弈核心
-        # 1. Tracking Error Gradient (基于 WCP 预测的风险拉力)
+        # v24: 系统性重构 - 区分“可控延迟”与“环境噪声”
+        # 1. Tracking Error Gradient (风险拉力)
         grad_track = 0.0
         if ref_latency is not None:
-            # 使用 WCP 提供的 pred_upper (含不确定性边界)
-            diff = (pred_upper - ref_latency) / max(1.0, slo_limit)
+            # WCP 提供的 pred_upper。如果 WCP 预测值远超 1.5x SLO，
+            # 我们认为 WCP 受到了环境噪声污染，进行强制平滑。
+            safe_pred = min(pred_upper, ref_latency * 1.3) 
+            diff = (safe_pred - ref_latency) / max(1.0, slo_limit)
             grad_track = -1.0 * diff
             
         # 2. Utility Gradient (资源回收拉力)
-        # 使用二次方惩罚，w2=10.0
-        w2 = 10.0
-        grad_waste = 2.0 * w2 * prev_u
+        # v24: 非线性回收。当 u 越高，回收压力呈平方级增加
+        # w2_base = 15.0
+        # u=0.5 -> grad=15.0; u=1.0 -> grad=60.0
+        w2_base = 15.0
+        grad_waste = 2.0 * w2_base * (prev_u ** 2) * 4.0 
         
-        # 3. 风险梯度 (WCP 提供的概率保证项)
-        risk_weight = 0.5
+        # 3. 风险梯度
+        risk_weight = 0.1
         
-        # v23: 科学合力计算
-        # 移除 grad_congestion 和 grad_price，因为它们在 Serverless 垂直扩容中是误导性的
+        # v24: 合力计算
         grad = 2.0 * grad_track + risk_weight * grad_risk + grad_waste
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Asymmetric Rate Limiting (v23) ---
-        # 爬坡可以快，但要可控；回收必须快
-        max_increase = 0.10
+        # --- Physical Rate Limiting (v24) ---
+        # 爬坡上限收紧到 0.05，确保稳定性
+        max_increase = 0.05
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
             
-        # DEBUG: 详情 (v23)
-        print(f"[MPC-DEBUG-v23] u:{prev_u:.2f}->{u_new:.2f} | WCP_Track:{2.0*grad_track:.2f} Waste:{grad_waste:.2f} | Total:{grad:.2f}")
+        # DEBUG: 详情 (v24)
+        print(f"[MPC-DEBUG-v24] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} W:{grad_waste:.2f} | Total:{grad:.2f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0

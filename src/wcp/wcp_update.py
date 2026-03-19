@@ -152,32 +152,30 @@ class RLS:
 def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, task_type='image_processing', alpha=0.1):
     """
     Strict WCP Update for P90 Latency.
-
-    Args:
-        state (dict): Persistent state (RLS params, score history, last_prediction).
-        p90_latency (float): The current observed P90 latency.
-        concurrency (float): Current request concurrency.
-        cpu (float): Current CPU limit.
-        backlog (float): Current task backlog.
-        service_time_ms (float): Current average service time.
-        alpha (float): Target error rate.
-
-    Returns:
-        tuple: (prediction_next, uncertainty_radius, debug_info)
+    v24: Added Outlier Rejection to prevent Margin Poisoning.
     """
     y_k = float(p90_latency)
     y_hat_k = float(state.get('last_prediction', 0.0))
 
+    # --- v24: Outlier Rejection ---
+    # 如果实际延迟极其离谱 (例如 > 800ms)，我们认为这是不可控的冷启动/环境噪声。
+    # 不允许这种噪声污染 WCP 的不确定性边界。
+    is_outlier = False
+    if y_k > 800.0:
+        is_outlier = True
+        
     # Non-conformity score is the absolute error
-    # v22 ROOT CAUSE FIX: Error Clipping. 
-    # 不允许冷启动产生的巨大误差 (如 300ms) 彻底破坏不确定性边界。
-    # 我们将单次误差对 Margin 的贡献截断在 50ms。
     raw_score = abs(y_k - y_hat_k)
-    score_k = min(50.0, raw_score) 
+    # v24: 进一步收紧误差截断，最大误差贡献限制在 30ms
+    score_k = min(30.0, raw_score) 
     
     if 'scores' not in state:
         state['scores'] = []
-    state['scores'].append(score_k)
+    
+    if not is_outlier:
+        state['scores'].append(score_k)
+    else:
+        print(f"[WCP-v24] Outlier Detected ({y_k:.1f}ms). Ignoring for margin update.")
 
     # --- Adaptive Window for Scores ---
     prev_avg = sum(state['scores'][:-1]) / max(1, len(state['scores']) - 1) if len(state['scores']) > 1 else score_k
