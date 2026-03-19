@@ -284,28 +284,30 @@ class Optimizer:
         # v18: 极度强化资源浪费惩罚 (40.0)
         grad_waste_dynamic = 40.0 * prev_u 
         
-        # 风险梯度衰减：如果延迟只是一点点超标 (例如 < 250ms)，不许大幅加资源
+        # 风险梯度衰减 (v19: 智能回归)
         risk_attenuation = 1.0
-        if pred_upper < 250.0:
-            risk_attenuation = 0.01 # v18: 近乎无视 WCP 的悲观预测
+        # 如果预测值已经显著超过 SLO (180ms)，必须信任 WCP 的预警
+        if pred_upper < 220.0:
+            risk_attenuation = 0.2 # 轻微波动时保持冷静
+        else:
+            risk_attenuation = 1.0 # 真正危险时全速响应
             
         # 极弱风险权重，极强资源回收
-        # v18: 强化 40.0x 浪费梯度
-        grad = 2.0 * grad_track + 0.05 * risk_attenuation * grad_risk + 40.0 * grad_waste_dynamic + grad_price + grad_congestion
+        # v19: 稍微平衡一下，惩罚项降到 30.0，给 WCP 留出响应空间
+        grad = 2.0 * grad_track + 0.1 * risk_attenuation * grad_risk + 30.0 * grad_waste_dynamic + grad_price + grad_congestion
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Physical Rate Limiting (v18) ---
-        # 物理限制单次增加量，无论梯度多大，单步增加不得超过 0.03 (极度保守)
-        # 允许瞬间减小 (回收资源)
-        max_increase = 0.03
+        # --- Physical Rate Limiting (v19) ---
+        # 恢复响应速度：单步增加上限从 0.03 提升到 0.10
+        max_increase = 0.10
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
             
-        # DEBUG: 终极详情 (v18)
-        print(f"[MPC-DEBUG-v18] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{0.05*grad_risk:.2f} W:{40.0*grad_waste_dynamic:.2f} | Total:{grad:.2f}")
+        # DEBUG: 终极详情 (v19)
+        print(f"[MPC-DEBUG-v19] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{0.1*risk_attenuation*grad_risk:.2f} W:{30.0*grad_waste_dynamic:.2f} | Total:{grad:.2f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
