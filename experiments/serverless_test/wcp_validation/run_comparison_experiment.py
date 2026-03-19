@@ -433,9 +433,9 @@ if __name__ == "__main__":
     run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50) # Warm up
     mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=20, arrival_times=arrival_times)
     
-    # 3. Dummy Baseline Results for Comparison Function compatibility
-    print(f"\n--- Skipping HPA-Baseline (Blocked) ---")
-    baseline_results = []
+    # 3. Run HPA-Baseline (Jiagu Style)
+    print(f"\n--- Running HPA-Baseline (Jiagu-ATC'24) ---")
+    baseline_results, baseline_cw = run_phase('baseline', max_workers=20, arrival_times=arrival_times)
     
     # 4. Final Comparison
     print_comparison(baseline_results, mpc_results)
