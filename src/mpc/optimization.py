@@ -221,9 +221,9 @@ class Optimizer:
             
         # 2. Utility Gradient (资源回收拉力)
         # v25: 线性 + 二次方 混合惩罚，确保在高位有绝对压制力
-        # v26: 加大 w2 到 30.0，并在 u > 0.8 时增加额外的非线性压力
-        w2 = 30.0
-        grad_waste = w2 * (prev_u + 10.0 * (prev_u ** 3)) # Cubic penalty for u=1.0
+        # v27: 回归稳健。减小 w2 到 10.0，并将立方项改为二次项，降低下坠速度
+        w2 = 10.0
+        grad_waste = w2 * (prev_u + 2.0 * (prev_u ** 2))
         
         # 3. 风险梯度 (WCP 提供的概率保证)
         # v25: 核心逻辑 - 基于实际违反率衰减风险权重
@@ -237,37 +237,41 @@ class Optimizer:
             slo_viol = float(actual_metrics.get('slo_violation_rate', 0.0))
         
         # 动态风险权重：只有真正出事时才全额信任 WCP
-        # v26: 进一步收紧风险权重
-        dynamic_risk_weight = 0.3 * (slo_viol + 0.02) 
-        if prev_u > 0.8:
-            dynamic_risk_weight *= 0.05 # 在高位时极其质疑风险，强制回归
+        # v27: 恢复部分风险权重 (0.3 -> 0.8)，确保在 180ms 附近有足够的托举力
+        dynamic_risk_weight = 0.8 * (slo_viol + 0.05) 
+        if prev_u > 0.9:
+            dynamic_risk_weight *= 0.2 # 在高位时依然保持警惕，但不要直接降为 0.05
             
         # v25: 强制向下梯度 (防止死锁)
-        # v26: 只要违反率极低，就注入巨大的回收动力
+        # v27: 减弱强制回收力度 (100 -> 20)，避免“恐慌性缩容”
         forced_recovery = 0.0
         if prev_u > 0.9 and slo_viol < 0.01:
-            forced_recovery = 100.0 # Double from v25.1
+            forced_recovery = 20.0 
             
         # v25: 终极合力计算
         grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + forced_recovery
         
         # Update Step
-        # v26: Increase eta for faster recovery when grad is high
+        # v27: 只有在需要“救火”（上升）时才增加步长，回收时保持稳定步长
         step_eta = eta
-        if grad > 50.0:
+        if grad < -50.0: # Negative grad means UPWARD scaling (Risk/Tracking dominates)
             step_eta *= 2.0
             
         step = step_eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Physical Rate Limiting (v26) ---
-        # Allow fast decrease, slow increase
-        max_increase = 0.05
+        # --- Physical Rate Limiting (v27) ---
+        # v27: 允许快速上升 (0.2)，严格限制下降 (0.1)
+        max_increase = 0.20
+        max_decrease = 0.10
+        
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
+        elif u_new < prev_u - max_decrease:
+            u_new = prev_u - max_decrease
             
-        # DEBUG: 详情 (v26)
-        print(f"[MPC-DEBUG-v26] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.1f} R:{dynamic_risk_weight*grad_risk:.1f} W:{grad_waste:.1f} F:{forced_recovery:.1f} | Total:{grad:.1f}")
+        # DEBUG: 详情 (v27)
+        print(f"[MPC-DEBUG-v27] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.1f} R:{dynamic_risk_weight*grad_risk:.1f} W:{grad_waste:.1f} F:{forced_recovery:.1f} | Total:{grad:.1f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0

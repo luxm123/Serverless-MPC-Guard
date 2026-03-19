@@ -93,22 +93,21 @@ class Scheduler:
         price_high = float(system_state.get('sched_price_high', 500.0)) 
         price_med = float(system_state.get('sched_price_med', 50.0))
         
-        if not is_emergency:
-            if price >= price_high:
-                max_delta *= 2.0 # Allow 2x faster resource change
-            elif price >= price_med:
-                max_delta *= 1.5 # Allow 1.5x faster resource change
+        # v27: Asymmetric max_delta
+        # Scale UP can be aggressive (0.5), Scale DOWN must be conservative (0.1)
+        max_delta_up = 0.5 if is_emergency else 0.2
+        max_delta_down = 0.1 # Strictly limit downward speed
             
         delta = resource_alloc - prev_u
         
         # DEBUG: Trace clamping
         if current_backlog is not None and current_backlog > 10.0:
-            print(f"[MPC-SCHED-DEBUG] Pre-Clamp: u_opt={resource_alloc:.4f}, prev={prev_u:.4f}, delta={delta:.4f}, max_delta={max_delta}")
+            print(f"[MPC-SCHED-DEBUG] Pre-Clamp: u_opt={resource_alloc:.4f}, prev={prev_u:.4f}, delta={delta:.4f}, up={max_delta_up}, down={max_delta_down}")
 
-        if delta > max_delta:
-            resource_alloc = prev_u + max_delta
-        elif delta < -max_delta:
-            resource_alloc = prev_u - max_delta
+        if delta > max_delta_up:
+            resource_alloc = prev_u + max_delta_up
+        elif delta < -max_delta_down:
+            resource_alloc = prev_u - max_delta_down
             
         # Ensure resource_alloc does not exceed 1.0 or drop below 0.0
         resource_alloc = max(0.01, min(1.0, resource_alloc))
