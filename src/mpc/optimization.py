@@ -232,8 +232,13 @@ class Optimizer:
         # v25: 核心逻辑 - 基于实际违反率衰减风险权重
         # 如果实际没有违反 QoS，WCP 的悲观预测应该被降权
         slo_viol = 0.0
-        if metrics:
-            slo_viol = float(metrics.get('slo_violation_rate', 0.0))
+        # v25.1 FIX: 从 state 中正确提取 metrics
+        actual_metrics = {}
+        if isinstance(state, dict):
+            actual_metrics = state.get('metrics', {})
+            
+        if actual_metrics:
+            slo_viol = float(actual_metrics.get('slo_violation_rate', 0.0))
         
         # 动态风险权重：只有真正出事时才全额信任 WCP
         dynamic_risk_weight = 0.5 * (slo_viol + 0.05) 
@@ -258,8 +263,8 @@ class Optimizer:
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
             
-        # DEBUG: 详情 (v25)
-        print(f"[MPC-DEBUG-v25] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.1f} R:{dynamic_risk_weight*grad_risk:.1f} W:{grad_waste:.1f} F:{forced_recovery:.1f} | Total:{grad:.1f}")
+        # DEBUG: 详情 (v25.1)
+        print(f"[MPC-DEBUG-v25.1] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.1f} R:{dynamic_risk_weight*grad_risk:.1f} W:{grad_waste:.1f} F:{forced_recovery:.1f} | Total:{grad:.1f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
