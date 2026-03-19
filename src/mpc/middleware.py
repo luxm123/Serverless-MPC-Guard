@@ -136,18 +136,8 @@ class MPCMiddleware:
         # Hydrate Controller
         self._hydrate_controller(state)
         
-        # WCP Update (Prediction)
-        # Note: We run WCP locally for prediction, but we don't save RLS state synchronously
-        # to avoid high latency. RLS state changes are small and can be approximated or
-        # pushed asynchronously.
-        pred_dict, uncertainty, debug_info = wcp_update(state, metrics, alpha=0.2)
-        
-        # MPC Constraints
-        wcp_constraints = {'pred': pred_dict, 'uncertainty': uncertainty}
-
+        # --- 2. Resolve Dynamics Metrics (concurrency, cpu, backlog, service_time_ms) ---
         # PRIORITY: Use "queue_backlog" from metrics (Client-Side Injection) if available.
-        # This allows run_trace_replay.py (or Load Balancer) to inject REAL-TIME depth.
-        # This is 100x faster than polling SQS.
         client_backlog = float(metrics.get('queue_backlog', -1.0))
         queue_backlog = None
         backlog_source = 'unknown'
@@ -155,54 +145,75 @@ class MPCMiddleware:
         if client_backlog >= 0.0:
             queue_backlog = client_backlog
             backlog_source = 'client_injected'
-            # Optional: Update L1 Cache so subsequent calls might benefit?
-            # Actually, let's keep cache fresh with this latest truth.
             _L1_CACHE['last_backlog'] = queue_backlog
             _L1_CACHE['last_backlog_sync'] = time.time()
-            # DEBUG: Verify we are seeing the high backlog
-            if queue_backlog > 10:
-                print(f"[Middleware] HIGH BACKLOG DETECTED: {queue_backlog} (Source: {backlog_source})")
         else:
-            # Fallback to SQS / Cache / State
             queue_backlog = metrics.get('queue', None)
-            backlog_source = 'metrics_legacy'
-            
             if queue_backlog is None:
-                queue_backlog = state.get('queue_backlog_belief', None)
-                backlog_source = 'state'
+                queue_backlog = state.get('queue_backlog_belief', 0.0)
+        queue_backlog = float(queue_backlog or 0.0)
 
-            if queue_backlog is None and MAIN_QUEUE_URL:
+        servers = metrics.get('concurrency', metrics.get('servers', None))
+        if servers is None or float(servers) <= 1.0:
+            if queue_backlog > 10.0:
+                servers = queue_backlog # Heuristic
+        servers = max(1.0, float(servers or state.get('buffer_servers', 1.0)))
+
+        last_alloc = float(state.get('last_alloc', 1.0) or 1.0)
+        
+        # Service Time Estimation
+        p90_val = float(metrics.get('p90', 100.0))
+        if queue_backlog > 1.0:
+             service_time_ms = p90_val / (1.0 + queue_backlog / servers)
+        else:
+             service_time_ms = p90_val
+        service_time_ms = min(max(10.0, service_time_ms), 500.0) # Safety clamp
+
+        task_type = task.get('task_type', event.get('task_type', 'image_processing'))
+
+        # WCP Update (Prediction)
+        # Note: We run WCP locally for prediction, but we don't save RLS state synchronously
+        # to avoid high latency.
+        pred_dict, uncertainty, debug_info = wcp_update(
+            state, 
+            p90_val, 
+            servers, 
+            last_alloc, 
+            queue_backlog, 
+            service_time_ms, 
+            task_type=task_type,
+            alpha=0.2
+        )
+        
+        # MPC Constraints
+        wcp_constraints = {'pred': pred_dict, 'uncertainty': uncertainty}
+
+        # --- 3. Queue & Service Time Modeling (For Shadow Price & Latency Prediction) ---
+        # Note: queue_backlog and servers were already resolved in Step 2.
+        
+        # Resolve backlog source for debugging (optional logic preservation)
+        if client_backlog < 0.0:
+            if metrics.get('queue') is not None:
+                backlog_source = 'metrics_legacy'
+            elif state.get('queue_backlog_belief') is not None:
+                backlog_source = 'state'
+            elif MAIN_QUEUE_URL:
+                # Preserving the async SQS fetch logic if needed
                 now = time.time()
                 ttl_s = float(state.get('queue_backlog_ttl_s', 2.0) or 2.0)
-                
                 cached_val = _L1_CACHE.get('last_backlog')
                 last_sync = float(_L1_CACHE.get('last_backlog_sync', 0) or 0)
                 is_cache_fresh = (cached_val is not None) and (now - last_sync < ttl_s)
-
-                # CRITICAL FIX: Removed blocking sync for Q1.
-                # User Feedback: "Sync is slow" / "Timeout".
-                # We must NOT block the main thread for SQS calls during high concurrency.
-                # Rely on Async Thread or Stale Cache.
                 
                 if is_cache_fresh:
-                    # Cache Hit
-                    queue_backlog = cached_val
                     backlog_source = 'sqs_cache'
                 else:
-                    # Cache Miss/Expired -> Trigger Async Update
                     if not _L1_CACHE.get('updating_backlog'):
                         _L1_CACHE['updating_backlog'] = True
                         t = threading.Thread(target=self._fetch_backlog_async)
                         t.daemon = True
                         t.start()
-                    
-                    # Use Stale Data (Fail-Soft)
-                    if cached_val is not None:
-                        queue_backlog = cached_val
-                        backlog_source = 'sqs_stale'
-                    else:
-                        queue_backlog = 0.0 # Cold start
-                        backlog_source = 'default_cold'
+                    backlog_source = 'sqs_stale' if cached_val is not None else 'default_cold'
         queue_backlog = float(queue_backlog or 0.0)
 
         # CRITICAL FIX: Update metrics with resolved backlog so Shadow Price sees it
@@ -217,46 +228,15 @@ class MPCMiddleware:
             except Exception:
                 unc_p90 = 0.0
 
-        last_alloc = float(state.get('last_alloc', 1.0) or 1.0)
-        servers = metrics.get('concurrency', metrics.get('servers', None))
-        
-        # DEBUG: Concurrency Detection
-        if servers is None or float(servers) <= 1.0:
-            if queue_backlog > 10.0:
-                print(f"[Middleware WARN] Concurrency Missing/Low ({servers}) with High Backlog ({queue_backlog}). Metrics Keys: {list(metrics.keys())}")
-                # Heuristic: In Serverless, Concurrency ~= Backlog (Ideal Scaling)
-                # We trust Backlog more than missing Concurrency metric.
-                servers = queue_backlog
-                print(f"[Middleware INFO] Auto-Corrected Concurrency to {servers}")
-
-        if servers is None:
-            servers = state.get('buffer_servers', state.get('concurrency_belief', state.get('buffer_servers_default', 1.0)))
-        servers = max(1.0, float(servers or 1.0))
-
-        base_service_ms = float(state.get('avg_service_ms', 0.0) or 0.0)
-        if base_service_ms <= 0.0:
-            base_service_ms = float(state.get('p90_belief', 0.0) or 0.0)
-        if base_service_ms <= 0.0:
-            # CRITICAL FIX: Decouple Queue Time from Service Time
-            # p90 is End-to-End Latency (Queue + Service).
-            # If we use p90 as Service Time, we double-count Queue Time -> Quadratic Explosion.
-            # Estimation: Service = Latency / (1 + Backlog/Servers)
-            p90_val = float(metrics.get('p90', 0.0) or 0.0)
-            if p90_val > 0 and queue_backlog > 1.0:
-                 base_service_ms = p90_val / (1.0 + queue_backlog / max(1.0, servers))
-            else:
-                 base_service_ms = p90_val
-            
-            # Safety Clamp: Prevent cold start/network latency from poisoning service time belief
-            base_service_ms = min(base_service_ms, 300.0)
-
-        if base_service_ms <= 0.0:
-            base_service_ms = float(pred_dict.get('p90', 100.0) or 100.0)
+        # Note: last_alloc and servers were already resolved in Step 2.
         eff_alloc = max(0.1, last_alloc)
         
         # CRITICAL FIX: Service Time Model Alignment
         # Q1 uses Fidelity Scaling (Lower Alloc = Faster Service)
         # Q2/Q3 uses Throttling (Lower Alloc = Slower Service)
+        
+        # Use service_time_ms from Step 2 as base_service_ms
+        base_service_ms = service_time_ms
         if qos == 'Q1':
             # Fidelity Model: service_time scales linearly with alloc (fidelity)
             # Matches lambda_function.py: active_duration *= fidelity
