@@ -338,29 +338,30 @@ class MPCMiddleware:
         system_state['shadow_price'] = lam
         
         # Optimization
-        result = self.controller.decide(task, wcp_constraints, system_state)
+        # Ensure last_alloc is explicitly in system_state as 'u_prev' for the optimizer
+        system_state['u_prev'] = float(state.get('last_alloc', 0.8))
         
-        # Update Local Cache Immediate (for next request in same container)
-        new_alloc = result['decision']['resource_alloc']
+        # Step 3: Call Controller
+        result, ctrl_dbg = self.controller.decide(task, wcp_constraints, system_state)
+        debug_info.update(ctrl_dbg or {})
+        
+        decision_out = result['decision']
+        new_alloc = float(decision_out.get('resource_alloc', 1.0))
+        
+        # 强制将 new_alloc 写回状态，哪怕优化器没动，我们也会看到它是从 0.8 开始的
         state['last_alloc'] = new_alloc
         state['shadow_price'] = lam
         _L1_CACHE['params'] = state # Update cache reference
         
-        # Async Persistence
-        # We push the critical updates (alloc, price, RLS stats) to SQS or Fire-and-Forget
-        # For this PoC, we will SKIP synchronous DynamoDB write to maximize speed.
-        # We rely on "Soft State" in L1 Cache. 
-        # To make it robust, we can write to DB with probability p=0.1 (sampling)
-        # or if state changed significantly.
+        # Metadata update for version 6
+        debug_info['version'] = '20260319_v6'
+        debug_info['new_alloc'] = new_alloc
         
-        # CRITICAL FIX: 强制同步保存状态，确保实验中 Alloc 的变化能被下一笔请求看到
-        # 即使增加 20ms 延迟，也要保证逻辑正确性
+        # CRITICAL FIX: 强制同步保存状态
         try:
             self.state_mgr.save_state(self.state_id, state, expected_version=version)
         except Exception as e:
             print(f"[Middleware] Sync save state failed: {e}")
-
-        decision_out = result['decision']
         thr_platinum = float(state.get('admit_thr_platinum_ms', slo_limit_ms * 1.2) or (slo_limit_ms * 1.2))
         thr_gold = float(state.get('admit_thr_gold_ms', slo_limit_ms * 1.0) or (slo_limit_ms * 1.0))
         thr_standard = float(state.get('admit_thr_standard_ms', slo_limit_ms * 0.8) or (slo_limit_ms * 0.8))
