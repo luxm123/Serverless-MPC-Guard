@@ -223,6 +223,29 @@ class Optimizer:
             diff = (effective_pred - ref_latency) / max(1.0, slo_limit)
             grad_track = -1.0 * diff
         
+        # --- Restore missing definitions (v22.1) ---
+        price_norm = 100.0
+        if state:
+             price_norm = float(state.get('opt_price_norm', 100.0))
+        
+        # 4. Barrier Method for Queue Capacity Constraint
+        grad_congestion = 0.0
+        backlog_val = 0.0
+        if current_backlog is not None:
+            backlog_val = float(current_backlog)
+        elif state:
+            backlog_val = float(state.get('queue_backlog_belief', 0.0))
+
+        # Soft Capacity Limit
+        capacity = 500.0 
+        margin = capacity - backlog_val
+        safe_margin = max(0.1, margin)
+        mu = 20.0 
+        grad_congestion = -mu / safe_margin
+        
+        # 5. Congestion Price Gradient
+        grad_price = -1.0 * (price / price_norm)
+        
         # Total Gradient Summation
         # v22: 严格限制风险梯度的权重，防止 WCP 恐慌
         risk_weight = 0.2
@@ -241,8 +264,8 @@ class Optimizer:
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
             
-        # DEBUG: 详情 (v22)
-        print(f"[MPC-DEBUG-v22] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{risk_weight*grad_risk:.2f} W:{grad_waste:.2f} | Total:{grad:.2f}")
+        # DEBUG: 详情 (v22.1)
+        print(f"[MPC-DEBUG-v22.1] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{risk_weight*grad_risk:.2f} W:{grad_waste:.2f} P:{grad_price:.2f} | Total:{grad:.2f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
