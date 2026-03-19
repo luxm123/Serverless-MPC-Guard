@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v12'
+        current_ver = '20260319_v12_FINAL'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
@@ -131,7 +131,7 @@ class MPCMiddleware:
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware] NUCLEAR RESET v12: Reason={'stuck' if is_stuck else 'ver_mismatch'}. Starting from 0.7, price=0.")
+            print(f"[Middleware-v12-FINAL] NUCLEAR RESET: Reason={'stuck' if is_stuck else 'ver_mismatch'}. Starting from 0.7, price=0.")
         else:
             debug_info['state_source'] = 'dynamodb'
             
@@ -369,8 +369,7 @@ class MPCMiddleware:
         state['shadow_price'] = lam
         _L1_CACHE['params'] = state # Update cache reference
         
-        # Metadata update for version 9
-        debug_info['version'] = '20260319_v9'
+        # Metadata update (v12)
         debug_info['new_alloc'] = new_alloc
         debug_info['prev_alloc'] = last_alloc
         
