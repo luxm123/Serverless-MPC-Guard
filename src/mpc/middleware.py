@@ -112,18 +112,15 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v12_FINAL'
+        current_ver = '20260319_v13'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
         state, version = self._load_state()
         
-        # 终极重置逻辑：如果版本升级，或者检测到死锁，强制重置所有状态
-        # 允许 Alloc 在 0.1 到 1.0 之间波动，但如果一直锁定在 1.0 且没有 SLO 违反，可能是死锁
-        slo_viol = float(metrics.get('slo_violation_rate', 0.0) or 0.0)
-        is_stuck = state and float(state.get('last_alloc', 1.0)) > 0.98 and slo_viol < 0.01
-        
-        if not state or state.get('version') != current_ver or is_stuck:
+        # 终极重置逻辑：如果版本升级，强制重置所有状态
+        # 移除过激的 is_stuck 逻辑，改为由 Optimizer 内部逻辑处理波动
+        if not state or state.get('version') != current_ver:
             state = self._get_default_params()
             state['version'] = current_ver
             state['last_alloc'] = 0.7 # 强制从 0.7 开始
@@ -131,7 +128,7 @@ class MPCMiddleware:
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v12-FINAL] NUCLEAR RESET: Reason={'stuck' if is_stuck else 'ver_mismatch'}. Starting from 0.7, price=0.")
+            print(f"[Middleware-v13] NUCLEAR RESET: Version mismatch. Starting from 0.7, price=0.")
         else:
             debug_info['state_source'] = 'dynamodb'
             

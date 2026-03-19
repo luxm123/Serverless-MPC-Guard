@@ -80,12 +80,12 @@ class Scheduler:
         max_delta = float(system_state.get('u_max_delta', 0.15))
         
         # Emergency Scaling for High Backlog
-        # If backlog is high (>10), allow immediate resource allocation drop to clear queue.
+        # If backlog is high (>50), allow immediate resource allocation change.
         is_emergency = False
-        if current_backlog is not None and current_backlog > 10.0:
+        if current_backlog is not None and current_backlog > 50.0:
             is_emergency = True
-            max_delta = 1.0 # Allow full swing (0.0 to 1.0)
-            print(f"[MPC-SCHED] EMERGENCY BYPASS: Backlog={current_backlog} > 10.0. Forcing max_delta=1.0 to allow rapid resource drop.")
+            max_delta = 0.5 # Allow faster but still controlled swing
+            print(f"[MPC-SCHED] EMERGENCY BYPASS: Backlog={current_backlog} > 50.0. Relaxing max_delta to 0.5.")
         
         # Adaptive delta based on price (Dynamic Bands)
         # High price -> Larger delta (panic drop).
