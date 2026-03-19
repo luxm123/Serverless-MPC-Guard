@@ -241,7 +241,14 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
         'rls_theta': rls.theta
     }
 
-    return y_hat_next, uncertainty, debug_info
+    pred_dict = {
+        'p90': float(y_hat_next),
+        'timeout_rate': 0.0,
+        'error_rate': 0.0,
+        'memory_pressure': 0.0
+    }
+
+    return pred_dict, uncertainty, debug_info
 
 def slow_loop_calibration(state, metrics):
     slo = float(metrics.get('slo_violation_rate', 0.0))
