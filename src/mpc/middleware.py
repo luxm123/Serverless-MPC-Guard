@@ -112,7 +112,6 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        # Metadata for debugging code version
         current_ver = '20260319_v46'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
