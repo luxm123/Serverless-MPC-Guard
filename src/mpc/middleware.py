@@ -112,27 +112,26 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        debug_info = {'version': '20260319_v9', 'state_id': self.state_id}
+        current_ver = '20260319_v11'
+        debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
         state, version = self._load_state()
-        if not state:
+        
+        # 终极重置逻辑：如果版本升级，或者检测到死锁，强制重置所有状态
+        is_stuck = state and float(state.get('last_alloc', 1.0)) > 0.99
+        if not state or state.get('version') != current_ver or is_stuck:
             state = self._get_default_params()
+            state['version'] = current_ver
+            state['last_alloc'] = 0.7 # 强制从 0.7 开始
+            state['shadow_price'] = 0.0 # 强制价格清零
             version = None
-            debug_info['state_source'] = 'default'
+            debug_info['state_source'] = 'forced_reset'
+            print(f"[Middleware] NUCLEAR RESET: Version mismatch or stuck. Starting from 0.7, price=0.")
         else:
             debug_info['state_source'] = 'dynamodb'
             
-        # Ensure last_alloc is present and defaults to 0.8
-        last_alloc = float(state.get('last_alloc', 0.8) or 0.8)
-        
-        # 破冰逻辑：如果从数据库读到了 1.0，强行将其重置为 0.8 并清空影子价格以打破死锁
-        if last_alloc > 0.99:
-            last_alloc = 0.8
-            state['shadow_price'] = 0.0 # 清除 v8 版本残留的高额价格
-            print(f"[Middleware] Breaking 1.0 deadlock, resetting to 0.8 and clearing price")
-            
-        state['last_alloc'] = last_alloc
+        last_alloc = float(state.get('last_alloc', 0.7))
         debug_info['loaded_alloc'] = last_alloc
 
         # Inject Profile from Client Task (if present) to enable Per-Request Tuning

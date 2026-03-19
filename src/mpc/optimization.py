@@ -277,17 +277,15 @@ class Optimizer:
         # 已经在上面算过了，且方向正确（负号）
  
         # 总梯度汇总
-        # 权重调整：w1=1.0, w2=2.0 (Waste), w3=0.5 (Risk)
-        # 此时 w2 * grad_waste = 4.0 的正拉力
-        # 如果延迟在 160ms，Risk 梯度大约为 -0.1 * 0.5 = -0.05
-        # 此时 4.0 >> 0.05，u 必降
-        grad = w1 * grad_track + 0.5 * grad_risk + w2 * grad_waste + grad_price + grad_congestion
+        # 终极调整：w1=1.0, w2=5.0 (极强省钱), w3=0.1 (极弱风险)
+        # 确保系统优先尝试降低资源
+        grad = w1 * grad_track + 0.1 * grad_risk + 5.0 * grad_waste + grad_price + grad_congestion
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
 
-        # DEBUG: 强制打印详情 (v10)
-        print(f"[MPC-DEBUG-v10] u:{prev_u:.2f} | Grads -> Track:{w1*grad_track:.2f}, Risk:{0.5*grad_risk:.2f}, Waste:{w2*grad_waste:.2f}, Price:{grad_price:.2f} | Total:{grad:.2f} | Step:{step:.4f}")
+        # DEBUG: 终极详情 (v11)
+        print(f"[MPC-DEBUG-v11] u:{prev_u:.2f} | T:{w1*grad_track:.2f} R:{0.1*grad_risk:.2f} W:{5.0*grad_waste:.2f} P:{grad_price:.2f} C:{grad_congestion:.2f} | Total:{grad:.2f} | Step:{step:.4f}")
         
         u_new = prev_u - step
         
