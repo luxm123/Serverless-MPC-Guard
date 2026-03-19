@@ -5,7 +5,7 @@ import pandas as pd
 import threading
 import random
 from concurrent.futures import ThreadPoolExecutor
-from serverless_utils import invoke_worker_lambda, get_latest_metrics
+from serverless_utils import invoke_worker_lambda
 
 # --- Configuration ---
 # 6 types of functions as per benchmark availability
