@@ -6,10 +6,16 @@ class Optimizer:
         self.w1 = 0.5  # 浪费权重
         self.w2 = 2.0  # 风险权重
         
+    def update_weights(self, metrics, system_state):
+        return {'w1': self.w1, 'w2': self.w2}
+
+    def tune_params_by_price(self, price, eta_base, gamma_base, bands, system_state):
+        return eta_base, gamma_base
+
     def optimize_u(self, prev_u, pred_upper, slo_limit, price, **kwargs):
         """
-        v48_Final_Fix: 回归极简控制逻辑。
-        不再使用复杂的梯度组合，直接根据延迟误差进行线性调节。
+        v49_No_Priority: 回归极简控制逻辑，彻底移除优先级。
+        直接根据延迟误差进行调节。
         """
         start_t = time.time()
         state = kwargs.get('state', {})
@@ -17,18 +23,16 @@ class Optimizer:
         # 核心逻辑：获取真实延迟
         actual_p90 = float(state.get('p90_belief', 160.0))
         
-        # 计算误差：我们希望延迟维持在 160ms 左右
+        # 计算误差：目标 160ms
         target = 160.0
         error = actual_p90 - target
         
         # 1. 计算调整方向
         if error > 0:
-            # 延迟太高，需要增加资源（负梯度）
-            # 误差越大，拉回的力量越强
+            # 延迟太高，增加资源
             grad = -0.5 * (error / 20.0) 
         else:
-            # 延迟较低，可以尝试省钱（正梯度）
-            # 省钱要慢，所以推力很小
+            # 延迟较低，缓慢省钱
             grad = 0.1 
 
         # 2. 执行更新
@@ -37,14 +41,14 @@ class Optimizer:
         
         # 3. 严格限制下降速度，允许快速上升
         if new_alloc < prev_u:
-            new_alloc = max(new_alloc, prev_u - 0.01) # 每次最多降 0.01
+            new_alloc = max(new_alloc, prev_u - 0.01) # 限制下降步长
         else:
-            new_alloc = min(new_alloc, prev_u + 0.1)  # 允许较快上升保命
+            new_alloc = min(new_alloc, prev_u + 0.1)  # 快速回弹保命
 
         # 4. 边界保护
         final_alloc = max(0.60, min(1.0, new_alloc))
 
-        # 5. 修复调试信息：确保不再是 0
+        # 5. 调试信息
         overhead = (time.time() - start_t) * 1000.0
         state['opt_debug'] = {
             "grad": grad,

@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v48_Final_Fix'
+        current_ver = '20260319_v49_No_Priority'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
@@ -127,27 +127,13 @@ class MPCMiddleware:
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v48] NUCLEAR RESET: Risk discounting enabled.")
+            print(f"[Middleware-v49] NUCLEAR RESET: Unified control mode enabled.")
         else:
             debug_info['state_source'] = 'dynamodb'
             
         last_alloc = float(state.get('last_alloc', 0.7))
         debug_info['loaded_alloc'] = last_alloc
 
-        # Inject Profile from Client Task (if present) to enable Per-Request Tuning
-        if task.get('mpc_profile'):
-            state['mpc_profile'] = task['mpc_profile']
-        
-        qos_raw = task.get('qos', task.get('priority'))
-        qos = 'Q3'
-        if isinstance(qos_raw, str):
-            s = qos_raw.strip().lower()
-            if s in ('critical', 'q1', 'high'):
-                qos = 'Q1'
-            elif s in ('standard', 'q2', 'medium'):
-                qos = 'Q2'
-        task['qos_class'] = qos
-        
         if not metrics or 'p90' not in metrics:
              metrics = metrics.copy()
              metrics['p90'] = float(state.get('p90_belief', 100.0))
@@ -157,7 +143,6 @@ class MPCMiddleware:
         self._hydrate_controller(state)
         
         # --- 2. Resolve Dynamics Metrics (concurrency, cpu, backlog, service_time_ms) ---
-        # PRIORITY: Use "queue_backlog" from metrics (Client-Side Injection) if available.
         client_backlog = float(metrics.get('queue_backlog', -1.0))
         queue_backlog = None
         backlog_source = 'unknown'
@@ -192,8 +177,6 @@ class MPCMiddleware:
         task_type = task.get('task_type', event.get('task_type', 'image_processing'))
 
         # WCP Update (Prediction)
-        # Note: We run WCP locally for prediction, but we don't save RLS state synchronously
-        # to avoid high latency.
         pred_dict, uncertainty, wcp_dbg = wcp_update(
             state, 
             p90_val, 
@@ -209,35 +192,7 @@ class MPCMiddleware:
         # MPC Constraints
         wcp_constraints = {'pred': pred_dict, 'uncertainty': uncertainty}
 
-        # --- 3. Queue & Service Time Modeling (For Shadow Price & Latency Prediction) ---
-        # Note: queue_backlog and servers were already resolved in Step 2.
-        
-        # Resolve backlog source for debugging (optional logic preservation)
-        if client_backlog < 0.0:
-            if metrics.get('queue') is not None:
-                backlog_source = 'metrics_legacy'
-            elif state.get('queue_backlog_belief') is not None:
-                backlog_source = 'state'
-            elif MAIN_QUEUE_URL:
-                # Preserving the async SQS fetch logic if needed
-                now = time.time()
-                ttl_s = float(state.get('queue_backlog_ttl_s', 2.0) or 2.0)
-                cached_val = _L1_CACHE.get('last_backlog')
-                last_sync = float(_L1_CACHE.get('last_backlog_sync', 0) or 0)
-                is_cache_fresh = (cached_val is not None) and (now - last_sync < ttl_s)
-                
-                if is_cache_fresh:
-                    backlog_source = 'sqs_cache'
-                else:
-                    if not _L1_CACHE.get('updating_backlog'):
-                        _L1_CACHE['updating_backlog'] = True
-                        t = threading.Thread(target=self._fetch_backlog_async)
-                        t.daemon = True
-                        t.start()
-                    backlog_source = 'sqs_stale' if cached_val is not None else 'default_cold'
         queue_backlog = float(queue_backlog or 0.0)
-
-        # CRITICAL FIX: Update metrics with resolved backlog so Shadow Price sees it
         metrics['queue_backlog'] = queue_backlog
 
         unc_p90 = 0.0
@@ -249,29 +204,17 @@ class MPCMiddleware:
             except Exception:
                 unc_p90 = 0.0
 
-        # Note: last_alloc and servers were already resolved in Step 2.
         eff_alloc = max(0.1, last_alloc)
-        
-        # UNIFIED RESOURCE ALLOCATION MODEL (All Requests Executed)
-        # Performance scales with resource allocation (1/alloc).
-        # This matches the physical effect of CPU allocation in worker lambda.
         base_service_ms = service_time_ms
         eff_service_ms = base_service_ms / (eff_alloc + 0.01)
 
         queue_delay_model = str(state.get('queue_delay_model', 'backlog_linear') or 'backlog_linear').strip().lower()
         queue_delay_ms = (queue_backlog * eff_service_ms) / servers
         
-        # --- CRITICAL FIX: Hybrid Latency Prediction ---
-        # WCP Model (RLS) might be stale (trained on Capacity=50).
-        # It incorrectly predicts High Latency when Backlog is High, ignoring the new Capacity=200/300.
-        # Serverless Ideal: Latency should be constant (Service Time) if Concurrency scales with Backlog.
-        # We trust the Analytic Model (Queue Theory) when WCP is hallucinating congestion.
-        
         analytic_latency = queue_delay_ms + eff_service_ms
         
-        # Ensure pred_dict is a dictionary
         if not isinstance(pred_dict, dict):
-            pred_dict = {'p90': float(pred_dict)} # Convert float to dict
+            pred_dict = {'p90': float(pred_dict)} 
 
         wcp_latency = float(pred_dict.get('p90', 100.0) or 100.0)
 
@@ -279,17 +222,9 @@ class MPCMiddleware:
             if random.random() < 0.05:
                 print(f"[Middleware] Stale WCP Model Override: WCP={wcp_latency:.1f}ms -> Analytic={analytic_latency:.1f}ms (Backlog={queue_backlog}, Servers={servers})")
             pred_dict['p90'] = analytic_latency
-            # Reset uncertainty to avoid double penalizing
             uncertainty = 50.0
             
-        # System State
-        # 强制使用 180.0 作为基准，避免从 event 或 state 中拿到旧的 1000.0
         slo_limit_ms = 180.0
-        
-        # Extract metrics for optimizer
-        q1_violation_rate = float(metrics.get('q1_violation_rate', 0.0) or 0.0)
-        q2_violation_rate = float(metrics.get('q2_violation_rate', 0.0) or 0.0)
-        q3_violation_rate = float(metrics.get('q3_violation_rate', 0.0) or 0.0)
         slo_viol_rate = float(metrics.get('slo_violation_rate', 0.0) or 0.0)
 
         system_state = {
@@ -304,35 +239,10 @@ class MPCMiddleware:
             'pred_queue_delay_ms': queue_delay_ms,
             'queue_backlog': queue_backlog,
             'metrics': {
-                'slo_violation_rate': max(slo_viol_rate, q1_violation_rate),
-                'q1_violation_rate': q1_violation_rate,
-                'q2_violation_rate': q2_violation_rate,
-                'q3_violation_rate': q3_violation_rate
-            },
-            'q1_violation_rate': q1_violation_rate,
-            'q2_violation_rate': q2_violation_rate,
-            'q3_violation_rate': q3_violation_rate,
+                'slo_violation_rate': slo_viol_rate
+            }
         }
         system_state = {k: v for k, v in system_state.items() if v is not None}
-
-        priority_score, task_vec = self.controller.priority_mgr.calculate_priority(task, system_state)
-        try:
-            priority_score = float(priority_score)
-        except Exception:
-            priority_score = 0.5
-        if qos == 'Q1':
-            if priority_score < 0.95:
-                priority_score = 0.95
-        elif qos == 'Q2':
-            if priority_score < 0.65:
-                priority_score = 0.65
-        else:
-            if priority_score > 0.35:
-                priority_score = 0.35
-        if priority_score < 0.0:
-            priority_score = 0.0
-        if priority_score > 1.0:
-            priority_score = 1.0
 
         # ALL REQUESTS ARE EXECUTED (No Early Shedding)
         should_shed_early = False
@@ -345,13 +255,11 @@ class MPCMiddleware:
         system_state['shadow_price'] = lam
         
         # Optimization
-        # Ensure last_alloc is explicitly in system_state for the optimizer
         system_state['last_alloc'] = last_alloc
         system_state['p90_belief'] = float(state.get('p90_belief', 160.0))
         
         # Step 3: Call Controller
         result = self.controller.decide(task, wcp_constraints, system_state)
-        # result contains 'decision' and 'meta' (debug info)
         ctrl_dbg = result.get('meta', {})
         debug_info.update(ctrl_dbg)
         
@@ -369,23 +277,11 @@ class MPCMiddleware:
         state['shadow_price'] = lam
         _L1_CACHE['params'] = state # Update cache reference
         
-        # Metadata update (v12)
         debug_info['new_alloc'] = new_alloc
         debug_info['prev_alloc'] = last_alloc
         
-        # CRITICAL FIX: Persist state to DB
-        # We use the existing _async_save_state but call it synchronously here
-        # to ensure the next request sees the updated Alloc.
         self._async_save_state(state, version or 0)
-        thr_platinum = float(state.get('admit_thr_platinum_ms', slo_limit_ms * 1.2) or (slo_limit_ms * 1.2))
-        thr_gold = float(state.get('admit_thr_gold_ms', slo_limit_ms * 1.0) or (slo_limit_ms * 1.0))
-        thr_standard = float(state.get('admit_thr_standard_ms', slo_limit_ms * 0.8) or (slo_limit_ms * 0.8))
-        if priority_score >= 0.5:
-            t = (priority_score - 0.5) / 0.5
-            admit_thr = thr_gold + t * (thr_platinum - thr_gold)
-        else:
-            t = priority_score / 0.5
-            admit_thr = thr_standard + t * (thr_gold - thr_standard)
+
         internal_decision = {
             'shouldShed': bool(decision_out.get('should_shed', False)),
             'degrade_plan': decision_out.get('degrade_plan'),
@@ -397,8 +293,6 @@ class MPCMiddleware:
             'admit_threshold_ms': admit_thr,
             'queue_backlog': queue_backlog,
             'queue_backlog_source': backlog_source,
-            'priority_score': priority_score,
-            'qos_class': qos,
         }
         dbg = debug_info or {}
         dbg.update(
@@ -408,12 +302,10 @@ class MPCMiddleware:
                 'admit_threshold_ms': admit_thr,
                 'queue_backlog': queue_backlog,
                 'queue_backlog_source': backlog_source,
-                'priority_score': priority_score,
                 'servers': servers,
                 'service_ms': eff_service_ms,
                 'queue_delay_model': queue_delay_model,
-                'qos_class': qos,
-                'latency_gradient': 0.0,
+                'latency_gradient': debug_info.get('latency_gradient', 0.0),
                 'shadow_price': lam,
                 'shed_reason': shed_reason
             }
@@ -427,20 +319,13 @@ class MPCMiddleware:
         """
         global _L1_CACHE
         
-        # 1. Update L1 Cache History (Simple EMA of p90)
-        # We try to update the 'p90_belief' in the cached params
         if _L1_CACHE['params']:
             curr_p90 = float(_L1_CACHE['params'].get('p90_belief', 100.0))
             new_val = float(real_metrics.get('latency', 100.0))
-            
-            # EMA Update
             alpha = 0.2
             updated_p90 = (1 - alpha) * curr_p90 + alpha * new_val
-            
             _L1_CACHE['params']['p90_belief'] = updated_p90
             _L1_CACHE['last_sync'] = time.time() # Refresh timestamp
-            
-            # 2. PROACTIVE PERSIST: v28 - 强制 100% 同步
             self._async_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
 
     def _async_update_feedback(self, p90_val):
@@ -466,9 +351,7 @@ class MPCMiddleware:
         CRITICAL FIX for Distributed Amnesia (Flapping).
         """
         try:
-            # v29: Persist version_str to prevent infinite Nuclear Resets
             version_str = params.get('version', 'unknown')
-            
             dynamodb.update_item(
                 TableName=TABLE_NAME,
                 Key={'id': {'S': self.state_id}},
@@ -486,7 +369,7 @@ class MPCMiddleware:
                     ':sp_top': {'N': str(float(params.get('shadow_price', 0.0)))},
                     ':p90': {'N': str(float(params.get('p90_belief', 100.0)))},
                     ':vs': {'S': str(version_str)},
-                    ':v': {'N': str(int(version + 1))},
+                    ':v': {'N': str(int((version or 0) + 1))},
                     ':t': {'N': str(time.time())},
                     ':empty_map': {'M': {}}
                 }
@@ -501,81 +384,29 @@ class MPCMiddleware:
         self.controller.optimizer.w1 = weights.get('w1', 1.0)
         self.controller.optimizer.w2 = weights.get('w2', 0.5)
         self.controller.optimizer.w3 = weights.get('w3', 5.0)
-        pw = state.get('priority_weights', {})
-        try:
-            self.controller.priority_mgr.lambda1 = float(pw.get('lambda1', self.controller.priority_mgr.lambda1))
-        except Exception:
-            pass
-        try:
-            self.controller.priority_mgr.alpha = float(pw.get('alpha', self.controller.priority_mgr.alpha))
-        except Exception:
-            pass
-        try:
-            self.controller.priority_mgr.beta = float(pw.get('beta', self.controller.priority_mgr.beta))
-        except Exception:
-            pass
-        phi = pw.get('phi', None)
-        if isinstance(phi, list) and len(phi) == 2:
-            try:
-                self.controller.priority_mgr.phi = [float(phi[0]), float(phi[1])]
-            except Exception:
-                pass
         
     def _parse_dynamo_item(self, item):
-        # ... (Simplified parser based on controller logic) ...
-        # Copied essential parts
         params_map = item.get('params', {}).get('M', {})
-        
         def get_float(m, k, default):
             try: return float(m.get(k, {}).get('N', default))
             except: return float(default)
-        def get_phi(m, k):
-            try:
-                l = m.get(k, {}).get('L', [])
-                if not l:
-                    return [0.6, 0.4]
-                return [float(x.get('N', '0.5')) for x in l]
-            except Exception:
-                return [0.6, 0.4]
-            
         rls_states_json = item.get('rls_states', {}).get('S', '{}')
         try: rls_states = json.loads(rls_states_json)
         except: rls_states = {}
-
-        pr_map = item.get('priority_weights', {}).get('M', {})
-        priority_weights = {
-            'lambda1': get_float(pr_map, 'lambda1', 0.6),
-            'alpha': get_float(pr_map, 'alpha', 0.7),
-            'beta': get_float(pr_map, 'beta', 0.3),
-            'phi': get_phi(pr_map, 'phi'),
-            'prio_cl_w_latency': get_float(pr_map, 'prio_cl_w_latency', 0.45),
-            'prio_cl_w_risk': get_float(pr_map, 'prio_cl_w_risk', 0.35),
-            'prio_cl_w_wait': get_float(pr_map, 'prio_cl_w_wait', 0.20),
-        }
-
-        # v29: Read back version_str correctly
         version_str = item.get('version_str', {}).get('S', 'unknown')
-
         return {
             'bP': get_float(params_map, 'bP', 2000.0),
             'rls_states': rls_states,
             'wcp_alpha': get_float(params_map, 'wcp_alpha', 0.1),
             'shadow_price': get_float(item, 'shadow_price', 0.0),
             'last_alloc': get_float(params_map, 'last_alloc', 1.0),
-            'optimizer_weights': {'w1': 1.0, 'w2': 0.5, 'w3': 5.0}, # Defaults
-            'priority_weights': priority_weights,
-            'prio_cl_w_latency': priority_weights.get('prio_cl_w_latency', 0.45),
-            'prio_cl_w_risk': priority_weights.get('prio_cl_w_risk', 0.35),
-            'prio_cl_w_wait': priority_weights.get('prio_cl_w_wait', 0.20),
+            'optimizer_weights': {'w1': 1.0, 'w2': 0.5, 'w3': 5.0}, 
             'gamma': get_float(params_map, 'gamma', 0.1),
             'u_eta': get_float(params_map, 'u_eta', 0.05),
             'u_max_delta': get_float(params_map, 'u_max_delta', 0.15),
             'slo_limit': get_float(params_map, 'slo_limit', 1000.0),
             'p90_belief': get_float(params_map, 'p90_belief', 100.0),
             'pred_admit_enabled': True,
-            'admit_thr_platinum_ms': get_float(params_map, 'admit_thr_platinum_ms', 0.0),
-            'admit_thr_gold_ms': get_float(params_map, 'admit_thr_gold_ms', 0.0),
-            'admit_thr_standard_ms': get_float(params_map, 'admit_thr_standard_ms', 0.0),
             'queue_delay_model': 'backlog_linear',
             'queue_backlog_ttl_s': get_float(params_map, 'queue_backlog_ttl_s', 2.0),
             'buffer_servers_default': get_float(params_map, 'buffer_servers_default', 1.0),
@@ -588,32 +419,17 @@ class MPCMiddleware:
             'bP': 2000.0,
             'rls_states': {},
             'shadow_price': 0.0,
-            'last_alloc': 1.0, # 安全启动：从 1.0 开始，由优化器决定是否下降
+            'last_alloc': 1.0, 
             'optimizer_weights': {'w1': 1.0, 'w2': 5.0, 'w3': 1.0}, 
-            'priority_weights': {
-                'lambda1': 0.6,
-                'alpha': 0.7,
-                'beta': 0.3,
-                'phi': [0.6, 0.4],
-                'prio_cl_w_latency': 0.45,
-                'prio_cl_w_risk': 0.35,
-                'prio_cl_w_wait': 0.20,
-            },
-            'prio_cl_w_latency': 0.45,
-            'prio_cl_w_risk': 0.35,
-            'prio_cl_w_wait': 0.20,
-            'gamma': 0.05, # 减小正则化项，允许 Alloc 更大变化
-            'u_eta': 0.15, # 加大步长，让 Alloc 变化更灵敏
-            'u_max_delta': 0.5, # 允许更大幅度的 Alloc 波动
-            'slo_limit': 180.0, # 对齐实验中的 SLO 180ms
+            'gamma': 0.05, 
+            'u_eta': 0.15, 
+            'u_max_delta': 0.5, 
+            'slo_limit': 180.0, 
             'p90_belief': 100.0,
             'pred_admit_enabled': True,
-            'admit_thr_platinum_ms': 0.0,
-            'admit_thr_gold_ms': 0.0,
-            'admit_thr_standard_ms': 0.0,
             'queue_delay_model': 'backlog_linear',
             'queue_backlog_ttl_s': 2.0,
             'buffer_servers_default': 1.0,
             'avg_service_ms': 0.0,
-            'min_alloc_floor': 0.01, # Default floor for resource scaling
+            'min_alloc_floor': 0.01, 
         }
