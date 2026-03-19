@@ -225,7 +225,7 @@ class Optimizer:
         
         if prev_u > 0.8:
             if random.random() < 0.1:
-                print(f"[MPC-CORE-v41] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
+                print(f"[MPC-CORE-v42] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f})")
         
         # Update Step
         step_eta = 0.10
