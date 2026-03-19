@@ -222,8 +222,9 @@ class Optimizer:
         # 2. Utility Gradient (资源回收拉力)
         # v25: 线性 + 二次方 混合惩罚，确保在高位有绝对压制力
         # v27: 回归稳健。减小 w2 到 10.0，并将立方项改为二次项，降低下坠速度
-        w2 = 10.0
-        grad_waste = w2 * (prev_u + 2.0 * (prev_u ** 2))
+        # v29: 增强 Waste 惩罚 (10 -> 25)，并根据 prev_u 引入指数级回收压力
+        w2 = 25.0
+        grad_waste = w2 * (prev_u + 4.0 * (prev_u ** 2))
         
         # 3. 风险梯度 (WCP 提供的概率保证)
         # v25: 核心逻辑 - 基于实际违反率衰减风险权重
@@ -238,45 +239,50 @@ class Optimizer:
         
         # 动态风险权重：只有真正出事时才全额信任 WCP
         # v27: 恢复部分风险权重 (0.3 -> 0.8)，确保在 180ms 附近有足够的托举力
-        dynamic_risk_weight = 0.8 * (slo_viol + 0.05) 
-        if prev_u > 0.9:
-            dynamic_risk_weight *= 0.2 # 在高位时依然保持警惕，但不要直接降为 0.05
+        # v29: 引入 Confidence Gating。如果连续无违反，极大幅度削减 WCP 权重
+        # 即使 WCP 预测很高，只要实际延迟 OK，就不增加资源。
+        confidence_gate = 1.0
+        if slo_viol < 0.01:
+            confidence_gate = 0.05 # 只有 5% 的信任度
+            
+        dynamic_risk_weight = 1.0 * (slo_viol + 0.05) * confidence_gate
+        if prev_u > 0.8:
+            dynamic_risk_weight *= 0.1 # 高位双重降权
             
         # v25: 强制向下梯度 (防止死锁)
-        # v27: 减弱强制回收力度 (100 -> 20)，避免“恐慌性缩容”
+        # v29: 移除硬编码补丁，依靠 grad_waste 和 confidence_gate 回归科学
         forced_recovery = 0.0
-        if prev_u > 0.9 and slo_viol < 0.01:
-            forced_recovery = 20.0 
             
         # v25: 终极合力计算
         grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + forced_recovery
         
         # v28: 极致调试 - 找出为什么 u 还在 1.0
-        if prev_u > 0.9:
-            print(f"[MPC-CORE-v28] High-U Debug | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}, F:{forced_recovery:.2f}) | WCP_UB:{pred_upper:.1f}ms, SLO:{slo_limit:.1f}ms")
+        if prev_u > 0.8:
+            print(f"[MPC-CORE-v29] U:{prev_u:.2f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | WCP:{pred_upper:.1f}ms, Gate:{confidence_gate}")
         
         # Update Step
         # v27: 只有在需要“救火”（上升）时才增加步长，回收时保持稳定步长
-        step_eta = eta
-        if grad < -50.0: # Negative grad means UPWARD scaling (Risk/Tracking dominates)
-            step_eta *= 2.0
+        # v29: 全面加大学习率 eta (0.05 -> 0.15) 以对抗分布式失忆带来的滞后
+        step_eta = 0.15
+        if grad < -20.0: # Negative grad means UPWARD scaling
+            step_eta *= 1.5
             
         step = step_eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Physical Rate Limiting (v27) ---
-        # v27: 允许快速上升 (0.2)，严格限制下降 (0.1)
-        # v28: 再次放宽下降限制到 0.15，确保能掉下来
-        max_increase = 0.20
-        max_decrease = 0.15
+        # --- Physical Rate Limiting (v29) ---
+        # v29: 放宽限制，允许更灵敏的响应
+        max_increase = 0.30
+        max_decrease = 0.20
         
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
         elif u_new < prev_u - max_decrease:
             u_new = prev_u - max_decrease
             
-        # DEBUG: 详情 (v28)
-        print(f"[MPC-DEBUG-v28] u:{prev_u:.2f}->{u_new:.2f} | Total_Grad:{grad:.1f}")
+        # DEBUG: 详情 (v29)
+        if random.random() < 0.1:
+            print(f"[MPC-DEBUG-v29] u:{prev_u:.2f}->{u_new:.2f} | Total_Grad:{grad:.1f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0

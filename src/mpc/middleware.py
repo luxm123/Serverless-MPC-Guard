@@ -457,9 +457,9 @@ class MPCMiddleware:
         CRITICAL FIX for Distributed Amnesia (Flapping).
         """
         try:
-            # Safer update: initialize params if it doesn't exist
-            # Note: params.last_alloc needs params to be a map.
-            # We use if_not_exists to handle the first-time creation.
+            # v29: Persist version_str to prevent infinite Nuclear Resets
+            version_str = params.get('version', 'unknown')
+            
             dynamodb.update_item(
                 TableName=TABLE_NAME,
                 Key={'id': {'S': self.state_id}},
@@ -467,6 +467,7 @@ class MPCMiddleware:
                     "SET #p = if_not_exists(#p, :empty_map), "
                     "#p.last_alloc = :la, #p.shadow_price = :sp, "
                     "shadow_price = :sp_top, #p.p90_belief = :p90, "
+                    "version_str = :vs, "
                     "version = :v, last_updated = :t"
                 ),
                 ExpressionAttributeNames={'#p': 'params'},
@@ -475,12 +476,14 @@ class MPCMiddleware:
                     ':sp': {'N': str(float(params.get('shadow_price', 0.0)))},
                     ':sp_top': {'N': str(float(params.get('shadow_price', 0.0)))},
                     ':p90': {'N': str(float(params.get('p90_belief', 100.0)))},
+                    ':vs': {'S': str(version_str)},
                     ':v': {'N': str(int(version + 1))},
                     ':t': {'N': str(time.time())},
                     ':empty_map': {'M': {}}
                 }
             )
-            print(f"[Middleware] State Saved to DB: ID={self.state_id}, Alloc={params.get('last_alloc', 1.0)}")
+            if random.random() < 0.05:
+                print(f"[Middleware] State Saved: ID={self.state_id}, Alloc={params.get('last_alloc', 1.0)}, Ver={version_str}")
         except Exception as e:
             print(f"[Middleware] State Save Error: {e}")
 
@@ -541,6 +544,9 @@ class MPCMiddleware:
             'prio_cl_w_wait': get_float(pr_map, 'prio_cl_w_wait', 0.20),
         }
 
+        # v29: Read back version_str correctly
+        version_str = item.get('version_str', {}).get('S', 'unknown')
+
         return {
             'bP': get_float(params_map, 'bP', 2000.0),
             'rls_states': rls_states,
@@ -565,6 +571,7 @@ class MPCMiddleware:
             'queue_backlog_ttl_s': get_float(params_map, 'queue_backlog_ttl_s', 2.0),
             'buffer_servers_default': get_float(params_map, 'buffer_servers_default', 1.0),
             'avg_service_ms': get_float(params_map, 'avg_service_ms', 0.0),
+            'version': version_str
         }
 
     def _get_default_params(self):
