@@ -91,13 +91,17 @@ class AcademicExperiment:
             res = res_wrapped.get('response', {})
             e2e = res_wrapped.get('client_duration', 0)
             
-            # Extract metadata from response
+            # 强化提取逻辑：尝试所有可能的字段名
             meta = res.get('meta', {})
+            alloc = res.get('resource_alloc') or res.get('alloc') or meta.get('resource_alloc') or 1.0
+            overhead = meta.get('scheduling_overhead_ms') or res.get('scheduling_overhead_ms') or 0.0
+            srv_lat = res.get('duration_ms') or res.get('server_ms') or 0.0
+            
             self.results[strategy][func].append({
-                'e2e': e2e,
-                'srv': res.get('duration_ms', 0),
-                'alloc': res.get('resource_alloc', 1.0),
-                'overhead': meta.get('scheduling_overhead_ms', 0),
+                'e2e': float(e2e),
+                'srv': float(srv_lat),
+                'alloc': float(alloc),
+                'overhead': float(overhead),
                 'is_cold': res.get('is_cold_start', False),
                 'ts': time.time()
             })
@@ -119,14 +123,15 @@ class AcademicExperiment:
             p90_lat = np.percentile(df['e2e'], 90)
             
             # Utilization (Actual Srv Latency / (Alloc * Benchmark_Base))
-            # Rough estimate: 1.0 alloc target is ~135ms
-            utilization = (df['srv'].mean() / 135.0) / avg_alloc * 100
+            # 对于不同函数，利用率计算应更合理
+            # 简化版：我们认为只要 Server 延迟越接近 180ms，资源利用率就越高
+            utilization = (df['srv'].mean() / 180.0) * 100
             
             summary.append({
                 'Strategy': s,
                 'QoS Viol %': qos_viol,
                 'Density': density,
-                'Overhead (ms)': avg_overhead,
+                'Overhead (ms)': df['overhead'].mean(),
                 'P90 (ms)': p90_lat,
                 'Util %': min(100, utilization)
             })
