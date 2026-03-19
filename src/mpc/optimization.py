@@ -167,9 +167,9 @@ class Optimizer:
         # --------------------------------------------
 
         # 1. Risk Gradient (Risk of violating SLO)
-        # v42: 彻底重构风险梯度，抛弃滞后的 slo_viol 指标，采用“提前预警”机制
-        # 当预测延迟达到 SLO 的 85% 时，就开始产生强烈的向上推力，防止跌入死区
-        safe_margin = slo_limit * 0.85
+        # v43: "Paranoid" Tuning. 应对 WCP 预测偏低的问题。
+        # 进一步提前预警线到 75%，并增强惩罚力度。
+        safe_margin = slo_limit * 0.75
         if pred_upper > safe_margin:
             # 使用二次方惩罚，越接近或超过 SLO，推力呈指数级增长
             normalized_excess = (pred_upper - safe_margin) / max(1.0, slo_limit)
@@ -212,11 +212,13 @@ class Optimizer:
             grad_track = -1.0 * diff
             
         # 2. Utility Gradient (资源回收拉力)
-        w2 = 0.5
+        # v43: 大幅削弱回收拉力，使其更难下降
+        w2 = 0.2
         grad_waste = w2 * prev_u
         
         # 3. 动态风险权重 (固定为强权重，不再依赖滞后指标)
-        dynamic_risk_weight = 8.0 
+        # v43: 增强风险权重
+        dynamic_risk_weight = 12.0 
         if prev_u > 0.9:
             dynamic_risk_weight *= 0.5 # 高位适当降权
             
