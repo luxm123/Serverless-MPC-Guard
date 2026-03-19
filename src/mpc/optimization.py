@@ -167,13 +167,12 @@ class Optimizer:
         # --------------------------------------------
 
         # 1. Risk Gradient (Risk of violating SLO)
-        # v43: "Paranoid" Tuning. 应对 WCP 预测偏低的问题。
-        # 进一步提前预警线到 75%，并增强惩罚力度。
-        safe_margin = slo_limit * 0.75
+        # v44: "QoS First" Tuning. 彻底解决 E2E 过高和剧烈震荡问题。
+        # 预警线提前到 60%，只要有一点风吹草动就停止下降。
+        safe_margin = slo_limit * 0.60
         if pred_upper > safe_margin:
-            # 使用二次方惩罚，越接近或超过 SLO，推力呈指数级增长
             normalized_excess = (pred_upper - safe_margin) / max(1.0, slo_limit)
-            base_risk = 5.0 * (normalized_excess ** 2) + normalized_excess
+            base_risk = 10.0 * (normalized_excess ** 2) + 2.0 * normalized_excess
         else:
             base_risk = 0.0
             
@@ -181,11 +180,10 @@ class Optimizer:
         
         # Softmax aggregation for risk vector
         if isinstance(risks, dict):
-            vals = [base_risk] # 将 base_risk 加入向量
+            vals = [base_risk]
             for k in ('latency', 'timeout', 'error', 'memory'):
                 v = float(risks.get(k, 0.0))
                 vals.append(v)
-            
             mx = max(vals) if vals else 0.0
             if tau <= 0.0: tau = 1.0
             s = 0.0
@@ -199,7 +197,6 @@ class Optimizer:
         if isinstance(risk_comp, (int, float)):
             soft_risk = float(risk_comp)
             
-        # 风险梯度方向为负，推动 u 增加
         grad_risk = -1.0 * soft_risk 
         if isinstance(ku, (int, float)):
              grad_risk = -float(ku) * soft_risk
@@ -210,37 +207,39 @@ class Optimizer:
             safe_pred = min(pred_upper, ref_latency * 1.5)
             diff = (safe_pred - ref_latency) / max(1.0, slo_limit)
             grad_track = -1.0 * diff
+            # CRITICAL FIX: 绝不允许 Tracking Error 产生向下的拉力（导致过度回收）
+            if grad_track > 0:
+                grad_track = 0.0
             
         # 2. Utility Gradient (资源回收拉力)
-        # v43: 大幅削弱回收拉力，使其更难下降
-        w2 = 0.2
+        # 极弱的回收拉力，只有在绝对安全时才缓慢下降
+        w2 = 0.1
         grad_waste = w2 * prev_u
         
-        # 3. 动态风险权重 (固定为强权重，不再依赖滞后指标)
-        # v43: 增强风险权重
-        dynamic_risk_weight = 12.0 
-        if prev_u > 0.9:
-            dynamic_risk_weight *= 0.5 # 高位适当降权
+        # 3. 动态风险权重
+        dynamic_risk_weight = 15.0 
+        if prev_u > 0.95:
+            dynamic_risk_weight *= 0.2 # 在极高位允许微弱下降
             
         # 终极合力计算
         grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste
         
         if prev_u > 0.8:
             if random.random() < 0.1:
-                print(f"[MPC-CORE-v42] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f})")
+                print(f"[MPC-CORE-v44] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f})")
         
         # Update Step
         step_eta = 0.10
-        if grad < -1.0: # 只要有一点点向上的趋势，就加速
+        if grad < -0.5: # 降低加速门槛，更敏锐地向上弹
             step_eta *= 3.0
             
         step = step_eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
         # --- Physical Rate Limiting ---
-        # 允许极快上升，限制下降速度
-        max_increase = 0.40 # 允许一次性拉升 0.4，瞬间逃离死区
-        max_decrease = 0.05
+        # 允许极快上升，极度限制下降速度 (防震荡核心)
+        max_increase = 0.40 
+        max_decrease = 0.02 # 每次最多只允许下降 0.02，给预测器充分的反应时间
         
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
