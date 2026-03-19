@@ -419,7 +419,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     os.environ["AWS_REGION"] = args.region
-    print(f">>> Starting Experiment 1: Base Performance Baseline Verification")
+    print(f">>> Starting Experiment 1: MPC-Guard (Ours) Verification (Baseline Blocked)")
     print(f">>> Task: {args.task}, Fixed RPS: {args.rps}, Duration: {args.minutes}m")
     print(f">>> QoS Threshold: {SLO_LATENCY_MS}ms")
     
@@ -427,14 +427,14 @@ if __name__ == "__main__":
     arrival_times = generate_fixed_rps_arrivals(args.rps, args.minutes)
     num_requests = len(arrival_times)
     
-    # 2. Run Baseline (HPA)
-    print(f"\n--- Running HPA-Baseline (Jiagu Style) ---")
-    baseline_results, baseline_cw = run_phase('baseline', max_workers=20, arrival_times=arrival_times)
-    
-    # 3. Run MPC-Guard (Ours)
+    # 2. Run MPC-Guard (Ours) FIRST
     print(f"\n--- Running MPC-Guard (Ours) ---")
     run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50) # Warm up
     mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=20, arrival_times=arrival_times)
+    
+    # 3. Dummy Baseline Results for Comparison Function compatibility
+    print(f"\n--- Skipping HPA-Baseline (Blocked) ---")
+    baseline_results = []
     
     # 4. Final Comparison
     print_comparison(baseline_results, mpc_results)
