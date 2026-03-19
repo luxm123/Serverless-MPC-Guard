@@ -560,7 +560,7 @@ class MPCMiddleware:
             'rls_states': {},
             'shadow_price': 0.0,
             'last_alloc': 1.0,
-            'optimizer_weights': {'w1': 1.0, 'w2': 0.5, 'w3': 5.0},
+            'optimizer_weights': {'w1': 1.0, 'w2': 2.0, 'w3': 1.0}, # 加大 w2 (省资源), 减小 w3 (减压)
             'priority_weights': {
                 'lambda1': 0.6,
                 'alpha': 0.7,
@@ -573,10 +573,10 @@ class MPCMiddleware:
             'prio_cl_w_latency': 0.45,
             'prio_cl_w_risk': 0.35,
             'prio_cl_w_wait': 0.20,
-            'gamma': 0.1,
-            'u_eta': 0.05,
-            'u_max_delta': 0.15,
-            'slo_limit': 1000.0,
+            'gamma': 0.05, # 减小正则化项，允许 Alloc 更大变化
+            'u_eta': 0.15, # 加大步长，让 Alloc 变化更灵敏
+            'u_max_delta': 0.5, # 允许更大幅度的 Alloc 波动
+            'slo_limit': 180.0, # 对齐实验中的 SLO 180ms
             'p90_belief': 100.0,
             'pred_admit_enabled': True,
             'admit_thr_platinum_ms': 0.0,
