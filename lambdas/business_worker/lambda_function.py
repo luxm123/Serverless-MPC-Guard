@@ -79,7 +79,15 @@ def lambda_handler(event, context):
         if abs(cpu_limit - current_alloc) > 0.001 or random.random() < 0.2:
              baseline_mw._async_save_state(state, version)
              
-        debug_info = {'resource_alloc': cpu_limit, 'strategy': 'baseline', 'p90': p90, 'cpu_util': cpu_util}
+        debug_info = {
+            'resource_alloc': cpu_limit, 
+            'prev_alloc': current_alloc,
+            'new_alloc': cpu_limit,
+            'strategy': 'baseline', 
+            'p90': p90, 
+            'cpu_util': cpu_util,
+            'version': 'HPA_BASELINE'
+        }
 
     start_time = time.time()
     
