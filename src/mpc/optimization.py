@@ -209,24 +209,15 @@ class Optimizer:
              grad_risk = -float(ku) * soft_risk
 
         # 2. Utility Gradient (Cost of Resources)
-        # We want to MINIMIZE u to save cost.
-        # J_cost = u
-        # d(J)/du = 1.0
-        # Boosted constant pressure to decrease u.
-        grad_waste = 2.0 
+        # 极度强化降资源压力
+        grad_waste = 5.0 
         
         # 3. Tracking Error Gradient
-        # J_track = (y_pred - y_ref)^2
-        # y_pred decreases with u.
-        # If y_pred > y_ref (Too Slow), diff > 0.
-        # We need MORE u.
-        # grad should be NEGATIVE.
         grad_track = 0.0
         if ref_latency is not None:
-            # Normalize diff by slo_limit to keep gradients in similar scale
+            # 降低追踪灵敏度，避免因细微波动导致 Alloc 冲回 1.0
             diff = (pred_upper - ref_latency) / max(1.0, slo_limit)
-            # Positive diff (Too slow) -> Negative grad -> Increase u
-            grad_track = -5.0 * diff # Scale up tracking sensitivity
+            grad_track = -1.0 * diff 
         
         # Total Gradient
         # grad J = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion

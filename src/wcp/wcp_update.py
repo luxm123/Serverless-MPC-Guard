@@ -224,8 +224,8 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
     q_index = 0
     sorted_scores_len = 0
     if len(scores) < 10:
-        # 冷启动安全边界：在样本不足的前 10 步，强制给出一个保守的 250ms 不确定性范围
-        uncertainty = 250.0
+        # 降低冷启动安全边界，从 250ms 降至 30ms，避免初始阶段 Alloc 锁死在 1.0
+        uncertainty = 30.0
     else:
         sorted_scores = sorted(scores, reverse=True)
         q_index = math.ceil((len(scores) + 1) * (1 - alpha)) - 1

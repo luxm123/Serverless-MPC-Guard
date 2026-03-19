@@ -262,8 +262,8 @@ class MPCMiddleware:
             uncertainty = 50.0
             
         # System State
-        qos_slo_map = {'Q1': 1000.0, 'Q2': 1800.0, 'Q3': 3000.0}
-        slo_limit_ms = float(qos_slo_map.get(qos, float(event.get('slo_limit', state.get('slo_limit', 1000.0)))))
+        # 强制使用 180.0 作为基准，避免从 event 或 state 中拿到旧的 1000.0
+        slo_limit_ms = 180.0
         q1_violation_rate = float(metrics.get('q1_violation_rate', 0.0) or 0.0)
         q2_violation_rate = float(metrics.get('q2_violation_rate', 0.0) or 0.0)
         q3_violation_rate = float(metrics.get('q3_violation_rate', 0.0) or 0.0)
