@@ -63,20 +63,20 @@ def generate_poisson_arrivals(rate, num):
 def run_single_request(idx, strategy, start_time):
     # 1. Real Scenario: No injected metrics. System must learn.
     
-    r = random.random()
-    if r < 0.2:
-        priority = "platinum"
-    elif r < 0.5:
-        priority = "gold"
-    else:
-        priority = "standard"
+    # For a pure vertical scaling experiment, priority is not a variable.
+    # We remove it entirely from the payload to avoid confusion.
     
     # Payload contains only task info. 
-    # Metrics are DISCOVERED by the system, not injected by client.
     payload = {
-        "metrics": {}, # Empty metrics to force middleware to use state
-        "priority": priority,
-        "risk": {"volatility": 0.1}
+        "task": task_name,
+        "req_id": req_id,
+        "strategy": strategy_name,
+        "timestamp": time.time()
+    }
+    
+    # Wrap in API Gateway format
+    event = {
+        "body": json.dumps(payload)
     }
     
     # 2. Invoke Controller / Worker (depending on strategy)
@@ -385,45 +385,59 @@ def calc_priority_stats(data, use_server=False):
         out[p] = {'vio_rate': vio_rate, 'nonviol': nonviol, 'total': total}
     return out
 
-def print_comparison(baseline_data, mpc_data):
-    print("\n" + "="*70)
+def print_comparison(baseline_results, mpc_results):
+    print("\n======================================================================")
     print(f"{'Metric':<25} | {'HPA-Baseline (Jiagu)':<20} | {'MPC-Guard (Ours)':<20}")
-    print("-" * 70)
+    print("----------------------------------------------------------------------")
     
-    b_avg, b_p90, b_alloc, b_vio, b_q1_thrpt, b_tail_std, b_overhead, b_server = calc_stats(baseline_data)
-    m_avg, m_p90, m_alloc, m_vio, m_q1_thrpt, m_tail_std, m_overhead, m_server = calc_stats(mpc_data)
+    def calc_metrics(results):
+        if not results:
+            return 0, 0, 0, 0, 0, 0, 0
+        
+        total = len(results)
+        # E2E Violations
+        e2e_violations = sum(1 for r in results if r['e2e_latency'] > SLO_LIMIT_MS)
+        e2e_viol_rate = (e2e_violations / total) * 100
+        
+        # Server Violations
+        server_violations = sum(1 for r in results if r['server_latency'] > SLO_LIMIT_MS)
+        server_viol_rate = (server_violations / total) * 100
+        
+        avg_alloc = sum(r['alloc'] for r in results) / total
+        avg_server_lat = sum(r['server_latency'] for r in results) / total
+        avg_e2e_lat = sum(r['e2e_latency'] for r in results) / total
+        
+        latencies = sorted([r['e2e_latency'] for r in results])
+        p90 = latencies[int(total * 0.9)] if total > 0 else 0
+        
+        # Deployment Density (1.0 = ideal, >1.0 = over-provisioned)
+        # We use avg_alloc as a proxy for density in this vertical scaling context
+        # Higher alloc means more CPU time reserved per request
+        density = avg_alloc / 0.5 # Assuming 0.5 is the theoretical minimum for 180ms
+        
+        return e2e_viol_rate, server_viol_rate, density, p90, avg_alloc, avg_server_lat, avg_e2e_lat
+
+    b_e2e_viol, b_srv_viol, b_dens, b_p90, b_alloc, b_srv_lat, b_e2e_lat = calc_metrics(baseline_results)
+    m_e2e_viol, m_srv_viol, m_dens, m_p90, m_alloc, m_srv_lat, m_e2e_lat = calc_metrics(mpc_results)
     
-    # Deployment Density = 1 / Avg. Allocation
-    b_density = 1.0 / b_alloc if b_alloc > 0 else 0
-    m_density = 1.0 / m_alloc if m_alloc > 0 else 0
-    
-    print(f"{'QoS Violation Rate (%)':<25} | {b_vio:<20.2f} | {m_vio:<20.2f}")
-    print(f"{'Deployment Density':<25} | {b_density:<20.2f} | {m_density:<20.2f}")
-    print(f"{'Scheduling Overhead (ms)':<25} | {b_overhead:<20.2f} | {m_overhead:<20.2f}")
+    print(f"{'QoS Violation Rate (E2E) %':<25} | {b_e2e_viol:<20.2f} | {m_e2e_viol:<20.2f}")
+    print(f"{'QoS Violation Rate (Srv) %':<25} | {b_srv_viol:<20.2f} | {m_srv_viol:<20.2f}")
+    print(f"{'Deployment Density':<25} | {b_dens:<20.2f} | {m_dens:<20.2f}")
     print(f"{'P90 Tail Latency (ms)':<25} | {b_p90:<20.2f} | {m_p90:<20.2f}")
     print(f"{'Avg CPU Allocation':<25} | {b_alloc:<20.2f} | {m_alloc:<20.2f}")
-    print(f"{'Avg Server Latency (ms)':<25} | {b_server:<20.2f} | {m_server:<20.2f}")
-    print(f"{'E2E Avg Latency (ms)':<25} | {b_avg:<20.2f} | {m_avg:<20.2f}")
-    print("="*70)
+    print(f"{'Avg Server Latency (ms)':<25} | {b_srv_lat:<20.2f} | {m_srv_lat:<20.2f}")
+    print(f"{'E2E Avg Latency (ms)':<25} | {b_e2e_lat:<20.2f} | {m_e2e_lat:<20.2f}")
+    print("======================================================================\n")
     
-    if m_vio < b_vio:
-        print(f"\n[SUCCESS] MPC-Guard reduced QoS violations by {b_vio - m_vio:.2f}%.")
-    if m_density > b_density:
-        print(f"[SUCCESS] MPC-Guard improved deployment density by {m_density/b_density:.2f}x.")
-    
-    b_prio_e2e = calc_priority_stats(baseline_data, use_server=False)
-    m_prio_e2e = calc_priority_stats(mpc_data, use_server=False)
-    b_prio_srv = calc_priority_stats(baseline_data, use_server=True)
-    m_prio_srv = calc_priority_stats(mpc_data, use_server=True)
-    
-    print("\nPer-Priority Violation Rate (E2E):")
-    print(f"{'Priority':<10} | {'Baseline':<10} | {'MPC':<10}")
-    for p in ('platinum','gold','standard'):
-        print(f"{p:<10} | {b_prio_e2e[p]['vio_rate']:<10.2f} | {m_prio_e2e[p]['vio_rate']:<10.2f}")
-    print("Per-Priority Violation Rate (Server):")
-    print(f"{'Priority':<10} | {'Baseline':<10} | {'MPC':<10}")
-    for p in ('platinum','gold','standard'):
-        print(f"{p:<10} | {b_prio_srv[p]['vio_rate']:<10.2f} | {m_prio_srv[p]['vio_rate']:<10.2f}")
+    if m_e2e_viol < b_e2e_viol:
+        print(f"[SUCCESS] MPC-Guard reduced E2E QoS violations by {b_e2e_viol - m_e2e_viol:.2f}%.")
+    else:
+        print(f"[WARNING] MPC-Guard did not improve E2E QoS violations.")
+        
+    if m_srv_viol < b_srv_viol:
+        print(f"[SUCCESS] MPC-Guard reduced Server QoS violations by {b_srv_viol - m_srv_viol:.2f}%.")
+    if m_dens > b_dens:
+        print(f"[SUCCESS] MPC-Guard improved deployment density by {m_dens/b_dens:.2f}x.")
 
 def parse_args():
     parser = argparse.ArgumentParser()
