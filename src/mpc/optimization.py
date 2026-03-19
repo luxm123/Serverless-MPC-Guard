@@ -216,17 +216,11 @@ class Optimizer:
         # J_track = (y - y_ref)^2
         grad_track = 0.0
         if ref_latency is not None:
-            # v20: Reality Check. 如果预测上限高于参考值，且实际观测值也高于参考值，才允许增加资源
-            # 如果实际观测值已经低于 SLO，禁止产生负梯度（加资源压力）
+            # v21: 回归科学。diff 反映了预测值相对于参考值的偏离
+            # 如果 pred_upper > ref_latency，diff 为正，grad_track 为负，驱动 u 增大
+            # 这是 MPC 的核心：基于预测的提前响应
             diff = (pred_upper - ref_latency) / max(1.0, slo_limit)
-            
-            # --- CRITICAL v20 FIX ---
-            # 如果 pred_upper > ref_latency，diff 为正，grad_track = -diff (想加资源)
-            # 我们强制：只有当 diff 真的很大且确实有风险时才允许加资源
-            if diff > 0:
-                grad_track = -1.0 * diff 
-            else:
-                grad_track = -1.0 * diff # 此时 diff 为负，grad_track 为正 (想减资源)
+            grad_track = -1.0 * diff
         
         # Total Gradient
         price_norm = 100.0
@@ -251,30 +245,32 @@ class Optimizer:
         # 4. Congestion Price (影子价格)
         grad_price = -1.0 * (price / price_norm)
 
-        # 总梯度汇总
-        # v20: 动态资源浪费梯度定义
-        grad_waste_dynamic = 20.0 * prev_u 
+        # 总梯度汇总 (v21: 非线性回收逻辑)
+        # 我们不再 Override WCP，而是通过加强高位 Alloc 的惩罚来强制搜索低位
+        # 使用指数惩罚：当 u 靠近 1.0 时，惩罚压力急剧上升
+        # grad_waste_dynamic = 10.0 * exp(2.0 * prev_u)
+        # 当 u=1.0 时，grad_waste = 73.8
+        # 当 u=0.5 时，grad_waste = 27.1
+        grad_waste_dynamic = 10.0 * math.exp(2.0 * prev_u)
         
-        # 风险梯度衰减 (v20: 更加理性的响应)
-        risk_attenuation = 1.0
-        if pred_upper < 200.0:
-            risk_attenuation = 0.05 # 接近 SLO 时极其冷静
+        # 风险梯度保持有效，但权重设定为智能博弈
+        risk_weight = 0.5 # 恢复 WCP 的预警权重
         
-        # v20: 保持 20.0x 回收压力
-        grad = 2.0 * grad_track + 0.1 * risk_attenuation * grad_risk + grad_waste_dynamic + grad_price + grad_congestion
+        # v21: 科学博弈合力
+        grad = 2.0 * grad_track + risk_weight * grad_risk + grad_waste_dynamic + grad_price + grad_congestion
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Asymmetric Rate Limiting (v20) ---
-        # 限制爬升速度，但不限制回收速度
+        # --- Asymmetric Rate Limiting (v21) ---
+        # 保持物理安全限速，防止并发冲顶
         max_increase = 0.05
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
             
-        # DEBUG: 终极详情 (v20)
-        print(f"[MPC-DEBUG-v20] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{0.1*risk_attenuation*grad_risk:.2f} W:{grad_waste_dynamic:.2f} | Total:{grad:.2f}")
+        # DEBUG: 详情 (v21)
+        print(f"[MPC-DEBUG-v21] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{risk_weight*grad_risk:.2f} W:{grad_waste_dynamic:.2f} | Total:{grad:.2f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
