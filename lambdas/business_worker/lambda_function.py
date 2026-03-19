@@ -81,19 +81,10 @@ def lambda_handler(event, context):
              
         debug_info = {'resource_alloc': cpu_limit, 'strategy': 'baseline', 'p90': p90, 'cpu_util': cpu_util}
 
-    # 如果需要丢弃请求
-    if should_shed:
-        return {
-            'statusCode': 429, # Too Many Requests
-            'latency_ms': 0,
-            'status': 'shedded',
-            'debug': debug_info
-        }
-
     start_time = time.time()
     
     # 核心逻辑：负载规模受 cpu_limit 指令严格控制
-    # cpu_limit 越小，分配给 Lambda 的实际算力越低，我们通过增加计算量来模拟这种物理效应
+    # cpu_limit 越小，分配给 Lambda 的实际算力越低，我们通过调整计算量来实现这种物理效应
     scale = 1.0 / (cpu_limit + 0.01) 
 
     try:
