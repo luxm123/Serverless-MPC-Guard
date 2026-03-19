@@ -214,9 +214,8 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
             res = future.result()
             results.append(res)
             if not warm_up:
-                debug_str = f"PrevA={res['prev_alloc']}, NewA={res['new_alloc']}"
-                # 实时打印每个请求的结果
-                print(f"[{strategy_name}] Req {res['id']}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Ver={res['version']}, {debug_str}")
+                # 实时打印每个请求的结果 (v12)
+                print(f"[{strategy_name}] Req {res['id']:2d}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Ver={res['version']}, PrevA={res['prev_alloc']}, NewA={res['new_alloc']}, Src={res['source']}")
         except Exception as e:
             print(f"[ERROR] Request failed: {e}")
 

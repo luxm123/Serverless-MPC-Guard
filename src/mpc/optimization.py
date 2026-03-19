@@ -277,15 +277,23 @@ class Optimizer:
         # 已经在上面算过了，且方向正确（负号）
  
         # 总梯度汇总
-        # 终极调整：w1=1.0, w2=5.0 (极强省钱), w3=0.1 (极弱风险)
+        # 终极调整：w1=2.0 (增强追踪), w2=8.0 (极强省钱), w3=0.1 (极弱风险)
         # 确保系统优先尝试降低资源
-        grad = w1 * grad_track + 0.1 * grad_risk + 5.0 * grad_waste + grad_price + grad_congestion
+        grad = 2.0 * grad_track + 0.1 * grad_risk + 8.0 * grad_waste + grad_price + grad_congestion
+        
+        # --- Gradient Clipping (v12) ---
+        # 防止从 0.7 直接跳到 1.0，限制最大向上梯度
+        # 如果 eta=0.05, grad=-10.0, step=-0.5, u_new = 0.7 - (-0.5) = 1.2 -> 1.0
+        # 我们限制 grad 最小为 -4.0, 则 step = -0.2, u_new = 0.7 - (-0.2) = 0.9
+        grad_min = -4.0 
+        grad_max = 20.0 # 允许快速降资源
+        grad = max(grad_min, min(grad_max, grad))
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
 
-        # DEBUG: 终极详情 (v11)
-        print(f"[MPC-DEBUG-v11] u:{prev_u:.2f} | T:{w1*grad_track:.2f} R:{0.1*grad_risk:.2f} W:{5.0*grad_waste:.2f} P:{grad_price:.2f} C:{grad_congestion:.2f} | Total:{grad:.2f} | Step:{step:.4f}")
+        # DEBUG: 终极详情 (v12)
+        print(f"[MPC-DEBUG-v12] u:{prev_u:.2f} | T:{2.0*grad_track:.2f} R:{0.1*grad_risk:.2f} W:{8.0*grad_waste:.2f} P:{grad_price:.2f} C:{grad_congestion:.2f} | Total:{grad:.2f} | Step:{step:.4f}")
         
         u_new = prev_u - step
         
