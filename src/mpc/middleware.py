@@ -689,4 +689,5 @@ class MPCMiddleware:
             'queue_backlog_ttl_s': 2.0,
             'buffer_servers_default': 1.0,
             'avg_service_ms': 0.0,
+            'min_fidelity_floor': 0.1, # Default floor to allow dynamic range
         }

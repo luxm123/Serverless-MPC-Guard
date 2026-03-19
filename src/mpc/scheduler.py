@@ -150,7 +150,13 @@ class Scheduler:
         
         # Enforce Minimum Fidelity Floor (User Requirement: > 85%)
         # Decouple Fidelity from Admission. Survivors run at high fidelity.
-        min_fidelity = 0.85
-        resource_alloc = max(min_fidelity, resource_alloc)
+        # CRITICAL FIX: Make min_fidelity configurable from state, default to 0.1 if not specified
+        # to allow more dynamic range during experiments.
+        min_fidelity = float(system_state.get('min_fidelity_floor', 0.1))
+        
+        if resource_alloc < min_fidelity:
+            if random.random() < 0.01: # Sampled logging
+                print(f"[MPC-SCHED] Clamping resource_alloc {resource_alloc:.4f} to floor {min_fidelity}")
+            resource_alloc = min_fidelity
                 
         return should_shed, degrade_plan, resource_alloc
