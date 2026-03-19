@@ -98,13 +98,16 @@ def run_single_request(idx, strategy, start_time):
         
         if worker_result and 'response' in worker_result:
             resp_body = worker_result['response']
+            debug_data = resp_body.get('debug', {})
             decision = {
-                'resource_alloc': resp_body.get('debug', {}).get('resource_alloc', 1.0),
-                'uncertainty': resp_body.get('debug', {}).get('uncertainty', 0.0),
-                'p90_prediction': resp_body.get('debug', {}).get('p90_prediction', 0.0),
+                'resource_alloc': debug_data.get('resource_alloc', 1.0),
+                'uncertainty': debug_data.get('uncertainty', 0.0),
+                'p90_prediction': debug_data.get('p90_prediction', 0.0),
+                'version': debug_data.get('version', 'UNKNOWN'),
+                'source': debug_data.get('state_source', 'UNKNOWN')
             }
         else:
-             decision = {}
+             decision = {'version': 'FAILED'}
 
         ctrl_latency = 0 # No external controller overhead
     elif strategy == 'baseline':
@@ -177,6 +180,8 @@ def run_single_request(idx, strategy, start_time):
         "priority": priority,
         "p90_input": current_p90,
         "alloc": decision.get('resource_alloc', 1.0),
+        "version": decision.get('version', 'UNKNOWN'),
+        "source": decision.get('source', 'UNKNOWN'),
         "uncertainty": decision.get('uncertainty', 0.0),
         "pred_p90": decision.get('p90_prediction', 0.0),
         "ctrl_latency": ctrl_latency,
@@ -215,7 +220,7 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
                         debug_info = f", PrevU={dbg.get('prev_u', '?')}, SLO={dbg.get('slo_limit', '?')}, Price={dbg.get('price', '?')}"
                 
                 # 实时打印每个请求的结果
-                print(f"[{strategy_name}] Req {res['id']}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Server={res['server_latency']:.1f}ms{debug_info}")
+                print(f"[{strategy_name}] Req {res['id']}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Server={res['server_latency']:.1f}ms, Ver={res['version']}{debug_info}")
         except Exception as e:
             print(f"[ERROR] Request failed: {e}")
 
