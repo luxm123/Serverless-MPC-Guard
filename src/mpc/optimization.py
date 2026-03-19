@@ -216,25 +216,24 @@ class Optimizer:
         # J_track = (y - y_ref)^2
         grad_track = 0.0
         if ref_latency is not None:
+            # v20: Reality Check. 如果预测上限高于参考值，且实际观测值也高于参考值，才允许增加资源
+            # 如果实际观测值已经低于 SLO，禁止产生负梯度（加资源压力）
             diff = (pred_upper - ref_latency) / max(1.0, slo_limit)
-            grad_track = -1.0 * diff # 负梯度引导 u 增大
+            
+            # --- CRITICAL v20 FIX ---
+            # 如果 pred_upper > ref_latency，diff 为正，grad_track = -diff (想加资源)
+            # 我们强制：只有当 diff 真的很大且确实有风险时才允许加资源
+            if diff > 0:
+                grad_track = -1.0 * diff 
+            else:
+                grad_track = -1.0 * diff # 此时 diff 为负，grad_track 为正 (想减资源)
         
         # Total Gradient
-        # grad J = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + price + grad_congestion
-        # w2=5.0, 所以总向下压力 = 10.0 * 5.0 = 50.0！
         price_norm = 100.0
         if state:
              price_norm = float(state.get('opt_price_norm', 100.0))
         
-        # 4. Barrier Method for Queue Capacity Constraint (Scientific Approach)
-        # Instead of heuristic 'if backlog > 40', we use a Log-Barrier Function.
-        # Constraint: g(u) = Capacity - Backlog(u) >= 0
-        # In this resource model, increasing u (resources) reduces service time,
-        # which reduces backlog. So d(Backlog)/du is NEGATIVE.
-        # d(Margin)/du is POSITIVE.
-        # We want to increase u to increase Margin.
-        # d(Cost)/du is NEGATIVE.
-        
+        # 4. Barrier Method for Queue Capacity Constraint
         grad_congestion = 0.0
         backlog_val = 0.0
         if current_backlog is not None:
@@ -245,69 +244,37 @@ class Optimizer:
         # Soft Capacity Limit (Relaxed for Serverless Scalability)
         capacity = 500.0 
         margin = capacity - backlog_val
-        
         safe_margin = max(0.1, margin)
         mu = 20.0 
-        
-        # d(Cost)/du is NEGATIVE (force u UP to clear congestion).
         grad_congestion = -mu / safe_margin
         
-        if margin < 10.0:
-            grad_congestion *= 50.0 
-        
-        if margin <= 2.0:
-            grad_congestion -= (5000.0 + abs(margin) * 100.0)
-            
-            if state is not None:
-                if 'opt_debug' not in state:
-                    state['opt_debug'] = {}
-                state['opt_debug'].update({
-                    'override': False,
-                    'margin': margin,
-                    'backlog': backlog_val,
-                    'reason': 'high_congestion_grad',
-                    'g_cong': grad_congestion
-                })
-
         # 4. Congestion Price (影子价格)
-        # 价格代表压力，压力大时应增大 u，所以梯度是负的
         grad_price = -1.0 * (price / price_norm)
 
-        # 5. Barrier Method (拥塞控制)
-        # 已经在上面算过了，且方向正确（负号）
- 
         # 总梯度汇总
-        # v14: 移除固定 grad_waste，改为基于 prev_u 的动态惩罚
-        # grad_waste = 2.0  <-- 移除这个导致 1.0 锁定的元凶
+        # v20: 动态资源浪费梯度定义
+        grad_waste_dynamic = 20.0 * prev_u 
         
-        # 动态资源浪费梯度：Alloc 越高，降低它的压力越大
-        # v18: 极度强化资源浪费惩罚 (40.0)
-        grad_waste_dynamic = 40.0 * prev_u 
-        
-        # 风险梯度衰减 (v19: 智能回归)
+        # 风险梯度衰减 (v20: 更加理性的响应)
         risk_attenuation = 1.0
-        # 如果预测值已经显著超过 SLO (180ms)，必须信任 WCP 的预警
-        if pred_upper < 220.0:
-            risk_attenuation = 0.2 # 轻微波动时保持冷静
-        else:
-            risk_attenuation = 1.0 # 真正危险时全速响应
-            
-        # 极弱风险权重，极强资源回收
-        # v19: 稍微平衡一下，惩罚项降到 30.0，给 WCP 留出响应空间
-        grad = 2.0 * grad_track + 0.1 * risk_attenuation * grad_risk + 30.0 * grad_waste_dynamic + grad_price + grad_congestion
+        if pred_upper < 200.0:
+            risk_attenuation = 0.05 # 接近 SLO 时极其冷静
+        
+        # v20: 保持 20.0x 回收压力
+        grad = 2.0 * grad_track + 0.1 * risk_attenuation * grad_risk + grad_waste_dynamic + grad_price + grad_congestion
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Physical Rate Limiting (v19) ---
-        # 恢复响应速度：单步增加上限从 0.03 提升到 0.10
-        max_increase = 0.10
+        # --- Asymmetric Rate Limiting (v20) ---
+        # 限制爬升速度，但不限制回收速度
+        max_increase = 0.05
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
             
-        # DEBUG: 终极详情 (v19)
-        print(f"[MPC-DEBUG-v19] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{0.1*risk_attenuation*grad_risk:.2f} W:{30.0*grad_waste_dynamic:.2f} | Total:{grad:.2f}")
+        # DEBUG: 终极详情 (v20)
+        print(f"[MPC-DEBUG-v20] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{0.1*risk_attenuation*grad_risk:.2f} W:{grad_waste_dynamic:.2f} | Total:{grad:.2f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
