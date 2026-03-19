@@ -224,8 +224,9 @@ class Optimizer:
         # v25: 线性 + 二次方 混合惩罚，确保在高位有绝对压制力
         # v27: 回归稳健。减小 w2 到 10.0，并将立方项改为二次项，降低下坠速度
         # v29: 增强 Waste 惩罚 (10 -> 25)，并根据 prev_u 引入指数级回收压力
-        w2 = 25.0
-        grad_waste = w2 * (prev_u + 4.0 * (prev_u ** 2))
+        # v30: 科学降噪。大幅调低 w2 (25 -> 8.0) 和 eta，防止步进撞墙，实现精细化控制
+        w2 = 8.0
+        grad_waste = w2 * (prev_u + 2.0 * (prev_u ** 2))
         
         # 3. 风险梯度 (WCP 提供的概率保证)
         # v25: 核心逻辑 - 基于实际违反率衰减风险权重
@@ -241,14 +242,14 @@ class Optimizer:
         # 动态风险权重：只有真正出事时才全额信任 WCP
         # v27: 恢复部分风险权重 (0.3 -> 0.8)，确保在 180ms 附近有足够的托举力
         # v29: 引入 Confidence Gating。如果连续无违反，极大幅度削减 WCP 权重
-        # 即使 WCP 预测很高，只要实际延迟 OK，就不增加资源。
+        # v30: 微调门控系数，增加灵敏度
         confidence_gate = 1.0
         if slo_viol < 0.01:
-            confidence_gate = 0.05 # 只有 5% 的信任度
+            confidence_gate = 0.15 # 从 0.05 提升到 0.15，允许更平滑的微调
             
-        dynamic_risk_weight = 1.0 * (slo_viol + 0.05) * confidence_gate
-        if prev_u > 0.8:
-            dynamic_risk_weight *= 0.1 # 高位双重降权
+        dynamic_risk_weight = 1.2 * (slo_viol + 0.05) * confidence_gate
+        if prev_u > 0.85:
+            dynamic_risk_weight *= 0.2 
             
         # v25: 强制向下梯度 (防止死锁)
         # v29: 移除硬编码补丁，依靠 grad_waste 和 confidence_gate 回归科学
@@ -257,24 +258,24 @@ class Optimizer:
         # v25: 终极合力计算
         grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + forced_recovery
         
-        # v28: 极致调试 - 找出为什么 u 还在 1.0
+        # v30: 极致调试 - 找出为什么 u 还在 1.0
         if prev_u > 0.8:
-            print(f"[MPC-CORE-v29] U:{prev_u:.2f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | WCP:{pred_upper:.1f}ms, Gate:{confidence_gate}")
+            if random.random() < 0.05:
+                print(f"[MPC-CORE-v30] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
         
         # Update Step
-        # v27: 只有在需要“救火”（上升）时才增加步长，回收时保持稳定步长
-        # v29: 全面加大学习率 eta (0.05 -> 0.15) 以对抗分布式失忆带来的滞后
-        step_eta = 0.15
-        if grad < -20.0: # Negative grad means UPWARD scaling
-            step_eta *= 1.5
+        # v30: 降低基础学习率 (0.15 -> 0.06)，配合 w2 缩减，使单步跨度降至 0.01~0.05 级别
+        step_eta = 0.06
+        if grad < -15.0: # Negative grad means UPWARD scaling
+            step_eta *= 2.0
             
         step = step_eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Physical Rate Limiting (v29) ---
-        # v29: 放宽限制，允许更灵敏的响应
-        max_increase = 0.30
-        max_decrease = 0.20
+        # --- Physical Rate Limiting (v30) ---
+        # 保持非对称限速，但由于梯度变小，系统将更多地运行在限速区内
+        max_increase = 0.25
+        max_decrease = 0.15
         
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
