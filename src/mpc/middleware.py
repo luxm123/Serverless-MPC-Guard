@@ -126,10 +126,11 @@ class MPCMiddleware:
         # Ensure last_alloc is present and defaults to 0.8
         last_alloc = float(state.get('last_alloc', 0.8) or 0.8)
         
-        # 破冰逻辑：如果从数据库读到了 1.0，强行将其重置为 0.8 以打破死锁
+        # 破冰逻辑：如果从数据库读到了 1.0，强行将其重置为 0.8 并清空影子价格以打破死锁
         if last_alloc > 0.99:
             last_alloc = 0.8
-            print(f"[Middleware] Breaking 1.0 deadlock, resetting to 0.8")
+            state['shadow_price'] = 0.0 # 清除 v8 版本残留的高额价格
+            print(f"[Middleware] Breaking 1.0 deadlock, resetting to 0.8 and clearing price")
             
         state['last_alloc'] = last_alloc
         debug_info['loaded_alloc'] = last_alloc

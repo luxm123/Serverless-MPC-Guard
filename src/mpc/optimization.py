@@ -209,12 +209,11 @@ class Optimizer:
              grad_risk = -float(ku) * soft_risk
 
         # 2. Utility Gradient (Cost of Resources)
-        # J_cost = u -> 我们要最小化成本，所以梯度是正的 (+1.0)，引导 u 减小
-        grad_waste = 1.0 
+        # 强化降资源压力，设定基础梯度为 2.0
+        grad_waste = 2.0 
         
         # 3. Tracking Error Gradient
         # J_track = (y - y_ref)^2
-        # 如果延迟高 (y > y_ref)，我们需要增大 u，所以梯度应该是负的
         grad_track = 0.0
         if ref_latency is not None:
             diff = (pred_upper - ref_latency) / max(1.0, slo_limit)
@@ -271,23 +270,24 @@ class Optimizer:
                 })
 
         # 4. Congestion Price (影子价格)
-        # 价格代表压力，压力大时应增大 u，所以价格产生的梯度应该是负的
+        # 价格代表压力，压力大时应增大 u，所以梯度是负的
         grad_price = -1.0 * (price / price_norm)
 
         # 5. Barrier Method (拥塞控制)
-        # 同样，拥塞严重时应增大 u，梯度应为负
-        # grad_congestion 已经在上面计算过了，且方向正确（负号）
-
+        # 已经在上面算过了，且方向正确（负号）
+ 
         # 总梯度汇总
-        # 负梯度 (Risk, Track, Price, Congestion) -> 引导 u 增大
-        # 正梯度 (Waste) -> 引导 u 减小
-        grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + grad_price + grad_congestion
+        # 权重调整：w1=1.0, w2=2.0 (Waste), w3=0.5 (Risk)
+        # 此时 w2 * grad_waste = 4.0 的正拉力
+        # 如果延迟在 160ms，Risk 梯度大约为 -0.1 * 0.5 = -0.05
+        # 此时 4.0 >> 0.05，u 必降
+        grad = w1 * grad_track + 0.5 * grad_risk + w2 * grad_waste + grad_price + grad_congestion
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
 
-        # DEBUG: 强制打印详情 (v9)
-        print(f"[MPC-DEBUG-v9] u:{prev_u:.2f} | Grads -> Track:{w1*grad_track:.2f}, Risk:{w3*grad_risk:.2f}, Waste:{w2*grad_waste:.2f}, Price:{grad_price:.2f} | Total:{grad:.2f} | Step:{step:.4f}")
+        # DEBUG: 强制打印详情 (v10)
+        print(f"[MPC-DEBUG-v10] u:{prev_u:.2f} | Grads -> Track:{w1*grad_track:.2f}, Risk:{0.5*grad_risk:.2f}, Waste:{w2*grad_waste:.2f}, Price:{grad_price:.2f} | Total:{grad:.2f} | Step:{step:.4f}")
         
         u_new = prev_u - step
         
