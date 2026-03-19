@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v27'
+        current_ver = '20260319_v28'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
@@ -127,7 +127,7 @@ class MPCMiddleware:
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v27] NUCLEAR RESET: Risk discounting enabled.")
+            print(f"[Middleware-v28] NUCLEAR RESET: Risk discounting enabled.")
         else:
             debug_info['state_source'] = 'dynamodb'
             
@@ -431,14 +431,8 @@ class MPCMiddleware:
             _L1_CACHE['params']['p90_belief'] = updated_p90
             _L1_CACHE['last_sync'] = time.time() # Refresh timestamp
             
-            # 2. PROACTIVE PERSIST: Write to DynamoDB more often for p90_belief sync
-            # This ensures Baseline and MPC see the same ground truth.
-            if random.random() < 0.2:
-                 self._async_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
-            
-            # 3. Async Persist (SQS feedback)
-            if random.random() < 0.2:
-                 self._async_update_feedback(updated_p90)
+            # 2. PROACTIVE PERSIST: v28 - 强制 100% 同步
+            self._async_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
 
     def _async_update_feedback(self, p90_val):
         try:

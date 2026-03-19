@@ -60,15 +60,8 @@ def _remaining_ms(context):
         return None
 
 def _should_write_state():
-    try:
-        rate = float(os.environ.get('MPC_STATE_WRITE_SAMPLE_RATE', '0.2'))
-    except Exception:
-        rate = 0.2
-    if rate >= 1.0:
-        return True
-    if rate <= 0.0:
-        return False
-    return random.random() < rate
+    # v28: 实验期间强制 100% 保存状态，防止并发冲突
+    return True
 
 def _merge_state(latest_state, computed_state):
     merged = dict(latest_state or {})

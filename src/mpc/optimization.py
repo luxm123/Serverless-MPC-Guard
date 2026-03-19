@@ -251,6 +251,10 @@ class Optimizer:
         # v25: 终极合力计算
         grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + forced_recovery
         
+        # v28: 极致调试 - 找出为什么 u 还在 1.0
+        if prev_u > 0.9:
+            print(f"[MPC-CORE-v28] High-U Debug | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}, F:{forced_recovery:.2f}) | WCP_UB:{pred_upper:.1f}ms, SLO:{slo_limit:.1f}ms")
+        
         # Update Step
         # v27: 只有在需要“救火”（上升）时才增加步长，回收时保持稳定步长
         step_eta = eta
@@ -262,16 +266,17 @@ class Optimizer:
         
         # --- Physical Rate Limiting (v27) ---
         # v27: 允许快速上升 (0.2)，严格限制下降 (0.1)
+        # v28: 再次放宽下降限制到 0.15，确保能掉下来
         max_increase = 0.20
-        max_decrease = 0.10
+        max_decrease = 0.15
         
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
         elif u_new < prev_u - max_decrease:
             u_new = prev_u - max_decrease
             
-        # DEBUG: 详情 (v27)
-        print(f"[MPC-DEBUG-v27] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.1f} R:{dynamic_risk_weight*grad_risk:.1f} W:{grad_waste:.1f} F:{forced_recovery:.1f} | Total:{grad:.1f}")
+        # DEBUG: 详情 (v28)
+        print(f"[MPC-DEBUG-v28] u:{prev_u:.2f}->{u_new:.2f} | Total_Grad:{grad:.1f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
