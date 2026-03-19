@@ -18,7 +18,7 @@ _L1_CACHE = {
     'last_backlog_sync': 0,
     'updating_backlog': False
 }
-CACHE_TTL = 0.5 # seconds. Refresh from DB if older than this.
+CACHE_TTL = 0.1 # 缩短到 0.1s，强制更频繁地从 DynamoDB 读取全局状态，减少容器间的冲突
 
 # AWS Clients
 dynamodb = boto3.client(
@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v46'
+        current_ver = '20260319_v47'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
