@@ -277,23 +277,28 @@ class Optimizer:
         # 已经在上面算过了，且方向正确（负号）
  
         # 总梯度汇总
-        # 终极调整：w1=2.0 (增强追踪), w2=8.0 (极强省钱), w3=0.1 (极弱风险)
-        # 确保系统优先尝试降低资源
-        grad = 2.0 * grad_track + 0.1 * grad_risk + 8.0 * grad_waste + grad_price + grad_congestion
+        # v14: 移除固定 grad_waste，改为基于 prev_u 的动态惩罚
+        # grad_waste = 2.0  <-- 移除这个导致 1.0 锁定的元凶
         
-        # --- Gradient Clipping (v12) ---
-        # 防止从 0.7 直接跳到 1.0，限制最大向上梯度
-        # 如果 eta=0.05, grad=-10.0, step=-0.5, u_new = 0.7 - (-0.5) = 1.2 -> 1.0
-        # 我们限制 grad 最小为 -4.0, 则 step = -0.2, u_new = 0.7 - (-0.2) = 0.9
-        grad_min = -4.0 
-        grad_max = 20.0 # 允许快速降资源
+        # 动态资源浪费梯度：Alloc 越高，降低它的压力越大
+        # 当 u=1.0 时，grad_waste_dynamic = 10.0
+        # 当 u=0.5 时，grad_waste_dynamic = 5.0
+        grad_waste_dynamic = 10.0 * prev_u 
+        
+        # 极弱风险权重，极强资源回收
+        grad = 2.0 * grad_track + 0.05 * grad_risk + 8.0 * grad_waste_dynamic + grad_price + grad_congestion
+        
+        # --- Gradient Clipping (v14) ---
+        # 允许更大幅度的向下跳变 (降资源)，但限制向上跳变 (加资源)
+        grad_min = -2.0  # 限制最大向上步长 (eta*2 = 0.1)
+        grad_max = 30.0  # 允许极速降资源 (eta*30 = 1.5, 直接到底)
         grad = max(grad_min, min(grad_max, grad))
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
 
-        # DEBUG: 终极详情 (v12)
-        print(f"[MPC-DEBUG-v12] u:{prev_u:.2f} | T:{2.0*grad_track:.2f} R:{0.1*grad_risk:.2f} W:{8.0*grad_waste:.2f} P:{grad_price:.2f} C:{grad_congestion:.2f} | Total:{grad:.2f} | Step:{step:.4f}")
+        # DEBUG: 终极详情 (v14)
+        print(f"[MPC-DEBUG-v14] u:{prev_u:.2f} | T:{2.0*grad_track:.2f} R:{0.05*grad_risk:.2f} W:{8.0*grad_waste_dynamic:.2f} P:{grad_price:.2f} C:{grad_congestion:.2f} | Total:{grad:.2f} | Step:{step:.4f}")
         
         u_new = prev_u - step
         
