@@ -214,41 +214,52 @@ class Optimizer:
         w2 = 15.0
         grad_waste = 2.0 * w2 * prev_u
         
-        # v24: 系统性重构 - 区分“可控延迟”与“环境噪声”
-        # 1. Tracking Error Gradient (风险拉力)
+        # v25: 终极重构 - 风险置信度衰减与强制回收
+        # 1. Tracking Error Gradient
         grad_track = 0.0
         if ref_latency is not None:
-            # WCP 提供的 pred_upper。如果 WCP 预测值远超 1.5x SLO，
-            # 我们认为 WCP 受到了环境噪声污染，进行强制平滑。
-            safe_pred = min(pred_upper, ref_latency * 1.3) 
+            # 对预测值进行物理截断，防止 WCP 中毒
+            safe_pred = min(pred_upper, ref_latency * 1.2)
             diff = (safe_pred - ref_latency) / max(1.0, slo_limit)
             grad_track = -1.0 * diff
             
         # 2. Utility Gradient (资源回收拉力)
-        # v24: 非线性回收。当 u 越高，回收压力呈平方级增加
-        # w2_base = 15.0
-        # u=0.5 -> grad=15.0; u=1.0 -> grad=60.0
-        w2_base = 15.0
-        grad_waste = 2.0 * w2_base * (prev_u ** 2) * 4.0 
+        # v25: 线性 + 二次方 混合惩罚，确保在高位有绝对压制力
+        w2 = 20.0
+        grad_waste = w2 * (prev_u + 4.0 * (prev_u ** 2))
         
-        # 3. 风险梯度
-        risk_weight = 0.1
+        # 3. 风险梯度 (WCP 提供的概率保证)
+        # v25: 核心逻辑 - 基于实际违反率衰减风险权重
+        # 如果实际没有违反 QoS，WCP 的悲观预测应该被降权
+        slo_viol = 0.0
+        if metrics:
+            slo_viol = float(metrics.get('slo_violation_rate', 0.0))
         
-        # v24: 合力计算
-        grad = 2.0 * grad_track + risk_weight * grad_risk + grad_waste
+        # 动态风险权重：只有真正出事时才全额信任 WCP
+        dynamic_risk_weight = 0.5 * (slo_viol + 0.05) 
+        if prev_u > 0.9:
+            dynamic_risk_weight *= 0.1 # 在高位时极其质疑风险
+            
+        # v25: 强制向下梯度 (防止死锁)
+        # 如果延迟达标且在 1.0，强制注入回收动力
+        forced_recovery = 0.0
+        if prev_u > 0.95 and slo_viol < 0.01:
+            forced_recovery = 50.0 
+            
+        # v25: 终极合力计算
+        grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + forced_recovery
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Physical Rate Limiting (v24) ---
-        # 爬坡上限收紧到 0.05，确保稳定性
+        # --- Physical Rate Limiting (v25) ---
         max_increase = 0.05
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
             
-        # DEBUG: 详情 (v24)
-        print(f"[MPC-DEBUG-v24] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} W:{grad_waste:.2f} | Total:{grad:.2f}")
+        # DEBUG: 详情 (v25)
+        print(f"[MPC-DEBUG-v25] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.1f} R:{dynamic_risk_weight*grad_risk:.1f} W:{grad_waste:.1f} F:{forced_recovery:.1f} | Total:{grad:.1f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
