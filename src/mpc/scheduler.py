@@ -79,27 +79,25 @@ class Scheduler:
             )
         max_delta = float(system_state.get('u_max_delta', 0.15))
         
-        # CRITICAL FIX: Emergency Bypass for High Backlog
-        # If backlog is high (>10), disable stability clamps to allow immediate fidelity drop.
+        # Emergency Scaling for High Backlog
+        # If backlog is high (>10), allow immediate resource allocation drop to clear queue.
         is_emergency = False
         if current_backlog is not None and current_backlog > 10.0:
             is_emergency = True
             max_delta = 1.0 # Allow full swing (0.0 to 1.0)
-            print(f"[MPC-SCHED] EMERGENCY BYPASS: Backlog={current_backlog} > 10.0. Forcing max_delta=1.0 to allow rapid drop.")
+            print(f"[MPC-SCHED] EMERGENCY BYPASS: Backlog={current_backlog} > 10.0. Forcing max_delta=1.0 to allow rapid resource drop.")
         
         # Adaptive delta based on price (Dynamic Bands)
-        # CRITICAL FIX: Inverted logic. 
-        # Original: High price -> Smaller delta (prevent oscillation).
-        # New: High price -> Larger delta (panic drop).
+        # High price -> Larger delta (panic drop).
         # This allows the system to react aggressively to congestion without waiting for state sync.
-        price_high = float(system_state.get('sched_price_high', 500.0)) # Relaxed from 200.0 to prevent Q1 shedding
+        price_high = float(system_state.get('sched_price_high', 500.0)) 
         price_med = float(system_state.get('sched_price_med', 50.0))
         
         if not is_emergency:
             if price >= price_high:
-                max_delta *= 2.0 # Allow 2x faster drop
+                max_delta *= 2.0 # Allow 2x faster resource change
             elif price >= price_med:
-                max_delta *= 1.5 # Allow 1.5x faster drop
+                max_delta *= 1.5 # Allow 1.5x faster resource change
             
         delta = resource_alloc - prev_u
         
@@ -112,17 +110,17 @@ class Scheduler:
         elif delta < -max_delta:
             resource_alloc = prev_u - max_delta
             
-        # CRITICAL FIX: Ensure resource_alloc does not exceed 1.0 or drop below 0.0
+        # Ensure resource_alloc does not exceed 1.0 or drop below 0.0
         resource_alloc = max(0.01, min(1.0, resource_alloc))
         
-        # Store admission probability (raw u) before clamping for fidelity
-        admission_prob = resource_alloc
+        # Store raw resource allocation
+        final_alloc = resource_alloc
 
         # ALL REQUESTS ARE EXECUTED (No Shedding)
         should_shed = False
         degrade_plan = None
         
-        # u represents RESOURCE ALLOCATION (0.01 to 1.0)
+        # resource_alloc represents PHYSICAL RESOURCE ALLOCATION (0.01 to 1.0)
         # All requests run with this allocation.
         resource_alloc = max(0.01, min(1.0, resource_alloc))
                 

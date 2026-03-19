@@ -158,8 +158,6 @@ class Optimizer:
         # --- MPC Priority Boosting (Explicit QoS) ---
         # All requests are executed fully. u represents resource allocation.
         if qos_class == 'Q1':
-            # Q1 is mission critical, we can boost its weight to ensure it gets resources
-            # but it still follows the same physical model.
             w1 *= 1.5
             w3 *= 1.5
         elif qos_class == 'Q2':
@@ -231,7 +229,7 @@ class Optimizer:
             grad_track = -1.0 * diff
         
         # Total Gradient
-        # grad J = w1 * grad_track + w3 * grad_risk + w2 * grad_utility + price
+        # grad J = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
         price_norm = 100.0
         if state:
              price_norm = float(state.get('opt_price_norm', 100.0))

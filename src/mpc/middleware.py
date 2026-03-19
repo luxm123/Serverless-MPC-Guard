@@ -342,7 +342,7 @@ class MPCMiddleware:
         # To make it robust, we can write to DB with probability p=0.1 (sampling)
         # or if state changed significantly.
         
-        # CRITICAL FIX: Persist state immediately if fidelity drops (Optimization Active)
+        # CRITICAL FIX: Persist state immediately if allocation changes significantly
         # or randomly (Heartbeat). This ensures other containers learn about the panic mode.
         # Modified to be more proactive during experiments.
         if abs(new_alloc - last_alloc) > 0.001 or new_alloc < 0.99 or random.random() < 0.2:
@@ -373,19 +373,21 @@ class MPCMiddleware:
             'qos_class': qos,
         }
         dbg = debug_info or {}
-        # DEBUG: Inject optimization internals if available
-        if 'opt_debug' in system_state:
-            dbg['opt_debug'] = system_state['opt_debug']
-
         dbg.update(
             {
                 'pred_queue_delay_ms': queue_delay_ms,
+                'pred_total_latency_ms': float(pred_dict.get('p90', 0.0) or 0.0) + unc_p90 + queue_delay_ms,
+                'admit_threshold_ms': admit_thr,
                 'queue_backlog': queue_backlog,
                 'queue_backlog_source': backlog_source,
                 'priority_score': priority_score,
                 'servers': servers,
                 'service_ms': eff_service_ms,
                 'queue_delay_model': queue_delay_model,
+                'qos_class': qos,
+                'latency_gradient': 0.0,
+                'shadow_price': lam,
+                'shed_reason': shed_reason
             }
         )
         return internal_decision, dbg
@@ -584,5 +586,5 @@ class MPCMiddleware:
             'queue_backlog_ttl_s': 2.0,
             'buffer_servers_default': 1.0,
             'avg_service_ms': 0.0,
-            'min_fidelity_floor': 0.1, # Default floor to allow dynamic range
+            'min_alloc_floor': 0.01, # Default floor for resource scaling
         }
