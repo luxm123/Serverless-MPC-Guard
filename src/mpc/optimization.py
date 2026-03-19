@@ -221,13 +221,13 @@ class Optimizer:
             grad_track = -1.0 * diff
             
         # 2. Utility Gradient (资源回收拉力)
-        # v40: 解决 0.6 死区问题。
-        # v39 中，当 Alloc 掉到 0.6 时，虽然延迟达到了 250ms，但由于风险梯度不够大，
-        # 无法克服 w2=5.0 的回收拉力，导致 Alloc 卡死在 0.6。
+        # v41: 终极打破 0.6 死区。
+        # v40 中，虽然降低了 w2，但由于 WCP 预测的 P90 (pred_upper) 在 0.6 时可能并没有超过 SLO 太多，
+        # 导致风险梯度 (grad_risk) 依然很小，无法克服哪怕是 w2=2.0 的回收拉力。
         # 修复：
-        # 1. 进一步降低 w2 到 2.0，让风险梯度更容易占据主导。
-        # 2. 移除二次方项，改为纯线性回收，防止在低位产生过大的拉力。
-        w2 = 2.0
+        # 1. 引入“违规惩罚放大器”：如果实际发生了 SLO 违规，直接给风险梯度乘上一个巨大的倍数。
+        # 2. 进一步降低基础回收拉力 w2 到 0.5。
+        w2 = 0.5
         grad_waste = w2 * prev_u
         
         # 3. 风险梯度 (WCP 提供的概率保证)
@@ -240,18 +240,19 @@ class Optimizer:
             slo_viol = float(actual_metrics.get('slo_violation_rate', 0.0))
         
         # 动态风险权重：
-        # 极大地提高风险敏感度。只要预测延迟超过 SLO，就必须立刻拉升。
         confidence_gate = 1.0
         if slo_viol < 0.01:
-            # 如果预测延迟已经超过 SLO 的 90%，立刻拉满警报
             if pred_upper > slo_limit * 0.9:
                 confidence_gate = 1.0
             else:
-                confidence_gate = 0.5 # 提高基础敏感度
+                confidence_gate = 0.5
+        else:
+            # 如果已经发生了违规，极大地放大风险权重，强制拉升
+            confidence_gate = 5.0
             
-        dynamic_risk_weight = 5.0 * (slo_viol + 0.2) * confidence_gate
+        dynamic_risk_weight = 10.0 * (slo_viol + 0.1) * confidence_gate
         if prev_u > 0.9:
-            dynamic_risk_weight *= 0.5 # 高位稍微降权
+            dynamic_risk_weight *= 0.2 # 高位降权，允许回收
             
         forced_recovery = 0.0
             
@@ -260,21 +261,20 @@ class Optimizer:
         
         if prev_u > 0.8:
             if random.random() < 0.1:
-                print(f"[MPC-CORE-v40] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
+                print(f"[MPC-CORE-v41] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
         
         # Update Step
-        # 适中的学习率
         step_eta = 0.10
-        if grad < -2.0: # 极易触发向上加速
-            step_eta *= 2.0
+        if grad < -1.0: # 只要有一点点向上的趋势，就加速
+            step_eta *= 3.0
             
         step = step_eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
         # --- Physical Rate Limiting ---
-        # 允许快速上升，限制下降速度
-        max_increase = 0.25
-        max_decrease = 0.05 # 每次最多只允许下降 0.05，极其缓慢
+        # 允许极快上升，限制下降速度
+        max_increase = 0.40 # 允许一次性拉升 0.4，瞬间逃离死区
+        max_decrease = 0.05
         
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
@@ -283,10 +283,9 @@ class Optimizer:
             
         # DEBUG: 详情
         if random.random() < 0.1:
-            print(f"[MPC-DEBUG-v40] u:{prev_u:.2f}->{u_new:.2f} | Total_Grad:{grad:.1f}")
+            print(f"[MPC-DEBUG-v41] u:{prev_u:.2f}->{u_new:.2f} | Total_Grad:{grad:.1f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
-        # 保持 0.6 的软底线，但由于回收拉力减弱，系统应该能自然地在 0.7-1.0 之间波动
         lower = 0.6
         upper = 1.0
         if u_new < lower: u_new = lower
