@@ -209,62 +209,65 @@ class Optimizer:
              grad_risk = -float(ku) * soft_risk
 
         # 2. Utility Gradient (Cost of Resources)
-        # v22: 回归理性。使用二次方惩罚，确保在 u 较高时产生足够的向下压力
-        # grad_waste = 2 * w2 * u
-        w2 = 15.0
-        grad_waste = 2.0 * w2 * prev_u
-        
         # v25: 终极重构 - 风险置信度衰减与强制回收
+        
         # 1. Tracking Error Gradient
         grad_track = 0.0
         if ref_latency is not None:
             # 对预测值进行物理截断，防止 WCP 中毒
-            safe_pred = min(pred_upper, ref_latency * 1.2)
+            safe_pred = min(pred_upper, ref_latency * 1.5) # Allow slightly more headroom
             diff = (safe_pred - ref_latency) / max(1.0, slo_limit)
             grad_track = -1.0 * diff
             
         # 2. Utility Gradient (资源回收拉力)
         # v25: 线性 + 二次方 混合惩罚，确保在高位有绝对压制力
-        w2 = 20.0
-        grad_waste = w2 * (prev_u + 4.0 * (prev_u ** 2))
+        # v26: 加大 w2 到 30.0，并在 u > 0.8 时增加额外的非线性压力
+        w2 = 30.0
+        grad_waste = w2 * (prev_u + 10.0 * (prev_u ** 3)) # Cubic penalty for u=1.0
         
         # 3. 风险梯度 (WCP 提供的概率保证)
         # v25: 核心逻辑 - 基于实际违反率衰减风险权重
-        # 如果实际没有违反 QoS，WCP 的悲观预测应该被降权
         slo_viol = 0.0
-        # v25.1 FIX: 从 state 中正确提取 metrics
         actual_metrics = {}
         if isinstance(state, dict):
+            # v26: Correctly extract metrics from state (passed via system_state in middleware)
             actual_metrics = state.get('metrics', {})
             
         if actual_metrics:
             slo_viol = float(actual_metrics.get('slo_violation_rate', 0.0))
         
         # 动态风险权重：只有真正出事时才全额信任 WCP
-        dynamic_risk_weight = 0.5 * (slo_viol + 0.05) 
-        if prev_u > 0.9:
-            dynamic_risk_weight *= 0.1 # 在高位时极其质疑风险
+        # v26: 进一步收紧风险权重
+        dynamic_risk_weight = 0.3 * (slo_viol + 0.02) 
+        if prev_u > 0.8:
+            dynamic_risk_weight *= 0.05 # 在高位时极其质疑风险，强制回归
             
         # v25: 强制向下梯度 (防止死锁)
-        # 如果延迟达标且在 1.0，强制注入回收动力
+        # v26: 只要违反率极低，就注入巨大的回收动力
         forced_recovery = 0.0
-        if prev_u > 0.95 and slo_viol < 0.01:
-            forced_recovery = 50.0 
+        if prev_u > 0.9 and slo_viol < 0.01:
+            forced_recovery = 100.0 # Double from v25.1
             
         # v25: 终极合力计算
         grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + forced_recovery
         
         # Update Step
-        step = eta * (grad + gamma * prev_u)
+        # v26: Increase eta for faster recovery when grad is high
+        step_eta = eta
+        if grad > 50.0:
+            step_eta *= 2.0
+            
+        step = step_eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Physical Rate Limiting (v25) ---
+        # --- Physical Rate Limiting (v26) ---
+        # Allow fast decrease, slow increase
         max_increase = 0.05
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
             
-        # DEBUG: 详情 (v25.1)
-        print(f"[MPC-DEBUG-v25.1] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.1f} R:{dynamic_risk_weight*grad_risk:.1f} W:{grad_waste:.1f} F:{forced_recovery:.1f} | Total:{grad:.1f}")
+        # DEBUG: 详情 (v26)
+        print(f"[MPC-DEBUG-v26] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.1f} R:{dynamic_risk_weight*grad_risk:.1f} W:{grad_waste:.1f} F:{forced_recovery:.1f} | Total:{grad:.1f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0

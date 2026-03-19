@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v25'
+        current_ver = '20260319_v26'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
@@ -127,7 +127,7 @@ class MPCMiddleware:
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v25] NUCLEAR RESET: Risk discounting enabled.")
+            print(f"[Middleware-v26] NUCLEAR RESET: Risk discounting enabled.")
         else:
             debug_info['state_source'] = 'dynamodb'
             
@@ -285,17 +285,12 @@ class MPCMiddleware:
         # System State
         # 强制使用 180.0 作为基准，避免从 event 或 state 中拿到旧的 1000.0
         slo_limit_ms = 180.0
+        
+        # Extract metrics for optimizer
         q1_violation_rate = float(metrics.get('q1_violation_rate', 0.0) or 0.0)
         q2_violation_rate = float(metrics.get('q2_violation_rate', 0.0) or 0.0)
         q3_violation_rate = float(metrics.get('q3_violation_rate', 0.0) or 0.0)
-        q1_drop_rate = float(metrics.get('q1_worker_drop_rate', 0.0) or 0.0)
-        q2_drop_rate = float(metrics.get('q2_worker_drop_rate', 0.0) or 0.0)
-        q3_drop_rate = float(metrics.get('q3_worker_drop_rate', 0.0) or 0.0)
-
-        # --- CRITICAL FIX: Global Risk Sensitivity ---
-        # Ensure Shadow Price reacts to Q1 violations
-        raw_slo_violation = float(metrics.get('slo_violation_rate', 0.0) or 0.0)
-        metrics['slo_violation_rate'] = max(raw_slo_violation, q1_violation_rate)
+        slo_viol_rate = float(metrics.get('slo_violation_rate', 0.0) or 0.0)
 
         system_state = {
             'shadow_price': state.get('shadow_price', 0.0),
@@ -306,15 +301,15 @@ class MPCMiddleware:
             'slo_limit': slo_limit_ms,
             'pred_queue_delay_ms': queue_delay_ms,
             'queue_backlog': queue_backlog,
-            'prio_cl_w_latency': state.get('prio_cl_w_latency', state.get('priority_weights', {}).get('prio_cl_w_latency', None)),
-            'prio_cl_w_risk': state.get('prio_cl_w_risk', state.get('priority_weights', {}).get('prio_cl_w_risk', None)),
-            'prio_cl_w_wait': state.get('prio_cl_w_wait', state.get('priority_weights', {}).get('prio_cl_w_wait', None)),
+            'metrics': {
+                'slo_violation_rate': max(slo_viol_rate, q1_violation_rate),
+                'q1_violation_rate': q1_violation_rate,
+                'q2_violation_rate': q2_violation_rate,
+                'q3_violation_rate': q3_violation_rate
+            },
             'q1_violation_rate': q1_violation_rate,
             'q2_violation_rate': q2_violation_rate,
             'q3_violation_rate': q3_violation_rate,
-            'q1_worker_drop_rate': q1_drop_rate,
-            'q2_worker_drop_rate': q2_drop_rate,
-            'q3_worker_drop_rate': q3_drop_rate,
         }
         system_state = {k: v for k, v in system_state.items() if v is not None}
 
@@ -369,11 +364,10 @@ class MPCMiddleware:
         debug_info['new_alloc'] = new_alloc
         debug_info['prev_alloc'] = last_alloc
         
-        # CRITICAL FIX: 强制同步保存状态
-        try:
-            self.state_mgr.save_state(self.state_id, state, expected_version=version)
-        except Exception as e:
-            print(f"[Middleware] Sync save state failed: {e}")
+        # CRITICAL FIX: Persist state to DB
+        # We use the existing _async_save_state but call it synchronously here
+        # to ensure the next request sees the updated Alloc.
+        self._async_save_state(state, version or 0)
         thr_platinum = float(state.get('admit_thr_platinum_ms', slo_limit_ms * 1.2) or (slo_limit_ms * 1.2))
         thr_gold = float(state.get('admit_thr_gold_ms', slo_limit_ms * 1.0) or (slo_limit_ms * 1.0))
         thr_standard = float(state.get('admit_thr_standard_ms', slo_limit_ms * 0.8) or (slo_limit_ms * 0.8))
