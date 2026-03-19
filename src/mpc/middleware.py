@@ -342,9 +342,12 @@ class MPCMiddleware:
         # To make it robust, we can write to DB with probability p=0.1 (sampling)
         # or if state changed significantly.
         
-        # CRITICAL FIX: 强制每一笔请求都保存状态，确保 Alloc 能够跨容器、跨请求连续下降
-        # 移除了所有的采样和变化门槛判断
-        self._async_save_state(state, version)
+        # CRITICAL FIX: 强制同步保存状态，确保实验中 Alloc 的变化能被下一笔请求看到
+        # 即使增加 20ms 延迟，也要保证逻辑正确性
+        try:
+            self.state_mgr.save_state(self.state_id, state, expected_version=version)
+        except Exception as e:
+            print(f"[Middleware] Sync save state failed: {e}")
 
         decision_out = result['decision']
         thr_platinum = float(state.get('admit_thr_platinum_ms', slo_limit_ms * 1.2) or (slo_limit_ms * 1.2))
@@ -557,8 +560,8 @@ class MPCMiddleware:
             'bP': 2000.0,
             'rls_states': {},
             'shadow_price': 0.0,
-            'last_alloc': 1.0,
-            'optimizer_weights': {'w1': 1.0, 'w2': 2.0, 'w3': 1.0}, # 加大 w2 (省资源), 减小 w3 (减压)
+            'last_alloc': 0.8, # 强制初始 Alloc 为 0.8，避免从 1.0 开始锁死
+            'optimizer_weights': {'w1': 1.0, 'w2': 5.0, 'w3': 1.0}, # 再次加大 w2 (5.0), 压死 w3 (1.0)
             'priority_weights': {
                 'lambda1': 0.6,
                 'alpha': 0.7,

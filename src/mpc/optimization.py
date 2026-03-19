@@ -209,18 +209,19 @@ class Optimizer:
              grad_risk = -float(ku) * soft_risk
 
         # 2. Utility Gradient (Cost of Resources)
-        # 极度强化降资源压力
-        grad_waste = 5.0 
+        # 极度强化降资源压力，设定一个基础降资源梯度
+        grad_waste = 10.0 
         
         # 3. Tracking Error Gradient
         grad_track = 0.0
         if ref_latency is not None:
-            # 降低追踪灵敏度，避免因细微波动导致 Alloc 冲回 1.0
+            # 降低追踪灵敏度，避免向上推力过强
             diff = (pred_upper - ref_latency) / max(1.0, slo_limit)
-            grad_track = -1.0 * diff 
+            grad_track = -0.5 * diff 
         
         # Total Gradient
-        # grad J = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
+        # grad J = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + price + grad_congestion
+        # w2=5.0, 所以总向下压力 = 10.0 * 5.0 = 50.0！
         price_norm = 100.0
         if state:
              price_norm = float(state.get('opt_price_norm', 100.0))
@@ -286,10 +287,15 @@ class Optimizer:
         # u_new = u - eta * (grad + gamma * u)
         step = eta * (grad + gamma * prev_u)
 
-        # DEBUG: 强制打印所有请求的梯度详情，诊断为何 Alloc 不下降
-        print(f"[MPC-DEBUG] u:{prev_u:.2f} | Grads -> Track:{w1*grad_track:.3f}, Risk:{w3*grad_risk:.3f}, Waste:{w2*grad_waste:.3f}, Price:{price/price_norm:.3f}, Congest:{grad_congestion:.3f} | Total:{grad:.3f} | Step:{step:.4f}")
+        # DEBUG: 强制打印详情
+        print(f"[MPC-DEBUG] u:{prev_u:.2f} | Grads -> Track:{w1*grad_track:.3f}, Risk:{w3*grad_risk:.3f}, Waste:{w2*grad_waste:.3f} | Total:{grad:.3f} | Step:{step:.4f}")
         
         u_new = prev_u - step
+        
+        # 破冰逻辑：如果延迟充足（grad > 1.0）但步长太小，强制降 0.02
+        if grad > 1.0 and (prev_u - u_new) < 0.02:
+            u_new = prev_u - 0.02
+            print(f"[MPC-DEBUG] Force step 0.02 to break deadlock")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
