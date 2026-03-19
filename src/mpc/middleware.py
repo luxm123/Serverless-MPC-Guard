@@ -342,8 +342,10 @@ class MPCMiddleware:
         system_state['u_prev'] = float(state.get('last_alloc', 0.8))
         
         # Step 3: Call Controller
-        result, ctrl_dbg = self.controller.decide(task, wcp_constraints, system_state)
-        debug_info.update(ctrl_dbg or {})
+        result = self.controller.decide(task, wcp_constraints, system_state)
+        # result contains 'decision' and 'meta' (debug info)
+        ctrl_dbg = result.get('meta', {})
+        debug_info.update(ctrl_dbg)
         
         decision_out = result['decision']
         new_alloc = float(decision_out.get('resource_alloc', 1.0))
@@ -353,8 +355,8 @@ class MPCMiddleware:
         state['shadow_price'] = lam
         _L1_CACHE['params'] = state # Update cache reference
         
-        # Metadata update for version 6
-        debug_info['version'] = '20260319_v6'
+        # Metadata update for version 7
+        debug_info['version'] = '20260319_v7'
         debug_info['new_alloc'] = new_alloc
         
         # CRITICAL FIX: 强制同步保存状态
