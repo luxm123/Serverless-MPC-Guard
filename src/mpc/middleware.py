@@ -295,6 +295,8 @@ class MPCMiddleware:
         system_state = {
             'shadow_price': state.get('shadow_price', 0.0),
             'last_alloc': last_alloc,
+            'p90_belief': float(state.get('p90_belief', 100.0)),
+            'grad_track': float(state.get('grad_track', 0.0)),
             'gamma': state.get('gamma', 0.1),
             'u_eta': state.get('u_eta', 0.05),
             'u_max_delta': state.get('u_max_delta', 0.15),
@@ -355,8 +357,9 @@ class MPCMiddleware:
         decision_out = result['decision']
         new_alloc = float(decision_out.get('resource_alloc', last_alloc))
         
-        # 强制将 new_alloc 写回状态
+        # 强制将 new_alloc 和 grad_track 写回状态
         state['last_alloc'] = new_alloc
+        state['grad_track'] = system_state.get('grad_track', 0.0)
         state['shadow_price'] = lam
         _L1_CACHE['params'] = state # Update cache reference
         

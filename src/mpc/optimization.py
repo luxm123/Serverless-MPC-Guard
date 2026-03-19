@@ -23,55 +23,61 @@ class Optimizer:
 
     def optimize_u(self, prev_u, pred_upper, slo_limit, price, **kwargs):
         """
-        v46 Logic: Dynamic Reality Check + Gradient Descent
+        v46.1: 优化预警阈值，减少过度反应和震荡。
         """
         state = kwargs.get('state', {})
-        params = state.get('params', {}) # Actually system_state is passed as state
-        ref_latency = kwargs.get('ref_latency', slo_limit * 0.8)
+        params = state.get('params', {}) 
+        # 目标延迟设为 145ms，给系统留出下探空间
+        ref_latency = kwargs.get('ref_latency', 145.0) 
         
         # 1. 梯度计算
         # 1.1. 资源浪费梯度 (Utility/Waste Gradient)
-        w1 = float(params.get('w1', 0.5))
+        # 稍微调低权重，避免剧烈下降
+        w1 = float(params.get('w1', 0.4)) 
         grad_waste = w1 * (pred_upper - ref_latency)
 
         # 1.2. SLO风险梯度 (Risk Gradient)
-        w2 = float(params.get('w2', 0.2)) 
-        safe_margin = float(params.get('safe_margin', 0.60)) 
-        warning_line = slo_limit * safe_margin
+        # 将安全线提高到 165ms (约 92% SLO)，只有真危险才开始推
+        w2 = float(params.get('w2', 0.3)) 
+        safe_margin = 165.0 
         
         grad_risk = 0.0
-        if pred_upper > warning_line:
-            risk_factor = (pred_upper - warning_line) / (slo_limit - warning_line)
+        if pred_upper > safe_margin:
+            # 使用指数增长，但由于 safe_margin 提高了，只有在接近 180ms 时才会有爆发力
+            risk_factor = (pred_upper - safe_margin) / (slo_limit - safe_margin)
             grad_risk = -w2 * math.exp(risk_factor)
 
         # 1.3. 动态风险权重 (Dynamic Risk Weight)
-        p90_ema = float(state.get('p90_ema', 0.0))
+        p90_ema = float(state.get('p90_belief', 0.0))
         dynamic_risk_weight = 1.0
         if p90_ema > ref_latency:
             dynamic_risk_weight = 1.0 + (p90_ema - ref_latency) / ref_latency
 
         # 1.4. 梯度追踪 (Gradient Tracking)
         grad_track = float(state.get('grad_track', 0.0))
-        if pred_upper <= ref_latency:
-            grad_track = 0.0 # Only allow upward push from history if prediction is risky
+        # 减少追踪的惯性，防止被历史的一次尖峰长时间误导
+        if pred_upper <= safe_margin:
+            grad_track *= 0.5 
 
-        # 4. 真实延迟兜底 (Dynamic Reality Check) - v46
+        # 4. 真实延迟兜底 (Dynamic Reality Check) - v46.1
         actual_p90 = float(state.get('p90_belief', 0.0))
         grad_panic = 0.0
-        panic_margin = slo_limit * 0.90 # 162ms
+        # 恐慌线设在 175ms，非常接近 SLO
+        panic_margin = 175.0 
         if actual_p90 > panic_margin:
-            panic_excess = (actual_p90 - panic_margin) / max(1.0, slo_limit)
-            grad_panic = -50.0 * (panic_excess ** 2) - 5.0 * panic_excess
+            panic_excess = (actual_p90 - panic_margin) / 5.0 # 5ms 差距就产生巨大推力
+            grad_panic = -20.0 * (panic_excess ** 2) - 10.0 * panic_excess
 
         # 5. 终极合力计算
-        grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + grad_panic
+        grad = 1.5 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + grad_panic
 
         # 6. 更新梯度追踪和分配
-        max_decrease = float(params.get('max_decrease', 0.02))
-        lr = float(kwargs.get('eta', 0.01))
-        
-        # 更新梯度追踪 EMA (Stored in state for next round)
-        beta = float(params.get('beta', 0.5))
+        # 稍微放宽下降速度到 0.03，提高响应灵活性
+        max_decrease = 0.03
+        lr = float(kwargs.get('eta', 0.005)) # 减小学习率，防止从 0.7 瞬移到 1.0
+
+        # 更新梯度追踪 (EMA 方式更新)
+        beta = 0.7 
         new_grad_track = beta * grad_track + (1 - beta) * grad
         state['grad_track'] = new_grad_track
         
@@ -87,15 +93,13 @@ class Optimizer:
         upper = 1.0
         final_alloc = max(lower, min(upper, new_alloc))
 
-        # Prepare debug info for the middleware
+        # 调试信息更新
         state['opt_debug'] = {
             "grad_waste": grad_waste,
             "grad_risk": grad_risk,
             "grad_track": grad_track,
             "grad_panic": grad_panic,
-            "grad_total": grad,
             "actual_p90": actual_p90,
-            "pred_upper": pred_upper,
             "final_alloc": final_alloc
         }
 
