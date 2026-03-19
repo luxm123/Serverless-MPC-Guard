@@ -112,22 +112,22 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v17'
+        current_ver = '20260319_v18'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
         state, version = self._load_state()
         
-        # 终极重置逻辑：如果版本升级，强制重置所有状态
+        # 终极重置逻辑
         if not state or state.get('version') != current_ver:
             state = self._get_default_params()
             state['version'] = current_ver
-            state['last_alloc'] = 0.3 # 强制从极低的 0.3 开始，测试回收能力
-            state['shadow_price'] = 0.0 # v17: 彻底清除影子价格残留
+            state['last_alloc'] = 0.4 # v18: 强制从更低的 0.4 开始
+            state['shadow_price'] = 0.0
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v17] NUCLEAR RESET: Clear price. Starting from 0.3.")
+            print(f"[Middleware-v18] NUCLEAR RESET: Starting from 0.4.")
         else:
             debug_info['state_source'] = 'dynamodb'
             
