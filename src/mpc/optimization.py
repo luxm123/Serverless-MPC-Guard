@@ -290,22 +290,22 @@ class Optimizer:
             risk_attenuation = 0.05 # v16: 进一步削弱轻微超标时的恐慌
             
         # 极弱风险权重，极强资源回收
-        grad = 2.0 * grad_track + 0.05 * risk_attenuation * grad_risk + grad_waste_dynamic + grad_price + grad_congestion
-        
-        # --- Gradient Clipping (v16) ---
-        # 极度保守的上升，极度激进的下降
-        # grad_min = -0.5 代表单步最多增加 0.025 (例如 0.5 -> 0.525)
-        grad_min = -0.5  
-        grad_max = 100.0  # 允许瞬间清零资源
-        grad = max(grad_min, min(grad_max, grad))
+        # v17: 恢复 10.0x 乘数，确保回收压力绝对占优
+        grad = 2.0 * grad_track + 0.05 * risk_attenuation * grad_risk + 10.0 * grad_waste_dynamic + grad_price + grad_congestion
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
-
-        # DEBUG: 终极详情 (v16)
-        print(f"[MPC-DEBUG-v16] u:{prev_u:.2f} | T:{2.0*grad_track:.2f} R:{0.05*grad_risk:.2f} W:{grad_waste_dynamic:.2f} | Total:{grad:.2f} | Step:{step:.4f}")
-        
         u_new = prev_u - step
+        
+        # --- Physical Rate Limiting (v17) ---
+        # 物理限制单次增加量，无论梯度多大，单步增加不得超过 0.05
+        # 允许瞬间减小 (回收资源)
+        max_increase = 0.05
+        if u_new > prev_u + max_increase:
+            u_new = prev_u + max_increase
+            
+        # DEBUG: 终极详情 (v17)
+        print(f"[MPC-DEBUG-v17] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{0.05*grad_risk:.2f} W:{10.0*grad_waste_dynamic:.2f} P:{grad_price:.2f} | Total:{grad:.2f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0

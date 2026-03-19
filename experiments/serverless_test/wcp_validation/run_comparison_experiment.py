@@ -106,7 +106,8 @@ def run_single_request(idx, strategy, start_time):
                 'version': debug_data.get('version', 'UNKNOWN'),
                 'source': debug_data.get('state_source', 'UNKNOWN'),
                 'prev_alloc': debug_data.get('prev_alloc', '?'),
-                'new_alloc': debug_data.get('new_alloc', '?')
+                'new_alloc': debug_data.get('new_alloc', '?'),
+                'shadow_price': debug_data.get('shadow_price', 0.0)
             }
         else:
              decision = {'version': 'FAILED'}
@@ -214,8 +215,8 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
             res = future.result()
             results.append(res)
             if not warm_up:
-                # 实时打印每个请求的结果 (v12)
-                print(f"[{strategy_name}] Req {res['id']:2d}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Ver={res['version']}, PrevA={res['prev_alloc']}, NewA={res['new_alloc']}, Src={res['source']}")
+                # 实时打印每个请求的结果 (v17)
+                print(f"[{strategy_name}] Req {res['id']:2d}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Ver={res['version']}, PrevA={res['prev_alloc']:.3f}, NewA={res['new_alloc']:.3f}, Price={res.get('shadow_price', 0.0):.1f}")
         except Exception as e:
             print(f"[ERROR] Request failed: {e}")
 
