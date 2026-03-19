@@ -221,11 +221,12 @@ class Optimizer:
             grad_track = -1.0 * diff
             
         # 2. Utility Gradient (资源回收拉力)
-        # v36: 回滚到 v31 的核心逻辑，移除过度限制的硬底线。
-        # 之前的硬底线 (0.75) 和极度敏感的风险感知导致系统失去了动态调节能力。
-        # 恢复 v31 的参数，让系统能够自由呼吸。
-        w2 = 50.0
-        grad_waste = w2 * (prev_u + 4.0 * (prev_u ** 2))
+        # v37: 寻找平衡点。
+        # v36 (回滚到 v31) 证明了 w2=50.0 会导致 Alloc 掉到 0.1，引发 1200ms 的延迟。
+        # 我们需要一个适中的回收拉力，既能回收资源，又不会引发断崖式下跌。
+        # 将 w2 设为 10.0，并保留二次方项以在低位减缓回收。
+        w2 = 10.0
+        grad_waste = w2 * (prev_u + 2.0 * (prev_u ** 2))
         
         # 3. 风险梯度 (WCP 提供的概率保证)
         slo_viol = 0.0
@@ -236,14 +237,15 @@ class Optimizer:
         if actual_metrics:
             slo_viol = float(actual_metrics.get('slo_violation_rate', 0.0))
         
-        # 动态风险权重：恢复 v31 的门控逻辑
+        # 动态风险权重：
+        # 提高基础敏感度，避免延迟爆炸后才反应。
         confidence_gate = 1.0
         if slo_viol < 0.01:
-            confidence_gate = 0.02
+            confidence_gate = 0.1 # 比 v31 的 0.02 高，比 v35 的 0.5 低
             
-        dynamic_risk_weight = 1.2 * (slo_viol + 0.05) * confidence_gate
+        dynamic_risk_weight = 1.5 * (slo_viol + 0.1) * confidence_gate
         if prev_u > 0.85:
-            dynamic_risk_weight *= 0.1 # 高位更强的质疑
+            dynamic_risk_weight *= 0.2 # 高位更强的质疑
             
         forced_recovery = 0.0
             
@@ -252,21 +254,21 @@ class Optimizer:
         
         if prev_u > 0.8:
             if random.random() < 0.1:
-                print(f"[MPC-CORE-v36] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
+                print(f"[MPC-CORE-v37] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
         
         # Update Step
-        # 恢复 v31 的学习率
-        step_eta = 0.15
-        if grad < -15.0: # Negative grad means UPWARD scaling
-            step_eta *= 2.0
+        # 适中的学习率
+        step_eta = 0.10
+        if grad < -10.0: # Negative grad means UPWARD scaling
+            step_eta *= 1.5
             
         step = step_eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
         # --- Physical Rate Limiting ---
-        # 恢复 v31 的限速
-        max_increase = 0.25
-        max_decrease = 0.20
+        # 适中的限速，允许动态调节，但防止一步跨太大
+        max_increase = 0.20
+        max_decrease = 0.10 # 限制单次最大下降幅度为 0.1
         
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
@@ -275,11 +277,11 @@ class Optimizer:
             
         # DEBUG: 详情
         if random.random() < 0.1:
-            print(f"[MPC-DEBUG-v36] u:{prev_u:.2f}->{u_new:.2f} | Total_Grad:{grad:.1f}")
+            print(f"[MPC-DEBUG-v37] u:{prev_u:.2f}->{u_new:.2f} | Total_Grad:{grad:.1f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
-        # 移除 0.75 的硬底线，恢复 0.0
-        lower = 0.0
+        # 引入一个非常宽松的软底线 0.4，防止出现 0.1 这种极端情况
+        lower = 0.4
         upper = 1.0
         if u_new < lower: u_new = lower
         if u_new > upper: u_new = upper
