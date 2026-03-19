@@ -118,45 +118,12 @@ class Scheduler:
         # Store admission probability (raw u) before clamping for fidelity
         admission_prob = resource_alloc
 
-        # Priority-based Shedding Logic
-        prio_high_thr = float(system_state.get('sched_prio_high_thr', 0.8))
-        prio_med_thr = float(system_state.get('sched_prio_med_thr', 0.4))
-
-        pred_admit_enabled = bool(system_state.get('pred_admit_enabled', True))
-        if pred_admit_enabled:
-            # CRITICAL FIX: Disable ALL Heuristic Shedding (Legacy)
-            # We now rely 100% on:
-            # 1. Q1 -> Fidelity Scaling (u controls duration)
-            # 2. Q2/Q3 -> Probabilistic Shedding (u controls admission)
-            # This avoids "Double Penalty" where PriorityManager degrades score -> Heuristic Sheds -> MPC also lowers u.
-            pass
+        # ALL REQUESTS ARE EXECUTED (No Shedding)
+        should_shed = False
+        degrade_plan = None
         
-        # Q2/Q3 Shedding is now handled by the MPC 'u' (resource_alloc) below.
-        # Removed redundant heuristic price-based shedding for Q2/Q3 to avoid interference.
-        
-        # CRITICAL FIX: Link MPC Optimization (u) to Actuation (Shedding)
-        # For Q2/Q3, u represents Admission Probability.
-        # For Q1, u represents Fidelity (handled in Worker).
-        if qos_class != 'Q1':
-            # Probabilistic Shedding based on u (Admission Probability)
-            # If u=0.01, we shed 99% of requests.
-            if random.random() > admission_prob:
-                should_shed = True
-                if not degrade_plan:
-                    degrade_plan = "store_to_sqs" if qos_class == 'Q3' else "store_to_sqs_recovery"
-
-        if current_backlog is not None and current_backlog > 5.0:
-             print(f"[MPC-SCHED-v3] Decision: Backlog={current_backlog:.1f}, u={admission_prob:.4f}, Shed={should_shed}, QoS={qos_class}")
-        
-        # Enforce Minimum Fidelity Floor (User Requirement: > 85%)
-        # Decouple Fidelity from Admission. Survivors run at high fidelity.
-        # CRITICAL FIX: Make min_fidelity configurable from state, default to 0.1 if not specified
-        # to allow more dynamic range during experiments.
-        min_fidelity = float(system_state.get('min_fidelity_floor', 0.1))
-        
-        if resource_alloc < min_fidelity:
-            if random.random() < 0.01: # Sampled logging
-                print(f"[MPC-SCHED] Clamping resource_alloc {resource_alloc:.4f} to floor {min_fidelity}")
-            resource_alloc = min_fidelity
+        # u represents RESOURCE ALLOCATION (0.01 to 1.0)
+        # All requests run with this allocation.
+        resource_alloc = max(0.01, min(1.0, resource_alloc))
                 
         return should_shed, degrade_plan, resource_alloc

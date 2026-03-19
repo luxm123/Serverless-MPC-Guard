@@ -231,21 +231,11 @@ class MPCMiddleware:
         # Note: last_alloc and servers were already resolved in Step 2.
         eff_alloc = max(0.1, last_alloc)
         
-        # CRITICAL FIX: Service Time Model Alignment
-        # Q1 uses Fidelity Scaling (Lower Alloc = Faster Service)
-        # Q2/Q3 uses Throttling (Lower Alloc = Slower Service)
-        
-        # Use service_time_ms from Step 2 as base_service_ms
+        # UNIFIED RESOURCE ALLOCATION MODEL (All Requests Executed)
+        # Performance scales with resource allocation (1/alloc).
+        # This matches the physical effect of CPU allocation in worker lambda.
         base_service_ms = service_time_ms
-        if qos == 'Q1':
-            # Fidelity Model: service_time scales linearly with alloc (fidelity)
-            # Matches lambda_function.py: active_duration *= fidelity
-            eff_service_ms = base_service_ms * eff_alloc
-        else:
-            # Throttling Model: service_time increases with penalty
-            # Matches lambda_function.py: penalty_factor = 1.0 + (1.0 - alloc)
-            # Note: This is a linear penalty (max 2x), not hyperbolic (1/alloc).
-            eff_service_ms = base_service_ms * (2.0 - eff_alloc)
+        eff_service_ms = base_service_ms / (eff_alloc + 0.01)
 
         queue_delay_model = str(state.get('queue_delay_model', 'backlog_linear') or 'backlog_linear').strip().lower()
         queue_delay_ms = (queue_backlog * eff_service_ms) / servers
@@ -326,107 +316,12 @@ class MPCMiddleware:
         if priority_score > 1.0:
             priority_score = 1.0
 
-        pred_admit_enabled = bool(state.get('pred_admit_enabled', True))
-        if pred_admit_enabled:
-            admit_thr = slo_limit_ms
+        # ALL REQUESTS ARE EXECUTED (No Early Shedding)
+        should_shed_early = False
+        shed_reason = None
+        admit_thr = slo_limit_ms
+        pred_total_ms = float(pred_dict.get('p90', 0.0) or 0.0) + unc_p90 + queue_delay_ms
 
-            pred_total_ms = float(pred_dict.get('p90', 0.0) or 0.0) + unc_p90 + queue_delay_ms
-
-            should_shed_early = False
-            shed_reason = "latency"
-
-            p90_belief = float(state.get('p90_belief', 100.0))
-            current_pred_p90 = float(pred_dict.get('p90', 0.0) or 0.0)
-            latency_gradient = current_pred_p90 - p90_belief
-            
-            # CRITICAL: If Backlog is saturated (>5), Drop Q3 immediately.
-            # This is a Circuit Breaker to protect Q1 when Optimizer is converging.
-            # Note: With 50 concurrent threads, 5 means 10% saturation.
-            if qos == 'Q3' and latency_gradient > 3.0 and current_pred_p90 > (slo_limit_ms * 0.5):
-                should_shed_early = True
-                shed_reason = "gradient_control"
-
-            if not should_shed_early and qos == 'Q3':
-                if (q1_drop_rate > 0.01 or q2_drop_rate > 0.01) or (q1_violation_rate > 0.1 or q2_violation_rate > 0.1):
-                    should_shed_early = True
-                    shed_reason = "protect_q1q2"
-
-            if not should_shed_early and qos == 'Q2':
-                # Soft Shedding Ramp for Q2 (Protect Q1 without "Cliff")
-                # If Q1 violation is 10% -> 0% drop.
-                # If Q1 violation is 30% -> 100% drop.
-                # Slope = 5.0
-                if q1_violation_rate > 0.1:
-                    drop_prob = min(1.0, (q1_violation_rate - 0.1) * 5.0)
-                    if random.random() < drop_prob:
-                        should_shed_early = True
-                        shed_reason = f"soft_protect_q1_{drop_prob:.2f}"
-                
-                # Fallback: If Q1 is being dropped heavily, also shed Q2
-                if not should_shed_early and q1_drop_rate > 0.05:
-                     should_shed_early = True
-                     shed_reason = "extreme_protect_q1_drops"
-
-            current_price = float(state.get('shadow_price', 0.0))
-            if not should_shed_early:
-                if current_price > 20.0 and qos == 'Q3':
-                    should_shed_early = True
-                    shed_reason = "bulkhead_q3"
-                elif current_price > 200.0 and qos == 'Q2':
-                    should_shed_early = True
-                    shed_reason = "bulkhead_q2"
-
-            shed_by_latency = False
-            if qos == 'Q3':
-                if pred_total_ms > admit_thr * 0.8:
-                    shed_by_latency = True
-
-            if qos == 'Q3' and (should_shed_early or shed_by_latency):
-                degrade_plan = "store_to_sqs"
-                cl_val = None
-                try:
-                    if isinstance(task_vec, list) and len(task_vec) >= 2:
-                        cl_val = float(task_vec[1])
-                except Exception:
-                    cl_val = None
-                if qos == 'Q2' or (cl_val is not None and cl_val >= 0.6):
-                    degrade_plan = "store_to_sqs_recovery"
-                
-                early_decision = {
-                    'shouldShed': True,
-                    'degrade_plan': degrade_plan,
-                    'resource_alloc': last_alloc,
-                    'p90_prediction': float(pred_dict.get('p90', 0.0) or 0.0),
-                    'uncertainty': uncertainty,
-                    'pred_queue_delay_ms': queue_delay_ms,
-                    'pred_total_latency_ms': pred_total_ms,
-                    'admit_threshold_ms': admit_thr,
-                    'queue_backlog': queue_backlog,
-                    'queue_backlog_source': backlog_source,
-                    'priority_score': priority_score,
-                    'qos_class': qos,
-                    'shed_reason': shed_reason
-                }
-                dbg = debug_info or {}
-                dbg.update(
-                    {
-                        'pred_queue_delay_ms': queue_delay_ms,
-                        'pred_total_latency_ms': pred_total_ms,
-                        'admit_threshold_ms': admit_thr,
-                        'queue_backlog': queue_backlog,
-                        'queue_backlog_source': backlog_source,
-                        'priority_score': priority_score,
-                        'servers': servers,
-                        'service_ms': eff_service_ms,
-                        'queue_delay_model': queue_delay_model,
-                        'qos_class': qos,
-                        'latency_gradient': latency_gradient,
-                        'shadow_price': current_price,
-                        'shed_reason': shed_reason
-                    }
-                )
-                return early_decision, dbg
-        
         # Shadow Price Update (Local Estimate)
         lam, _ = update_shadow_price(state, metrics, system_state['last_alloc'])
         system_state['shadow_price'] = lam

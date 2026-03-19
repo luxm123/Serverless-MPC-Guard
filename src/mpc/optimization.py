@@ -156,18 +156,15 @@ class Optimizer:
         w3 = min(w3, 50.0)
 
         # --- MPC Priority Boosting (Explicit QoS) ---
-        # For Q1 (Mission Critical), we use Fidelity Scaling.
-        # u becomes 'Fidelity' (0.0-1.0).
-        is_fidelity_mode = False
+        # All requests are executed fully. u represents resource allocation.
         if qos_class == 'Q1':
-            # CRITICAL FIX: Q1 Fidelity Mode
-            # Q1 cannot shed, so it MUST degrade fidelity aggressively under load.
-            # Removed boost entirely (was 5.0) because Gradient is still exploding (12000+)
-            # w3 *= 1.0 
-            is_fidelity_mode = True
+            # Q1 is mission critical, we can boost its weight to ensure it gets resources
+            # but it still follows the same physical model.
+            w1 *= 1.5
+            w3 *= 1.5
         elif qos_class == 'Q2':
-            w1 *= 2.0
-            w3 *= 2.0
+            w1 *= 1.2
+            w3 *= 1.2
         # --------------------------------------------
 
         # 1. Risk Gradient (Risk of violating SLO)
@@ -201,34 +198,37 @@ class Optimizer:
             soft_risk = float(risk_comp)
             
         # CRITICAL FIX: Gradient Direction
-        # Current Architecture: u = Admission (Q2/Q3) or Fidelity (Q1).
-        # In BOTH cases, Higher u -> Higher Load/Latency -> Higher Risk.
-        # Therefore, d(Risk)/du is POSITIVE.
-        # To reduce Risk, we must reduce u. 
+        # Current Architecture: u = Resource Allocation (0.01 to 1.0).
+        # Higher u -> Higher Load/Latency (Wait, No!)
+        # Higher u (Resources) -> LOWER Latency (Fast execution).
+        # Therefore, d(Latency)/du is NEGATIVE.
+        # d(Risk)/du is NEGATIVE.
+        # To reduce Risk, we must INCREASE u.
         # Gradient Descent: u_new = u - eta * grad.
-        # So grad should be POSITIVE.
-        grad_risk = 1.0 * soft_risk 
+        # So grad should be NEGATIVE for risk to increase u.
+        grad_risk = -1.0 * soft_risk 
         if isinstance(ku, (int, float)):
-             grad_risk = float(ku) * soft_risk
+             grad_risk = -float(ku) * soft_risk
 
-        # 2. Utility Gradient (Was 'Waste')
-        # We want to MAXIMIZE u (Full Fidelity / Full Admission).
-        # J_utility = -u (Minimize negative u)
-        # d(J)/du = -1.0
-        # This provides a constant pressure to increase u back to 1.0 when Risk is low.
-        grad_waste = -1.0 
+        # 2. Utility Gradient (Cost of Resources)
+        # We want to MINIMIZE u to save cost (or maximize if we want performance).
+        # In a resource-constrained environment, higher u has higher cost.
+        # J_cost = u
+        # d(J)/du = 1.0
+        # This provides a constant pressure to decrease u to 0.01 when Risk is low.
+        grad_waste = 1.0 
         
         # 3. Tracking Error Gradient
         # J_track = (y_pred - y_ref)^2
-        # y_pred increases with u.
+        # y_pred decreases with u.
         # If y_pred > y_ref (Too Slow), diff > 0.
-        # We need LESS u.
-        # grad should be POSITIVE.
+        # We need MORE u.
+        # grad should be NEGATIVE.
         grad_track = 0.0
         if ref_latency is not None:
             diff = pred_upper - ref_latency
-            # Positive diff (Too slow) -> Positive grad -> Reduce u
-            grad_track = 1.0 * diff
+            # Positive diff (Too slow) -> Negative grad -> Increase u
+            grad_track = -1.0 * diff
         
         # Total Gradient
         # grad J = w1 * grad_track + w3 * grad_risk + w2 * grad_utility + price
@@ -236,18 +236,14 @@ class Optimizer:
         if state:
              price_norm = float(state.get('opt_price_norm', 100.0))
         
-        # Boost Price Sensitivity for Q1 Fidelity Mode
-        if is_fidelity_mode:
-             # CRITICAL TUNING: Drastically increase sensitivity (100x)
-             # We want "Bang-Bang" control behavior for Fidelity:
-             # If Price > 0 (Congestion), drop Fidelity to floor (0.01) immediately to clear queue.
-             price_norm = max(0.1, price_norm / 100.0)
-
         # 4. Barrier Method for Queue Capacity Constraint (Scientific Approach)
         # Instead of heuristic 'if backlog > 40', we use a Log-Barrier Function.
         # Constraint: g(u) = Capacity - Backlog(u) >= 0
-        # Barrier Cost: B(u) = -mu * log(Capacity - Backlog)
-        # Gradient: dB/du -> Infinity as Backlog -> Capacity.
+        # In this resource model, increasing u (resources) reduces service time,
+        # which reduces backlog. So d(Backlog)/du is NEGATIVE.
+        # d(Margin)/du is POSITIVE.
+        # We want to increase u to increase Margin.
+        # d(Cost)/du is NEGATIVE.
         
         grad_congestion = 0.0
         backlog_val = 0.0
@@ -257,45 +253,21 @@ class Optimizer:
             backlog_val = float(state.get('queue_backlog_belief', 0.0))
 
         # Soft Capacity Limit (Relaxed for Serverless Scalability)
-        # Set to 500.0 (Matches Concurrency) to keep queue tight.
-        # 1000.0 was too loose, allowing massive queues (high latency) before shedding kicked in hard.
         capacity = 500.0 
         margin = capacity - backlog_val
         
-        # Log-Barrier Gradient: grad = mu / (margin)
-        # Active across the entire range to provide smooth feedback.
-        # As margin shrinks (Backlog increases), gradient grows hyperbolically.
-        
         safe_margin = max(0.1, margin)
-        
-        # Barrier Strength (mu)
-        # mu=20 ensures that at Backlog=10 (Margin=40), grad=0.5 (Weak)
-        # at Backlog=30 (Margin=20), grad=1.0 (Moderate)
         mu = 20.0 
         
-        # Gradient Direction: Higher u -> Higher Backlog -> Lower Margin
-        # We want to reduce u to increase Margin.
-        # d(Cost)/du is POSITIVE (force u down).
-        grad_congestion = mu / safe_margin
+        # d(Cost)/du is NEGATIVE (force u UP to clear congestion).
+        grad_congestion = -mu / safe_margin
         
-        # CRITICAL FIX: Exponentially boost penalty as we near capacity.
-        # This solves the "Model Mismatch" problem where a bad latency model (predicting low latency)
-        # generates a strong negative gradient (to increase u) that overwhelms the congestion gradient.
-        # We ensure that when Backlog > 40 (Margin < 10), congestion DOMINATES.
         if margin < 10.0:
-            grad_congestion *= 50.0 # Massive boost (e.g. 200 -> 10000)
+            grad_congestion *= 50.0 
         
-        # If margin is negative or very low (Overloaded), force shedding immediately.
-        # Relaxed threshold: Backlog >= 48 (Margin <= 2) -> PANIC MODE.
         if margin <= 2.0:
-            # Must exceed max possible tracking error (approx 5000)
-            grad_congestion += 5000.0 + abs(margin) * 100.0
+            grad_congestion -= (5000.0 + abs(margin) * 100.0)
             
-            # --- CRITICAL FIX: SATURATION OVERRIDE REMOVED ---
-            # We trust the Log-Barrier Gradient to push u down naturally.
-            # No more hard-coded u=0.01 override here.
-            
-            # Ensure debug info is captured before returning
             if state is not None:
                 if 'opt_debug' not in state:
                     state['opt_debug'] = {}
