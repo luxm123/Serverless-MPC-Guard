@@ -1,4 +1,5 @@
 import math
+import random
 
 class Optimizer:
     def __init__(self):
