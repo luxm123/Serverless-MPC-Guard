@@ -41,9 +41,12 @@ def update_shadow_price(state, metrics, u):
         slo = 0.0
         
     # CRITICAL FIX: Emergency Decay for Shadow Price
-    # If backlog is low (< 50), force rapid price decay to recover from "Death Spiral".
-    # This acts as a "System Reset" without needing manual intervention.
-    if backlog < 50.0:
+    # v16: 更加激进的价格回收。如果延迟达标且无堆积，影子价格必须清零。
+    if backlog < 20.0 and slo < 0.01:
+        lam *= 0.5  # 极速衰减 50%
+        if lam < 0.5:
+            lam = 0.0
+    elif backlog < 50.0:
         lam *= 0.8  # Decay by 20% every step if backlog is low
         if lam < 1.0:
             lam = 0.0
