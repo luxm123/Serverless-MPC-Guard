@@ -11,6 +11,7 @@ import argparse
 
 # Experiment Configuration
 SLO_LATENCY_MS = 180.0 # QoS Threshold for Exp 1
+CURRENT_TASK = "linpack" # Global to be updated by args
 
 def generate_fixed_rps_arrivals(rps, duration_min):
     """Generates arrival timestamps for a fixed RPS (Exp 1 style)."""
@@ -66,23 +67,30 @@ def run_single_request(idx, strategy, start_time):
     # For a pure vertical scaling experiment, priority is not a variable.
     # We remove it entirely from the payload to avoid confusion.
     
+    # Define missing variables
+    task_name = CURRENT_TASK
+    req_id = idx
+    priority = "standard"
+    risk = {}
+    metrics = {
+        "p90": 0.0,
+        "backlog": 0,
+        "cpu_util": 0.5,
+        "error_rate": 0.0
+    }
+    
     # Payload contains only task info. 
     payload = {
         "task": task_name,
         "req_id": req_id,
-        "strategy": strategy_name,
-        "timestamp": time.time()
-    }
-    
-    # Wrap in API Gateway format
-    event = {
-        "body": json.dumps(payload)
+        "strategy": strategy,
+        "timestamp": time.time(),
+        "risk": risk,
+        "metrics": metrics
     }
     
     # 2. Invoke Controller / Worker (depending on strategy)
     t0 = time.time()
-    
-    current_p90 = 0 # Unknown to client
     
     if strategy == 'mpc_integrated':
         # --- NEW OPTIMIZED PATH ---
@@ -107,7 +115,8 @@ def run_single_request(idx, strategy, start_time):
                 'source': debug_data.get('state_source', 'UNKNOWN'),
                 'prev_alloc': debug_data.get('prev_alloc', '?'),
                 'new_alloc': debug_data.get('new_alloc', '?'),
-                'shadow_price': debug_data.get('shadow_price', 0.0)
+                'shadow_price': debug_data.get('shadow_price', 0.0),
+                'scheduling_overhead_ms': debug_data.get('scheduling_overhead_ms', 0.0)
             }
         else:
              decision = {'version': 'FAILED'}
@@ -118,90 +127,80 @@ def run_single_request(idx, strategy, start_time):
         # No MPC Controller. Direct invocation.
         # Worker handles 'baseline' strategy natively; do not override alloc.
         worker_result = invoke_worker_lambda(
-            decision={}, 
-            task={"id": idx, "priority": priority}, 
+            decision={},
+            task={"id": idx, "priority": priority, "risk": payload['risk']},
             mode='auto',
             strategy='baseline',
             metrics=payload['metrics']
         )
         
-        # Baseline now returns its decision in the 'debug' field
         if worker_result and 'response' in worker_result:
             resp_body = worker_result['response']
             debug_data = resp_body.get('debug', {})
             decision = {
                 'resource_alloc': debug_data.get('resource_alloc', 1.0),
-                'prev_alloc': debug_data.get('prev_alloc', '?'),
-                'new_alloc': debug_data.get('new_alloc', '?'),
-                'version': debug_data.get('version', 'BASELINE'),
-                'source': 'dynamodb'
+                'version': 'BASELINE',
+                'scheduling_overhead_ms': debug_data.get('scheduling_overhead_ms', 0.0)
             }
         else:
-            decision = {}
-        ctrl_latency = 0 # Native = 0 external controller overhead
-        
+            decision = {'resource_alloc': 1.0, 'version': 'BASELINE'}
+        ctrl_latency = 0
     else:
-        # --- Fallback External Controller Path (should not be hit by this script) ---
-        # This path is for strategies that use an external controller lambda
-        # before invoking the worker. It passes the strategy name to the controller.
+        # --- CLASSIC PATH: External Controller ---
+        # 1. Invoke Controller
+        controller_result = invoke_controller_lambda(payload, mode=strategy, strategy=strategy)
+        t1 = time.time()
+        ctrl_latency = (t1 - t0) * 1000.0
         
-        mode = 'strict'
-        
-        ctrl_start = time.time()
-        ctrl_result = invoke_controller_lambda(payload, mode=mode, strategy=strategy)
-        ctrl_end = time.time()
-        ctrl_latency = (ctrl_end - ctrl_start) * 1000
-        
-        if ctrl_result:
-            decision = ctrl_result.get('decision', {})
+        if controller_result and 'decision' in controller_result:
+            decision = controller_result['decision']
         else:
-            decision = {}
+            decision = {'resource_alloc': 1.0, 'version': 'CTRL_FAILED'}
             
+        # 2. Invoke Worker with decision
         worker_result = invoke_worker_lambda(
-            decision, 
-            task={"id": idx, "priority": priority}, 
-            mode='auto'
+            decision=decision,
+            task={"id": idx, "priority": priority, "risk": payload['risk']},
+            mode='auto',
+            strategy=strategy,
+            metrics=payload['metrics']
         )
 
-    t2 = time.time()
+    # 3. Process Results
+    e2e_latency = (time.time() - t0) * 1000.0
     
-    success = worker_result is not None
-    # client_duration includes network RTT
-    client_latency = worker_result['client_duration'] if success else 0
-    
-    # server_latency is pure Lambda execution time (if available)
-    server_latency = 0
-    if success and 'response' in worker_result:
-        server_latency = worker_result['response'].get('latency_ms', 0)
-    
-    # Use client_latency for E2E consistency with baseline measurement approach,
-    # but we will track server_latency separately for analysis.
-    e2e_latency = ctrl_latency + client_latency
-    
-    # Violation: Latency > SLO OR Request Failed (Rate Exceeded)
-    is_violation = (e2e_latency > SLO_LATENCY_MS) or (not success)
-
-    # 4. Record Data
-    return {
-        "id": idx,
-        "strategy": strategy,
-        "priority": priority,
-        "p90_input": current_p90,
-        "alloc": decision.get('resource_alloc', 1.0),
-        "version": decision.get('version', 'UNKNOWN'),
-        "source": decision.get('source', 'UNKNOWN'),
-        "prev_alloc": decision.get('prev_alloc', '?'),
-        "new_alloc": decision.get('new_alloc', '?'),
-        "uncertainty": decision.get('uncertainty', 0.0),
-        "pred_p90": decision.get('p90_prediction', 0.0),
-        "ctrl_latency": ctrl_latency,
-        "worker_latency": client_latency,
-        "server_latency": server_latency,
-        "e2e_latency": e2e_latency,
-        "violation": is_violation,
-        "success": success,
-        "timestamp": t2
-    }
+    if worker_result:
+        res = {
+            'id': idx,
+            'strategy': strategy,
+            'priority': priority,
+            'e2e_latency': e2e_latency,
+            'ctrl_latency': ctrl_latency,
+            'worker_latency': worker_result['client_duration'],
+            'server_latency': worker_result['response'].get('latency_ms', 0) if 'response' in worker_result else 0,
+            'scheduling_overhead_ms': decision.get('scheduling_overhead_ms', 0.0),
+            'alloc': decision.get('resource_alloc', 1.0),
+            'uncertainty': decision.get('uncertainty', 0.0),
+            'p90_prediction': decision.get('p90_prediction', 0.0),
+            'version': decision.get('version', 'UNKNOWN'),
+            'prev_alloc': decision.get('prev_alloc', '?'),
+            'new_alloc': decision.get('new_alloc', '?'),
+            'shadow_price': decision.get('shadow_price', 0.0),
+            'violation': (e2e_latency > SLO_LATENCY_MS),
+            'success': True,
+            'timestamp': time.time()
+        }
+    else:
+        res = {
+            'id': idx,
+            'strategy': strategy,
+            'priority': priority,
+            'e2e_latency': e2e_latency,
+            'violation': True,
+            'success': False,
+            'timestamp': time.time()
+        }
+    return res
 
 def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, num_requests=100, arrival_rate=5.0):
     if warm_up:
@@ -392,22 +391,23 @@ def print_comparison(baseline_results, mpc_results):
     
     def calc_metrics(results):
         if not results:
-            return 0, 0, 0, 0, 0, 0, 0
+            return 0, 0, 0, 0, 0, 0, 0, 0
         
         total = len(results)
         # E2E Violations
-        e2e_violations = sum(1 for r in results if r['e2e_latency'] > SLO_LIMIT_MS)
+        e2e_violations = sum(1 for r in results if r.get('e2e_latency', 0) > SLO_LATENCY_MS)
         e2e_viol_rate = (e2e_violations / total) * 100
         
         # Server Violations
-        server_violations = sum(1 for r in results if r['server_latency'] > SLO_LIMIT_MS)
+        server_violations = sum(1 for r in results if r.get('server_latency', 0) > SLO_LATENCY_MS)
         server_viol_rate = (server_violations / total) * 100
         
-        avg_alloc = sum(r['alloc'] for r in results) / total
-        avg_server_lat = sum(r['server_latency'] for r in results) / total
-        avg_e2e_lat = sum(r['e2e_latency'] for r in results) / total
+        avg_alloc = sum(r.get('alloc', 1.0) for r in results) / total
+        avg_server_lat = sum(r.get('server_latency', 0) for r in results) / total
+        avg_e2e_lat = sum(r.get('e2e_latency', 0) for r in results) / total
+        avg_overhead = sum(r.get('scheduling_overhead_ms', 0.0) for r in results) / total
         
-        latencies = sorted([r['e2e_latency'] for r in results])
+        latencies = sorted([r.get('e2e_latency', 0) for r in results])
         p90 = latencies[int(total * 0.9)] if total > 0 else 0
         
         # Deployment Density (1.0 = ideal, >1.0 = over-provisioned)
@@ -415,14 +415,15 @@ def print_comparison(baseline_results, mpc_results):
         # Higher alloc means more CPU time reserved per request
         density = avg_alloc / 0.5 # Assuming 0.5 is the theoretical minimum for 180ms
         
-        return e2e_viol_rate, server_viol_rate, density, p90, avg_alloc, avg_server_lat, avg_e2e_lat
+        return e2e_viol_rate, server_viol_rate, density, p90, avg_alloc, avg_server_lat, avg_e2e_lat, avg_overhead
 
-    b_e2e_viol, b_srv_viol, b_dens, b_p90, b_alloc, b_srv_lat, b_e2e_lat = calc_metrics(baseline_results)
-    m_e2e_viol, m_srv_viol, m_dens, m_p90, m_alloc, m_srv_lat, m_e2e_lat = calc_metrics(mpc_results)
+    b_e2e_viol, b_srv_viol, b_dens, b_p90, b_alloc, b_srv_lat, b_e2e_lat, b_overhead = calc_metrics(baseline_results)
+    m_e2e_viol, m_srv_viol, m_dens, m_p90, m_alloc, m_srv_lat, m_e2e_lat, m_overhead = calc_metrics(mpc_results)
     
     print(f"{'QoS Violation Rate (E2E) %':<25} | {b_e2e_viol:<20.2f} | {m_e2e_viol:<20.2f}")
     print(f"{'QoS Violation Rate (Srv) %':<25} | {b_srv_viol:<20.2f} | {m_srv_viol:<20.2f}")
     print(f"{'Deployment Density':<25} | {b_dens:<20.2f} | {m_dens:<20.2f}")
+    print(f"{'Scheduling Overhead (ms)':<25} | {b_overhead:<20.2f} | {m_overhead:<20.2f}")
     print(f"{'P90 Tail Latency (ms)':<25} | {b_p90:<20.2f} | {m_p90:<20.2f}")
     print(f"{'Avg CPU Allocation':<25} | {b_alloc:<20.2f} | {m_alloc:<20.2f}")
     print(f"{'Avg Server Latency (ms)':<25} | {b_srv_lat:<20.2f} | {m_srv_lat:<20.2f}")
@@ -450,6 +451,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     os.environ["AWS_REGION"] = args.region
+    CURRENT_TASK = args.task
     print(f">>> Starting Experiment 1: MPC-Guard (Ours) Verification (Baseline Blocked)")
     print(f">>> Task: {args.task}, Fixed RPS: {args.rps}, Duration: {args.minutes}m")
     print(f">>> QoS Threshold: {SLO_LATENCY_MS}ms")

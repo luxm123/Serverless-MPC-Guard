@@ -44,6 +44,7 @@ def lambda_handler(event, context):
     debug_info = {}
 
     # --- 1. 动态决策 (Integrated Mode) ---
+    scheduling_start = time.time()
     if strategy == 'mpc_integrated' and _MIDDLEWARE:
         # 直接在 Worker 内部进行 MPC 决策，减少跨 Lambda 调用开销
         decision, debug = _MIDDLEWARE.decide(event)
@@ -88,6 +89,8 @@ def lambda_handler(event, context):
             'cpu_util': cpu_util,
             'version': 'HPA_BASELINE'
         }
+    scheduling_overhead_ms = (time.time() - scheduling_start) * 1000.0
+    debug_info['scheduling_overhead_ms'] = scheduling_overhead_ms
 
     start_time = time.time()
     
