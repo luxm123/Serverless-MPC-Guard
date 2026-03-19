@@ -225,8 +225,10 @@ class Optimizer:
         # v27: 回归稳健。减小 w2 到 10.0，并将立方项改为二次项，降低下坠速度
         # v29: 增强 Waste 惩罚 (10 -> 25)，并根据 prev_u 引入指数级回收压力
         # v30: 科学降噪。大幅调低 w2 (25 -> 8.0) 和 eta，防止步进撞墙，实现精细化控制
-        w2 = 8.0
-        grad_waste = w2 * (prev_u + 2.0 * (prev_u ** 2))
+        # v31: 修正 - 实验证明“精细化”在分布式下会被噪声淹没。
+        # 必须恢复强大的下行拉力 (w2=50.0) 和较大的学习率 (eta=0.15) 才能克服并发粘性。
+        w2 = 50.0
+        grad_waste = w2 * (prev_u + 4.0 * (prev_u ** 2))
         
         # 3. 风险梯度 (WCP 提供的概率保证)
         # v25: 核心逻辑 - 基于实际违反率衰减风险权重
@@ -240,16 +242,15 @@ class Optimizer:
             slo_viol = float(actual_metrics.get('slo_violation_rate', 0.0))
         
         # 动态风险权重：只有真正出事时才全额信任 WCP
-        # v27: 恢复部分风险权重 (0.3 -> 0.8)，确保在 180ms 附近有足够的托举力
-        # v29: 引入 Confidence Gating。如果连续无违反，极大幅度削减 WCP 权重
         # v30: 微调门控系数，增加灵敏度
+        # v31: 进一步收紧门控，在安全时几乎完全关闭风险项 (0.15 -> 0.02)
         confidence_gate = 1.0
         if slo_viol < 0.01:
-            confidence_gate = 0.15 # 从 0.05 提升到 0.15，允许更平滑的微调
+            confidence_gate = 0.02
             
         dynamic_risk_weight = 1.2 * (slo_viol + 0.05) * confidence_gate
         if prev_u > 0.85:
-            dynamic_risk_weight *= 0.2 
+            dynamic_risk_weight *= 0.1 # 高位更强的质疑
             
         # v25: 强制向下梯度 (防止死锁)
         # v29: 移除硬编码补丁，依靠 grad_waste 和 confidence_gate 回归科学
@@ -260,12 +261,12 @@ class Optimizer:
         
         # v30: 极致调试 - 找出为什么 u 还在 1.0
         if prev_u > 0.8:
-            if random.random() < 0.05:
-                print(f"[MPC-CORE-v30] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
+            if random.random() < 0.1:
+                print(f"[MPC-CORE-v31] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
         
         # Update Step
-        # v30: 降低基础学习率 (0.15 -> 0.06)，配合 w2 缩减，使单步跨度降至 0.01~0.05 级别
-        step_eta = 0.06
+        # v31: 恢复学习率 (0.06 -> 0.15) 以确保梯度能转化为足够的 Alloc 变化
+        step_eta = 0.15
         if grad < -15.0: # Negative grad means UPWARD scaling
             step_eta *= 2.0
             
@@ -275,7 +276,7 @@ class Optimizer:
         # --- Physical Rate Limiting (v30) ---
         # 保持非对称限速，但由于梯度变小，系统将更多地运行在限速区内
         max_increase = 0.25
-        max_decrease = 0.15
+        max_decrease = 0.20 # 稍微放宽下行
         
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
