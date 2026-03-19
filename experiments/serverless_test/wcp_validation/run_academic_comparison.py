@@ -10,7 +10,7 @@ from serverless_utils import invoke_worker_lambda
 # --- Configuration ---
 # 6 types of functions as per benchmark availability
 FUNCTIONS = ['linpack', 'gzip', 'image_processing', 'video_processing', 'chameleon', 'matmul']
-STRATEGIES = ['mpc_integrated', 'gsight', 'owl', 'baseline']
+STRATEGIES = ['mpc_integrated', 'gsight', 'owl']
 TRACE_FILE = 'azure_traces/invocations_per_function_sample.csv'
 DURATION_MINUTES = 60
 RPS_SCALE = 0.2 # 1:5 scale
