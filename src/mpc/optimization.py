@@ -5,116 +5,82 @@ class Optimizer:
         self.w1 = 1.0
         self.w2 = 0.5
         self.w3 = 5.0
-        self.stable_count = 0
-        self.last_grad = 0.0
-        self.int_waste = 0.0
 
     def update_weights(self, metrics, system_state):
-        # Placeholder for dynamic weight adjustment if needed
-        return {
-            'w1': self.w1,
-            'w2': self.w2,
-            'w3': self.w3
-        }
+        return {'w1': self.w1, 'w2': self.w2, 'w3': self.w3}
 
     def tune_params_by_price(self, price, eta_base, gamma_base, bands, system_state):
-        # Simplified tuning based on price
         return eta_base, gamma_base
 
     def optimize_u(self, prev_u, pred_upper, slo_limit, price, **kwargs):
         """
-        v46.1: 优化预警阈值，减少过度反应和震荡。
+        v46.2: 修正梯度方向逻辑。
+        grad_waste 应该是向下的推力（正梯度），grad_risk 是向上的推力（负梯度）。
         """
         state = kwargs.get('state', {})
         params = state.get('params', {}) 
-        # 目标延迟设为 145ms，给系统留出下探空间
-        ref_latency = kwargs.get('ref_latency', 145.0) 
         
         # 1. 梯度计算
-        # 1.1. 资源浪费梯度 (Utility/Waste Gradient)
-        # 稍微调低权重，避免剧烈下降
-        w1 = float(params.get('w1', 0.4)) 
-        grad_waste = w1 * (pred_upper - ref_latency)
+        # 1.1. 资源浪费梯度 (Utility/Waste Gradient) - 恒定向下的推力
+        # 这个值越大，系统越倾向于省钱
+        w1 = 0.5 
+        grad_waste = w1 
 
-        # 1.2. SLO风险梯度 (Risk Gradient)
-        # 将安全线提高到 165ms (约 92% SLO)，只有真危险才开始推
-        w2 = float(params.get('w2', 0.3)) 
-        safe_margin = 165.0 
-        
+        # 1.2. SLO风险梯度 (Risk Gradient) - 向上推力
+        # 只有预测延迟超过 160ms 才开始产生阻力
+        w2 = 0.8
+        safe_line = 160.0
         grad_risk = 0.0
-        if pred_upper > safe_margin:
-            # 使用指数增长，但由于 safe_margin 提高了，只有在接近 180ms 时才会有爆发力
-            risk_factor = (pred_upper - safe_margin) / (slo_limit - safe_margin)
+        if pred_upper > safe_line:
+            risk_factor = (pred_upper - safe_line) / (slo_limit - safe_line)
             grad_risk = -w2 * math.exp(risk_factor)
 
-        # 1.3. 动态风险权重 (Dynamic Risk Weight)
-        p90_ema = float(state.get('p90_belief', 0.0))
+        # 1.3. 动态权重
+        actual_p90 = float(state.get('p90_belief', 100.0))
         dynamic_risk_weight = 1.0
-        if p90_ema > ref_latency:
-            dynamic_risk_weight = 1.0 + (p90_ema - ref_latency) / ref_latency
+        if actual_p90 > 170.0:
+            dynamic_risk_weight = 2.0 # 延迟一旦过高，风险梯度权重翻倍
 
-        # 1.4. 梯度追踪 (Gradient Tracking)
+        # 1.4. 梯度追踪 (历史惯性)
         grad_track = float(state.get('grad_track', 0.0))
-        # 减少追踪的惯性，防止被历史的一次尖峰长时间误导
-        if pred_upper <= safe_margin:
-            grad_track *= 0.5 
 
-        # 4. 真实延迟兜底 (Dynamic Reality Check) - v46.1
-        actual_p90 = float(state.get('p90_belief', 0.0))
+        # 4. 真实延迟恐慌 (Dynamic Reality Check)
         grad_panic = 0.0
-        # 恐慌线设在 175ms，非常接近 SLO
-        panic_margin = 175.0 
-        if actual_p90 > panic_margin:
-            panic_excess = (actual_p90 - panic_margin) / 5.0 # 5ms 差距就产生巨大推力
-            grad_panic = -20.0 * (panic_excess ** 2) - 10.0 * panic_excess
+        panic_line = 175.0 # 极度接近违规
+        if actual_p90 > panic_line:
+            panic_excess = actual_p90 - panic_line
+            grad_panic = -10.0 * panic_excess # 强力向上拉回
 
         # 5. 终极合力计算
-        grad = 1.5 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + grad_panic
+        # grad = 浪费(下) + 风险(上) + 恐慌(上) + 惯性
+        grad = grad_waste + dynamic_risk_weight * grad_risk + grad_panic + 0.5 * grad_track
 
-        # 6. 更新梯度追踪和分配
-        # 稍微放宽下降速度到 0.03，提高响应灵活性
-        max_decrease = 0.03
-        lr = float(kwargs.get('eta', 0.005)) # 减小学习率，防止从 0.7 瞬移到 1.0
-
-        # 更新梯度追踪 (EMA 方式更新)
-        beta = 0.7 
-        new_grad_track = beta * grad_track + (1 - beta) * grad
-        state['grad_track'] = new_grad_track
-        
-        # 计算新的分配值
+        # 6. 更新决策
+        lr = 0.01 # 稍微加大步长，让它动起来
         new_alloc = prev_u - lr * grad
         
-        # 施加下降速度限制
+        # 限制下降速度，但不限制上升速度
+        max_decrease = 0.05
         if new_alloc < prev_u:
             new_alloc = max(new_alloc, prev_u - max_decrease)
 
-        # 7. 应用边界和最终决策
+        # 7. 边界
         lower = 0.60
         upper = 1.0
         final_alloc = max(lower, min(upper, new_alloc))
 
-        # 调试信息更新
+        # 更新状态供下一轮使用
+        state['grad_track'] = grad
         state['opt_debug'] = {
             "grad_waste": grad_waste,
             "grad_risk": grad_risk,
-            "grad_track": grad_track,
             "grad_panic": grad_panic,
-            "actual_p90": actual_p90,
+            "grad_total": grad,
             "final_alloc": final_alloc
         }
 
         return final_alloc
 
 def get_optimal_allocation(state, params, ref_latency, slo_limit, pred_upper, pred_lower):
-    """
-    Legacy function wrapper for backward compatibility if needed.
-    """
     opt = Optimizer()
-    return opt.optimize_u(
-        state.get('prev_alloc', 1.0),
-        pred_upper,
-        slo_limit,
-        0.0,
-        ref_latency=ref_latency,
-        state=state
-    ), {}, {}
+    return opt.optimize_u(state.get('prev_alloc', 1.0), pred_upper, slo_limit, 0.0, state=state), {}, {}
