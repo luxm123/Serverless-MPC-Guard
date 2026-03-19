@@ -104,7 +104,9 @@ def run_single_request(idx, strategy, start_time):
                 'uncertainty': debug_data.get('uncertainty', 0.0),
                 'p90_prediction': debug_data.get('p90_prediction', 0.0),
                 'version': debug_data.get('version', 'UNKNOWN'),
-                'source': debug_data.get('state_source', 'UNKNOWN')
+                'source': debug_data.get('state_source', 'UNKNOWN'),
+                'prev_alloc': debug_data.get('prev_alloc', '?'),
+                'new_alloc': debug_data.get('new_alloc', '?')
             }
         else:
              decision = {'version': 'FAILED'}
@@ -182,6 +184,8 @@ def run_single_request(idx, strategy, start_time):
         "alloc": decision.get('resource_alloc', 1.0),
         "version": decision.get('version', 'UNKNOWN'),
         "source": decision.get('source', 'UNKNOWN'),
+        "prev_alloc": decision.get('prev_alloc', '?'),
+        "new_alloc": decision.get('new_alloc', '?'),
         "uncertainty": decision.get('uncertainty', 0.0),
         "pred_p90": decision.get('p90_prediction', 0.0),
         "ctrl_latency": ctrl_latency,
@@ -210,17 +214,9 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
             res = future.result()
             results.append(res)
             if not warm_up:
-                unc_val = res['uncertainty']
-                if isinstance(unc_val, dict): unc_val = unc_val.get('p90', 0)
-                
-                debug_info = ""
-                if res and 'response' in res and res['response'] and 'debug' in res['response']:
-                    dbg = res['response']['debug']
-                    if dbg:
-                        debug_info = f", PrevU={dbg.get('prev_u', '?')}, SLO={dbg.get('slo_limit', '?')}, Price={dbg.get('price', '?')}"
-                
+                debug_str = f"PrevA={res['prev_alloc']}, NewA={res['new_alloc']}"
                 # 实时打印每个请求的结果
-                print(f"[{strategy_name}] Req {res['id']}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Server={res['server_latency']:.1f}ms, Ver={res['version']}{debug_info}")
+                print(f"[{strategy_name}] Req {res['id']}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Ver={res['version']}, {debug_str}")
         except Exception as e:
             print(f"[ERROR] Request failed: {e}")
 

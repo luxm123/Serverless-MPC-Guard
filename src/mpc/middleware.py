@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        debug_info = {'version': '20260319_v5', 'state_id': self.state_id}
+        debug_info = {'version': '20260319_v8', 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
         state, version = self._load_state()
@@ -122,7 +122,11 @@ class MPCMiddleware:
             debug_info['state_source'] = 'default'
         else:
             debug_info['state_source'] = 'dynamodb'
-            debug_info['loaded_alloc'] = state.get('last_alloc', 1.0)
+            
+        # Ensure last_alloc is present and defaults to 0.8
+        last_alloc = float(state.get('last_alloc', 0.8) or 0.8)
+        state['last_alloc'] = last_alloc
+        debug_info['loaded_alloc'] = last_alloc
 
         # Inject Profile from Client Task (if present) to enable Per-Request Tuning
         if task.get('mpc_profile'):
@@ -338,8 +342,8 @@ class MPCMiddleware:
         system_state['shadow_price'] = lam
         
         # Optimization
-        # Ensure last_alloc is explicitly in system_state as 'u_prev' for the optimizer
-        system_state['u_prev'] = float(state.get('last_alloc', 0.8))
+        # Ensure last_alloc is explicitly in system_state for the optimizer
+        system_state['last_alloc'] = last_alloc
         
         # Step 3: Call Controller
         result = self.controller.decide(task, wcp_constraints, system_state)
@@ -348,16 +352,17 @@ class MPCMiddleware:
         debug_info.update(ctrl_dbg)
         
         decision_out = result['decision']
-        new_alloc = float(decision_out.get('resource_alloc', 1.0))
+        new_alloc = float(decision_out.get('resource_alloc', last_alloc))
         
-        # 强制将 new_alloc 写回状态，哪怕优化器没动，我们也会看到它是从 0.8 开始的
+        # 强制将 new_alloc 写回状态
         state['last_alloc'] = new_alloc
         state['shadow_price'] = lam
         _L1_CACHE['params'] = state # Update cache reference
         
-        # Metadata update for version 7
-        debug_info['version'] = '20260319_v7'
+        # Metadata update for version 8
+        debug_info['version'] = '20260319_v8'
         debug_info['new_alloc'] = new_alloc
+        debug_info['prev_alloc'] = last_alloc
         
         # CRITICAL FIX: 强制同步保存状态
         try:
