@@ -342,11 +342,9 @@ class MPCMiddleware:
         # To make it robust, we can write to DB with probability p=0.1 (sampling)
         # or if state changed significantly.
         
-        # CRITICAL FIX: Persist state immediately if allocation changes significantly
-        # or randomly (Heartbeat). This ensures other containers learn about the panic mode.
-        # Modified to be more proactive during experiments.
-        if abs(new_alloc - last_alloc) > 0.001 or new_alloc < 0.99 or random.random() < 0.2:
-            self._async_save_state(state, version)
+        # CRITICAL FIX: 强制每一笔请求都保存状态，确保 Alloc 能够跨容器、跨请求连续下降
+        # 移除了所有的采样和变化门槛判断
+        self._async_save_state(state, version)
 
         decision_out = result['decision']
         thr_platinum = float(state.get('admit_thr_platinum_ms', slo_limit_ms * 1.2) or (slo_limit_ms * 1.2))

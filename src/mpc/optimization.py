@@ -286,10 +286,9 @@ class Optimizer:
         # u_new = u - eta * (grad + gamma * u)
         step = eta * (grad + gamma * prev_u)
 
-        # DEBUG: Enhanced logging to diagnose Model Mismatch
-        # Only print if there's significant action or high backlog
-        if backlog_val > 5.0 or abs(grad) > 0.1:
-             print(f"[MPC-OPT] Backlog={backlog_val:.1f} | Grads -> Track: {w1*grad_track:.2f}, Risk: {w3*grad_risk:.2f}, Congest: {grad_congestion:.2f}, Price: {price/price_norm:.2f} | Total: {grad:.2f} | u: {prev_u:.2f}->{prev_u - step:.2f}")
+        # DEBUG: 强制打印所有请求的梯度详情，诊断为何 Alloc 不下降
+        print(f"[MPC-DEBUG] u:{prev_u:.2f} | Grads -> Track:{w1*grad_track:.3f}, Risk:{w3*grad_risk:.3f}, Waste:{w2*grad_waste:.3f}, Price:{price/price_norm:.3f}, Congest:{grad_congestion:.3f} | Total:{grad:.3f} | Step:{step:.4f}")
+        
         u_new = prev_u - step
         
         # Projection to Feasible Set U (Box constraints [0, 1])
