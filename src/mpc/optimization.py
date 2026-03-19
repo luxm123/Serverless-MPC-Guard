@@ -227,8 +227,11 @@ class Optimizer:
         # v30: 科学降噪。大幅调低 w2 (25 -> 8.0) 和 eta，防止步进撞墙，实现精细化控制
         # v31: 修正 - 实验证明“精细化”在分布式下会被噪声淹没。
         # 必须恢复强大的下行拉力 (w2=50.0) 和较大的学习率 (eta=0.15) 才能克服并发粘性。
-        w2 = 50.0
-        grad_waste = w2 * (prev_u + 4.0 * (prev_u ** 2))
+        # v32: 解决 Alloc 震荡 (Flapping) 问题。
+        # 震荡原因：w2 过大导致强制回收过快，随后延迟上升又触发风险项拉升。
+        # 修复：降低 w2，引入平滑的回收机制，并减小学习率 eta。
+        w2 = 15.0
+        grad_waste = w2 * (prev_u + 2.0 * (prev_u ** 2))
         
         # 3. 风险梯度 (WCP 提供的概率保证)
         # v25: 核心逻辑 - 基于实际违反率衰减风险权重
@@ -244,13 +247,14 @@ class Optimizer:
         # 动态风险权重：只有真正出事时才全额信任 WCP
         # v30: 微调门控系数，增加灵敏度
         # v31: 进一步收紧门控，在安全时几乎完全关闭风险项 (0.15 -> 0.02)
+        # v32: 稍微放宽门控，避免反应过慢
         confidence_gate = 1.0
         if slo_viol < 0.01:
-            confidence_gate = 0.02
+            confidence_gate = 0.05
             
         dynamic_risk_weight = 1.2 * (slo_viol + 0.05) * confidence_gate
         if prev_u > 0.85:
-            dynamic_risk_weight *= 0.1 # 高位更强的质疑
+            dynamic_risk_weight *= 0.2 # 高位更强的质疑
             
         # v25: 强制向下梯度 (防止死锁)
         # v29: 移除硬编码补丁，依靠 grad_waste 和 confidence_gate 回归科学
@@ -262,21 +266,23 @@ class Optimizer:
         # v30: 极致调试 - 找出为什么 u 还在 1.0
         if prev_u > 0.8:
             if random.random() < 0.1:
-                print(f"[MPC-CORE-v31] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
+                print(f"[MPC-CORE-v32] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
         
         # Update Step
         # v31: 恢复学习率 (0.06 -> 0.15) 以确保梯度能转化为足够的 Alloc 变化
-        step_eta = 0.15
+        # v32: 降低学习率以减少震荡
+        step_eta = 0.08
         if grad < -15.0: # Negative grad means UPWARD scaling
-            step_eta *= 2.0
+            step_eta *= 1.5
             
         step = step_eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
         # --- Physical Rate Limiting (v30) ---
         # 保持非对称限速，但由于梯度变小，系统将更多地运行在限速区内
-        max_increase = 0.25
-        max_decrease = 0.20 # 稍微放宽下行
+        # v32: 进一步收紧限速，防止单步跳跃过大
+        max_increase = 0.15
+        max_decrease = 0.10 # 严格限制下行速度，防止断崖式下跌
         
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
