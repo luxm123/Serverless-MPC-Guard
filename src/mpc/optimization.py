@@ -221,68 +221,55 @@ class Optimizer:
             grad_track = -1.0 * diff
             
         # 2. Utility Gradient (资源回收拉力)
-        # v25: 线性 + 二次方 混合惩罚，确保在高位有绝对压制力
-        # v27: 回归稳健。减小 w2 到 10.0，并将立方项改为二次项，降低下坠速度
-        # v29: 增强 Waste 惩罚 (10 -> 25)，并根据 prev_u 引入指数级回收压力
-        # v30: 科学降噪。大幅调低 w2 (25 -> 8.0) 和 eta，防止步进撞墙，实现精细化控制
-        # v31: 修正 - 实验证明“精细化”在分布式下会被噪声淹没。
-        # 必须恢复强大的下行拉力 (w2=50.0) 和较大的学习率 (eta=0.15) 才能克服并发粘性。
-        # v32: 解决 Alloc 震荡 (Flapping) 问题。
-        # 震荡原因：w2 过大导致强制回收过快，随后延迟上升又触发风险项拉升。
-        # 修复：降低 w2，引入平滑的回收机制，并减小学习率 eta。
-        w2 = 15.0
-        grad_waste = w2 * (prev_u + 2.0 * (prev_u ** 2))
+        # v33: 彻底解决 Flapping 问题。
+        # 之前的回收拉力 (grad_waste) 仍然过大，导致 Alloc 持续下降直到触发 SLO 违规，然后又被风险梯度拉回。
+        # 修复：
+        # 1. 极大地降低 w2 (15.0 -> 2.0)，让回收变得非常缓慢和温和。
+        # 2. 移除二次方项，只保留线性回收，防止在高 Alloc 时回收过猛。
+        w2 = 2.0
+        grad_waste = w2 * prev_u
         
         # 3. 风险梯度 (WCP 提供的概率保证)
-        # v25: 核心逻辑 - 基于实际违反率衰减风险权重
         slo_viol = 0.0
         actual_metrics = {}
         if isinstance(state, dict):
-            # v26: Correctly extract metrics from state (passed via system_state in middleware)
             actual_metrics = state.get('metrics', {})
             
         if actual_metrics:
             slo_viol = float(actual_metrics.get('slo_violation_rate', 0.0))
         
-        # 动态风险权重：只有真正出事时才全额信任 WCP
-        # v30: 微调门控系数，增加灵敏度
-        # v31: 进一步收紧门控，在安全时几乎完全关闭风险项 (0.15 -> 0.02)
-        # v32: 稍微放宽门控，避免反应过慢
+        # 动态风险权重：
+        # v33: 增加基础风险权重，确保系统对潜在风险保持警惕，而不是等违规了才反应。
         confidence_gate = 1.0
         if slo_viol < 0.01:
-            confidence_gate = 0.05
+            confidence_gate = 0.2 # 提高安全期的风险敏感度 (0.05 -> 0.2)
             
-        dynamic_risk_weight = 1.2 * (slo_viol + 0.05) * confidence_gate
+        dynamic_risk_weight = 2.0 * (slo_viol + 0.1) * confidence_gate
         if prev_u > 0.85:
-            dynamic_risk_weight *= 0.2 # 高位更强的质疑
+            dynamic_risk_weight *= 0.5 # 稍微降低高位的质疑程度
             
-        # v25: 强制向下梯度 (防止死锁)
-        # v29: 移除硬编码补丁，依靠 grad_waste 和 confidence_gate 回归科学
         forced_recovery = 0.0
             
-        # v25: 终极合力计算
+        # 终极合力计算
         grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + forced_recovery
         
-        # v30: 极致调试 - 找出为什么 u 还在 1.0
         if prev_u > 0.8:
             if random.random() < 0.1:
-                print(f"[MPC-CORE-v32] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
+                print(f"[MPC-CORE-v33] U:{prev_u:.3f} | Grad:{grad:.2f} (T:{2.0*grad_track:.2f}, R:{dynamic_risk_weight*grad_risk:.2f}, W:{grad_waste:.2f}) | Gate:{confidence_gate:.2f}")
         
         # Update Step
-        # v31: 恢复学习率 (0.06 -> 0.15) 以确保梯度能转化为足够的 Alloc 变化
-        # v32: 降低学习率以减少震荡
-        step_eta = 0.08
-        if grad < -15.0: # Negative grad means UPWARD scaling
-            step_eta *= 1.5
+        # v33: 进一步降低学习率，追求极致平滑
+        step_eta = 0.05
+        if grad < -5.0: # 降低向上加速的阈值
+            step_eta *= 1.2
             
         step = step_eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Physical Rate Limiting (v30) ---
-        # 保持非对称限速，但由于梯度变小，系统将更多地运行在限速区内
-        # v32: 进一步收紧限速，防止单步跳跃过大
-        max_increase = 0.15
-        max_decrease = 0.10 # 严格限制下行速度，防止断崖式下跌
+        # --- Physical Rate Limiting ---
+        # v33: 极其严格的限速，彻底杜绝跳跃
+        max_increase = 0.10
+        max_decrease = 0.05 # 每次最多只允许下降 0.05
         
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
