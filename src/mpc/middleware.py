@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v49_No_Priority'
+        current_ver = '20260319_v50'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
@@ -127,7 +127,7 @@ class MPCMiddleware:
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v49] NUCLEAR RESET: Unified control mode enabled.")
+            print(f"[Middleware-v50] NUCLEAR RESET: Unified control mode enabled.")
         else:
             debug_info['state_source'] = 'dynamodb'
             
