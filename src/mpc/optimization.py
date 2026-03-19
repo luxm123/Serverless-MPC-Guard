@@ -214,58 +214,38 @@ class Optimizer:
         w2 = 15.0
         grad_waste = 2.0 * w2 * prev_u
         
-        # 3. Tracking Error Gradient
+        # v23: 彻底重构 - 移除干扰项，回归 Latency-Resource 博弈核心
+        # 1. Tracking Error Gradient (基于 WCP 预测的风险拉力)
         grad_track = 0.0
         if ref_latency is not None:
-            # v22: 引入预测偏差过滤。
-            # 如果 pred_upper 极其离谱 (由于 WCP 中毒)，进行截断处理
-            effective_pred = min(pred_upper, ref_latency * 1.5)
-            diff = (effective_pred - ref_latency) / max(1.0, slo_limit)
+            # 使用 WCP 提供的 pred_upper (含不确定性边界)
+            diff = (pred_upper - ref_latency) / max(1.0, slo_limit)
             grad_track = -1.0 * diff
-        
-        # --- Restore missing definitions (v22.1) ---
-        price_norm = 100.0
-        if state:
-             price_norm = float(state.get('opt_price_norm', 100.0))
-        
-        # 4. Barrier Method for Queue Capacity Constraint
-        grad_congestion = 0.0
-        backlog_val = 0.0
-        if current_backlog is not None:
-            backlog_val = float(current_backlog)
-        elif state:
-            backlog_val = float(state.get('queue_backlog_belief', 0.0))
-
-        # Soft Capacity Limit
-        capacity = 500.0 
-        margin = capacity - backlog_val
-        safe_margin = max(0.1, margin)
-        mu = 20.0 
-        grad_congestion = -mu / safe_margin
-        
-        # 5. Congestion Price Gradient
-        grad_price = -1.0 * (price / price_norm)
-        
-        # Total Gradient Summation
-        # v22: 严格限制风险梯度的权重，防止 WCP 恐慌
-        risk_weight = 0.2
-        if prev_u > 0.8:
-            risk_weight = 0.05 # u 越高，越要质疑加资源的必要性
             
-        grad = 2.0 * grad_track + risk_weight * grad_risk + grad_waste + grad_price + grad_congestion
+        # 2. Utility Gradient (资源回收拉力)
+        # 使用二次方惩罚，w2=10.0
+        w2 = 10.0
+        grad_waste = 2.0 * w2 * prev_u
+        
+        # 3. 风险梯度 (WCP 提供的概率保证项)
+        risk_weight = 0.5
+        
+        # v23: 科学合力计算
+        # 移除 grad_congestion 和 grad_price，因为它们在 Serverless 垂直扩容中是误导性的
+        grad = 2.0 * grad_track + risk_weight * grad_risk + grad_waste
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Physical Rate Limiting (v22) ---
-        # 严格限制单次爬升速度，防止并发冲顶
-        max_increase = 0.05
+        # --- Asymmetric Rate Limiting (v23) ---
+        # 爬坡可以快，但要可控；回收必须快
+        max_increase = 0.10
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
             
-        # DEBUG: 详情 (v22.1)
-        print(f"[MPC-DEBUG-v22.1] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{risk_weight*grad_risk:.2f} W:{grad_waste:.2f} P:{grad_price:.2f} | Total:{grad:.2f}")
+        # DEBUG: 详情 (v23)
+        print(f"[MPC-DEBUG-v23] u:{prev_u:.2f}->{u_new:.2f} | WCP_Track:{2.0*grad_track:.2f} Waste:{grad_waste:.2f} | Total:{grad:.2f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
