@@ -167,22 +167,25 @@ class Optimizer:
         # --------------------------------------------
 
         # 1. Risk Gradient (Risk of violating SLO)
-        # Formula: SLO_safe = SLO_target - C_{1-alpha} (Uncertainty Margin)
-        # Constraint: y_pred <= SLO_safe  <==>  y_pred + C_{1-alpha} <= SLO_target
-        # pred_upper represents (y_pred + C_{1-alpha}) i.e., the (1-alpha) quantile prediction.
-        
-        # We quantify violation as: max(0, (pred_upper - slo_limit) / slo_limit)
-        base_risk = max(0.0, (pred_upper - slo_limit) / max(1.0, slo_limit))
+        # v42: 彻底重构风险梯度，抛弃滞后的 slo_viol 指标，采用“提前预警”机制
+        # 当预测延迟达到 SLO 的 85% 时，就开始产生强烈的向上推力，防止跌入死区
+        safe_margin = slo_limit * 0.85
+        if pred_upper > safe_margin:
+            # 使用二次方惩罚，越接近或超过 SLO，推力呈指数级增长
+            normalized_excess = (pred_upper - safe_margin) / max(1.0, slo_limit)
+            base_risk = 5.0 * (normalized_excess ** 2) + normalized_excess
+        else:
+            base_risk = 0.0
+            
         soft_risk = base_risk
         
         # Softmax aggregation for risk vector
         if isinstance(risks, dict):
-            vals = []
+            vals = [base_risk] # 将 base_risk 加入向量
             for k in ('latency', 'timeout', 'error', 'memory'):
                 v = float(risks.get(k, 0.0))
                 vals.append(v)
             
-            # Log-Sum-Exp Smooth Max
             mx = max(vals) if vals else 0.0
             if tau <= 0.0: tau = 1.0
             s = 0.0
@@ -196,68 +199,29 @@ class Optimizer:
         if isinstance(risk_comp, (int, float)):
             soft_risk = float(risk_comp)
             
-        # CRITICAL FIX: Gradient Direction
-        # Current Architecture: u = Resource Allocation (0.01 to 1.0).
-        # Higher u -> Higher Load/Latency (Wait, No!)
-        # Higher u (Resources) -> LOWER Latency (Fast execution).
-        # Therefore, d(Latency)/du is NEGATIVE.
-        # d(Risk)/du is NEGATIVE.
-        # To reduce Risk, we must INCREASE u.
-        # Gradient Descent: u_new = u - eta * grad.
-        # So grad should be NEGATIVE for risk to increase u.
+        # 风险梯度方向为负，推动 u 增加
         grad_risk = -1.0 * soft_risk 
         if isinstance(ku, (int, float)):
              grad_risk = -float(ku) * soft_risk
 
-        # 2. Utility Gradient (Cost of Resources)
-        # v25: 终极重构 - 风险置信度衰减与强制回收
-        
         # 1. Tracking Error Gradient
         grad_track = 0.0
         if ref_latency is not None:
-            # 对预测值进行物理截断，防止 WCP 中毒
-            safe_pred = min(pred_upper, ref_latency * 1.5) # Allow slightly more headroom
+            safe_pred = min(pred_upper, ref_latency * 1.5)
             diff = (safe_pred - ref_latency) / max(1.0, slo_limit)
             grad_track = -1.0 * diff
             
         # 2. Utility Gradient (资源回收拉力)
-        # v41: 终极打破 0.6 死区。
-        # v40 中，虽然降低了 w2，但由于 WCP 预测的 P90 (pred_upper) 在 0.6 时可能并没有超过 SLO 太多，
-        # 导致风险梯度 (grad_risk) 依然很小，无法克服哪怕是 w2=2.0 的回收拉力。
-        # 修复：
-        # 1. 引入“违规惩罚放大器”：如果实际发生了 SLO 违规，直接给风险梯度乘上一个巨大的倍数。
-        # 2. 进一步降低基础回收拉力 w2 到 0.5。
         w2 = 0.5
         grad_waste = w2 * prev_u
         
-        # 3. 风险梯度 (WCP 提供的概率保证)
-        slo_viol = 0.0
-        actual_metrics = {}
-        if isinstance(state, dict):
-            actual_metrics = state.get('metrics', {})
-            
-        if actual_metrics:
-            slo_viol = float(actual_metrics.get('slo_violation_rate', 0.0))
-        
-        # 动态风险权重：
-        confidence_gate = 1.0
-        if slo_viol < 0.01:
-            if pred_upper > slo_limit * 0.9:
-                confidence_gate = 1.0
-            else:
-                confidence_gate = 0.5
-        else:
-            # 如果已经发生了违规，极大地放大风险权重，强制拉升
-            confidence_gate = 5.0
-            
-        dynamic_risk_weight = 10.0 * (slo_viol + 0.1) * confidence_gate
+        # 3. 动态风险权重 (固定为强权重，不再依赖滞后指标)
+        dynamic_risk_weight = 8.0 
         if prev_u > 0.9:
-            dynamic_risk_weight *= 0.2 # 高位降权，允许回收
-            
-        forced_recovery = 0.0
+            dynamic_risk_weight *= 0.5 # 高位适当降权
             
         # 终极合力计算
-        grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste + forced_recovery
+        grad = 2.0 * grad_track + dynamic_risk_weight * grad_risk + grad_waste
         
         if prev_u > 0.8:
             if random.random() < 0.1:
