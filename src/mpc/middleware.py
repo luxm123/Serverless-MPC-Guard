@@ -582,8 +582,8 @@ class MPCMiddleware:
             'bP': 2000.0,
             'rls_states': {},
             'shadow_price': 0.0,
-            'last_alloc': 0.8, # 强制初始 Alloc 为 0.8，避免从 1.0 开始锁死
-            'optimizer_weights': {'w1': 1.0, 'w2': 5.0, 'w3': 1.0}, # 再次加大 w2 (5.0), 压死 w3 (1.0)
+            'last_alloc': 1.0, # 安全启动：从 1.0 开始，由优化器决定是否下降
+            'optimizer_weights': {'w1': 1.0, 'w2': 5.0, 'w3': 1.0}, 
             'priority_weights': {
                 'lambda1': 0.6,
                 'alpha': 0.7,
