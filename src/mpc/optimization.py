@@ -237,9 +237,8 @@ class Optimizer:
         u_new = prev_u - step
         
         # --- Physical Rate Limiting ---
-        # 允许极快上升，极度限制下降速度 (防震荡核心)
         max_increase = 0.40 
-        max_decrease = 0.02 # 每次最多只允许下降 0.02，给预测器充分的反应时间
+        max_decrease = 0.05 
         
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
@@ -248,10 +247,13 @@ class Optimizer:
             
         # DEBUG: 详情
         if random.random() < 0.1:
-            print(f"[MPC-DEBUG-v41] u:{prev_u:.2f}->{u_new:.2f} | Total_Grad:{grad:.1f}")
+            print(f"[MPC-DEBUG-v45] u:{prev_u:.2f}->{u_new:.2f} | Total_Grad:{grad:.1f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
-        lower = 0.6
+        # v45: Physical Reality Check. 
+        # 数据表明 Alloc < 0.90 必然导致 E2E > 180ms。
+        # 强制提高底线以保障 QoS。
+        lower = 0.90
         upper = 1.0
         if u_new < lower: u_new = lower
         if u_new > upper: u_new = upper
