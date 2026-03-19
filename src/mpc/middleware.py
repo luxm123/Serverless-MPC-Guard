@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v47'
+        current_ver = '20260319_v48_Final_Fix'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
@@ -122,12 +122,12 @@ class MPCMiddleware:
         if not state or state.get('version') != current_ver:
             state = self._get_default_params()
             state['version'] = current_ver
-            state['last_alloc'] = 0.5 
+            state['last_alloc'] = 1.0 
             state['shadow_price'] = 0.0
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v46] NUCLEAR RESET: Risk discounting enabled.")
+            print(f"[Middleware-v48] NUCLEAR RESET: Risk discounting enabled.")
         else:
             debug_info['state_source'] = 'dynamodb'
             
@@ -347,12 +347,18 @@ class MPCMiddleware:
         # Optimization
         # Ensure last_alloc is explicitly in system_state for the optimizer
         system_state['last_alloc'] = last_alloc
+        system_state['p90_belief'] = float(state.get('p90_belief', 160.0))
         
         # Step 3: Call Controller
         result = self.controller.decide(task, wcp_constraints, system_state)
         # result contains 'decision' and 'meta' (debug info)
         ctrl_dbg = result.get('meta', {})
         debug_info.update(ctrl_dbg)
+        
+        # 提取优化器耗时
+        opt_overhead = system_state.get('opt_debug', {}).get('overhead_ms', 0.0)
+        debug_info['scheduling_overhead_ms'] = opt_overhead
+        debug_info['latency_gradient'] = system_state.get('opt_debug', {}).get('grad', 0.0)
         
         decision_out = result['decision']
         new_alloc = float(decision_out.get('resource_alloc', last_alloc))
