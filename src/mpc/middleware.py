@@ -112,7 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         # Metadata for debugging code version
-        current_ver = '20260319_v21'
+        current_ver = '20260319_v22'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
@@ -127,7 +127,7 @@ class MPCMiddleware:
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v21] NUCLEAR RESET: Restore WCP logic.")
+            print(f"[Middleware-v22] NUCLEAR RESET: Root Cause Fix (WCP Clipping).")
         else:
             debug_info['state_source'] = 'dynamodb'
             

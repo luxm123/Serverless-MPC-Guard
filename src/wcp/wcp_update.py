@@ -169,7 +169,11 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
     y_hat_k = float(state.get('last_prediction', 0.0))
 
     # Non-conformity score is the absolute error
-    score_k = abs(y_k - y_hat_k)
+    # v22 ROOT CAUSE FIX: Error Clipping. 
+    # 不允许冷启动产生的巨大误差 (如 300ms) 彻底破坏不确定性边界。
+    # 我们将单次误差对 Margin 的贡献截断在 50ms。
+    raw_score = abs(y_k - y_hat_k)
+    score_k = min(50.0, raw_score) 
     
     if 'scores' not in state:
         state['scores'] = []

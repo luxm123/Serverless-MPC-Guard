@@ -209,68 +209,40 @@ class Optimizer:
              grad_risk = -float(ku) * soft_risk
 
         # 2. Utility Gradient (Cost of Resources)
-        # 强化降资源压力，设定基础梯度为 2.0
-        grad_waste = 2.0 
+        # v22: 回归理性。使用二次方惩罚，确保在 u 较高时产生足够的向下压力
+        # grad_waste = 2 * w2 * u
+        w2 = 15.0
+        grad_waste = 2.0 * w2 * prev_u
         
         # 3. Tracking Error Gradient
-        # J_track = (y - y_ref)^2
         grad_track = 0.0
         if ref_latency is not None:
-            # v21: 回归科学。diff 反映了预测值相对于参考值的偏离
-            # 如果 pred_upper > ref_latency，diff 为正，grad_track 为负，驱动 u 增大
-            # 这是 MPC 的核心：基于预测的提前响应
-            diff = (pred_upper - ref_latency) / max(1.0, slo_limit)
+            # v22: 引入预测偏差过滤。
+            # 如果 pred_upper 极其离谱 (由于 WCP 中毒)，进行截断处理
+            effective_pred = min(pred_upper, ref_latency * 1.5)
+            diff = (effective_pred - ref_latency) / max(1.0, slo_limit)
             grad_track = -1.0 * diff
         
-        # Total Gradient
-        price_norm = 100.0
-        if state:
-             price_norm = float(state.get('opt_price_norm', 100.0))
-        
-        # 4. Barrier Method for Queue Capacity Constraint
-        grad_congestion = 0.0
-        backlog_val = 0.0
-        if current_backlog is not None:
-            backlog_val = float(current_backlog)
-        elif state:
-            backlog_val = float(state.get('queue_backlog_belief', 0.0))
-
-        # Soft Capacity Limit (Relaxed for Serverless Scalability)
-        capacity = 500.0 
-        margin = capacity - backlog_val
-        safe_margin = max(0.1, margin)
-        mu = 20.0 
-        grad_congestion = -mu / safe_margin
-        
-        # 4. Congestion Price (影子价格)
-        grad_price = -1.0 * (price / price_norm)
-
-        # 总梯度汇总 (v21: 非线性回收逻辑)
-        # 我们不再 Override WCP，而是通过加强高位 Alloc 的惩罚来强制搜索低位
-        # 使用指数惩罚：当 u 靠近 1.0 时，惩罚压力急剧上升
-        # grad_waste_dynamic = 10.0 * exp(2.0 * prev_u)
-        # 当 u=1.0 时，grad_waste = 73.8
-        # 当 u=0.5 时，grad_waste = 27.1
-        grad_waste_dynamic = 10.0 * math.exp(2.0 * prev_u)
-        
-        # 风险梯度保持有效，但权重设定为智能博弈
-        risk_weight = 0.5 # 恢复 WCP 的预警权重
-        
-        # v21: 科学博弈合力
-        grad = 2.0 * grad_track + risk_weight * grad_risk + grad_waste_dynamic + grad_price + grad_congestion
+        # Total Gradient Summation
+        # v22: 严格限制风险梯度的权重，防止 WCP 恐慌
+        risk_weight = 0.2
+        if prev_u > 0.8:
+            risk_weight = 0.05 # u 越高，越要质疑加资源的必要性
+            
+        grad = 2.0 * grad_track + risk_weight * grad_risk + grad_waste + grad_price + grad_congestion
         
         # Update Step
         step = eta * (grad + gamma * prev_u)
         u_new = prev_u - step
         
-        # --- Asymmetric Rate Limiting (v21) ---
-        # 保持物理安全限速，防止并发冲顶
+        # --- Physical Rate Limiting (v22) ---
+        # 严格限制单次爬升速度，防止并发冲顶
         max_increase = 0.05
         if u_new > prev_u + max_increase:
             u_new = prev_u + max_increase
             
-        # DEBUG: 详情 (v21)
-        print(f"[MPC-DEBUG-v21] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{risk_weight*grad_risk:.2f} W:{grad_waste_dynamic:.2f} | Total:{grad:.2f}")
+        # DEBUG: 详情 (v22)
+        print(f"[MPC-DEBUG-v22] u:{prev_u:.2f}->{u_new:.2f} | T:{2.0*grad_track:.2f} R:{risk_weight*grad_risk:.2f} W:{grad_waste:.2f} | Total:{grad:.2f}")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
