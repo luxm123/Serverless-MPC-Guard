@@ -232,6 +232,7 @@ class MPCMiddleware:
             'last_alloc': last_alloc,
             'p90_belief': float(state.get('p90_belief', 100.0)),
             'grad_track': float(state.get('grad_track', 0.0)),
+            'strategy': event.get('strategy', 'mpc_integrated'), # Pass strategy to optimizer
             'gamma': state.get('gamma', 0.1),
             'u_eta': state.get('u_eta', 0.05),
             'u_max_delta': state.get('u_max_delta', 0.15),
