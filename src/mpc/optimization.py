@@ -209,15 +209,16 @@ class Optimizer:
              grad_risk = -float(ku) * soft_risk
 
         # 2. Utility Gradient (Cost of Resources)
-        # 极度强化降资源压力，设定一个基础降资源梯度
-        grad_waste = 10.0 
+        # J_cost = u -> 我们要最小化成本，所以梯度是正的 (+1.0)，引导 u 减小
+        grad_waste = 1.0 
         
         # 3. Tracking Error Gradient
+        # J_track = (y - y_ref)^2
+        # 如果延迟高 (y > y_ref)，我们需要增大 u，所以梯度应该是负的
         grad_track = 0.0
         if ref_latency is not None:
-            # 降低追踪灵敏度，避免向上推力过强
             diff = (pred_upper - ref_latency) / max(1.0, slo_limit)
-            grad_track = -0.5 * diff 
+            grad_track = -1.0 * diff # 负梯度引导 u 增大
         
         # Total Gradient
         # grad J = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + price + grad_congestion
@@ -269,33 +270,26 @@ class Optimizer:
                     'g_cong': grad_congestion
                 })
 
-        grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + (price / price_norm) + grad_congestion
+        # 4. Congestion Price (影子价格)
+        # 价格代表压力，压力大时应增大 u，所以价格产生的梯度应该是负的
+        grad_price = -1.0 * (price / price_norm)
+
+        # 5. Barrier Method (拥塞控制)
+        # 同样，拥塞严重时应增大 u，梯度应为负
+        # grad_congestion 已经在上面计算过了，且方向正确（负号）
+
+        # 总梯度汇总
+        # 负梯度 (Risk, Track, Price, Congestion) -> 引导 u 增大
+        # 正梯度 (Waste) -> 引导 u 减小
+        grad = w1 * grad_track + w3 * grad_risk + w2 * grad_waste + grad_price + grad_congestion
         
-        # DEBUG: Capture components in state for visibility
-        if state is not None:
-            state['opt_debug'] = {
-                'grad_total': grad,
-                'g_track': w1 * grad_track,
-                'g_risk': w3 * grad_risk,
-                'g_cong': grad_congestion,
-                'g_price': price / price_norm,
-                'backlog': backlog_val,
-                'margin': margin
-            }
-        
-        # Update Step with Regularization (gamma * u)
-        # u_new = u - eta * (grad + gamma * u)
+        # Update Step
         step = eta * (grad + gamma * prev_u)
 
-        # DEBUG: 强制打印详情
-        print(f"[MPC-DEBUG] u:{prev_u:.2f} | Grads -> Track:{w1*grad_track:.3f}, Risk:{w3*grad_risk:.3f}, Waste:{w2*grad_waste:.3f} | Total:{grad:.3f} | Step:{step:.4f}")
+        # DEBUG: 强制打印详情 (v9)
+        print(f"[MPC-DEBUG-v9] u:{prev_u:.2f} | Grads -> Track:{w1*grad_track:.2f}, Risk:{w3*grad_risk:.2f}, Waste:{w2*grad_waste:.2f}, Price:{grad_price:.2f} | Total:{grad:.2f} | Step:{step:.4f}")
         
         u_new = prev_u - step
-        
-        # 破冰逻辑：如果延迟充足（grad > 1.0）但步长太小，强制降 0.02
-        if grad > 1.0 and (prev_u - u_new) < 0.02:
-            u_new = prev_u - 0.02
-            print(f"[MPC-DEBUG] Force step 0.02 to break deadlock")
         
         # Projection to Feasible Set U (Box constraints [0, 1])
         lower = 0.0
