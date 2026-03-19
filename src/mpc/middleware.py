@@ -111,8 +111,18 @@ class MPCMiddleware:
         # Parse Input
         metrics = event.get('metrics', {})
         task = event.get('task', {})
-        # If client didn't send metrics (Real Scenario), use our belief from state
+        # Metadata for debugging code version
+        debug_info = {'version': '20260319_v5', 'state_id': self.state_id}
+
+        # Step 1: Get latest state from DynamoDB
         state, version = self._load_state()
+        if not state:
+            state = self._get_default_params()
+            version = None
+            debug_info['state_source'] = 'default'
+        else:
+            debug_info['state_source'] = 'dynamodb'
+            debug_info['loaded_alloc'] = state.get('last_alloc', 1.0)
 
         # Inject Profile from Client Task (if present) to enable Per-Request Tuning
         if task.get('mpc_profile'):
@@ -174,7 +184,7 @@ class MPCMiddleware:
         # WCP Update (Prediction)
         # Note: We run WCP locally for prediction, but we don't save RLS state synchronously
         # to avoid high latency.
-        pred_dict, uncertainty, debug_info = wcp_update(
+        pred_dict, uncertainty, wcp_dbg = wcp_update(
             state, 
             p90_val, 
             servers, 
@@ -184,6 +194,7 @@ class MPCMiddleware:
             task_type=task_type,
             alpha=0.2
         )
+        debug_info.update(wcp_dbg or {})
         
         # MPC Constraints
         wcp_constraints = {'pred': pred_dict, 'uncertainty': uncertainty}
