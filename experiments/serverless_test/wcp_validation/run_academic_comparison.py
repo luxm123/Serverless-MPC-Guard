@@ -136,10 +136,12 @@ class AcademicExperiment:
             avg_overhead = df['overhead'].mean()
             p90_lat = np.percentile(df['e2e'], 90)
             
-            # Utilization (Actual Srv Latency / (Alloc * Benchmark_Base))
-            # 对于不同函数，利用率计算应更合理
-            # 简化版：我们认为只要 Server 延迟越接近 180ms，资源利用率就越高
-            utilization = (df['srv'].mean() / 180.0) * 100
+            # Utilization (v53 Academic Version)
+            # Util = (Work Done) / (Resources Provisioned)
+            # Work Done ~ df['srv'] (at 1.0 CPU)
+            # Resources Provisioned ~ df['alloc'] * SLO (180ms)
+            # We use the mean alloc and mean srv to get the aggregate efficiency
+            utilization = (df['srv'].mean() / (df['alloc'].mean() * QOS_TARGET)) * 100
             
             summary.append({
                 'Strategy': s,
@@ -153,8 +155,8 @@ class AcademicExperiment:
 
 if __name__ == "__main__":
     exp = AcademicExperiment()
-    # Fast validation: 3 minutes per function per strategy
-    DURATION_MINUTES = 3 
+    # v53: Run for 5 minutes per function to allow stabilization
+    DURATION_MINUTES = 5 
     
     for s in STRATEGIES:
         exp.run_strategy(s)

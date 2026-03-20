@@ -113,14 +113,13 @@ class MPCMiddleware:
         task = event.get('task', {})
         task_type = task.get('task_type', event.get('task_type', 'image_processing'))
         
-        # v52: Use per-task state to avoid cross-pollution in multi-function experiments
-        # This is CRITICAL for academic comparison where 6 functions run sequentially/concurrently.
+        # v53: Use per-task state + Asymmetric EMA
         original_state_id = self.state_id
         if self.state_id == 'global_params':
             self.state_id = f"mpc_state_{task_type}"
             
         # Metadata for debugging code version
-        current_ver = '20260320_v52_PerTaskState'
+        current_ver = '20260320_v53_Academic_Final'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
@@ -135,7 +134,7 @@ class MPCMiddleware:
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v52] NUCLEAR RESET for {self.state_id}: Per-task state enabled.")
+            print(f"[Middleware-v53] NUCLEAR RESET for {self.state_id}: Academic Final mode.")
         else:
             debug_info['state_source'] = 'dynamodb'
             
@@ -326,14 +325,20 @@ class MPCMiddleware:
     def update_metrics(self, real_metrics):
         """
         Called after execution to update state with realized performance.
-        real_metrics: {'latency': ms, 'cpu': %, ...}
+        v53: Asymmetric EMA (Fast Rise, Slow Fall) to prevent QoS lag.
         """
         global _L1_CACHE
         
         if _L1_CACHE['params']:
             curr_p90 = float(_L1_CACHE['params'].get('p90_belief', 100.0))
             new_val = float(real_metrics.get('latency', 100.0))
-            alpha = 0.2
+            
+            # 非对称 EMA：上涨时反应快 (0.5)，下跌时反应慢 (0.05) 以保命
+            if new_val > curr_p90:
+                alpha = 0.5 
+            else:
+                alpha = 0.05 
+                
             updated_p90 = (1 - alpha) * curr_p90 + alpha * new_val
             _L1_CACHE['params']['p90_belief'] = updated_p90
             _L1_CACHE['last_sync'] = time.time() # Refresh timestamp

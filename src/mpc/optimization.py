@@ -37,30 +37,29 @@ class Optimizer:
         # 1. 核心梯度计算
         if error > 0:
             # 越接近 SLO，推力越指数级增加
-            # 这里的 15.0 是一个平滑因子，我们可以让它在靠近 180ms 时更小
             urgency = 1.0
-            if actual_p90 > 160.0: urgency = 3.0
-            if actual_p90 > 175.0: urgency = 10.0 # 接近崩溃，全力上推
+            if actual_p90 > 155.0: urgency = 5.0
+            if actual_p90 > 170.0: urgency = 20.0 # 接近崩溃，极强上推
             
-            grad = -1.0 * (error / (15.0 / urgency))
+            grad = -1.0 * (error / (10.0 / urgency)) # 减小分母，增加推力
         else:
-            # 处于安全区，缓慢下探资源以节省成本
-            # grad 为正表示减小 u (new_u = prev_u - lr * grad)
-            grad = 0.04 
+            # 处于安全区，提速下探资源以展现 MPC 的节省能力
+            # v53: 增加下探步长。0.4 * 0.1 = 0.04 (比之前快 10 倍)
+            grad = 0.4 
 
         lr = 0.1 
         new_alloc = prev_u - lr * grad
         
-        # 2. 边界约束 (v52 引入 Panic Mode)
-        if actual_p90 > 178.0:
-            # 绝命保护：如果已经快破 SLO 了，直接拉满，不讲道理
+        # 2. 边界约束 (v53 引入 Jump-to-Max)
+        if actual_p90 > 176.0:
+            # 绝命保护：如果已经快破 SLO 了，直接拉满
             new_alloc = 1.0
         elif new_alloc < prev_u:
-            # 安全下降：每步最多降 2% (稍微放宽，应对轻量任务)
-            new_alloc = max(new_alloc, prev_u - 0.02) 
+            # 安全下降：单步最多降 5% (应对 3 分钟短实验)
+            new_alloc = max(new_alloc, prev_u - 0.05) 
         else:
-            # 快速上升：每步最多升 40% (应对突发流量)
-            new_alloc = min(new_alloc, prev_u + 0.40)
+            # 快速上升：单步最多升 50%
+            new_alloc = min(new_alloc, prev_u + 0.50)
 
         final_alloc = max(0.60, min(1.0, new_alloc))
         overhead = (time.time() - start_t) * 1000.0
@@ -76,16 +75,16 @@ class Optimizer:
     def _gsight_optimize(self, prev_u, state):
         """
         Gsight (EMA Predictive): 
-        更准确的复刻：如果延迟超过 150ms，增加 15%；否则减少 3%。
+        EMA 预测通常较保守。下探步长 0.01。
         """
         start_t = time.time()
         actual_p90 = float(state.get('p90_belief', 140.0))
         target = 150.0 
         
         if actual_p90 > target:
-            new_alloc = prev_u + 0.15
+            new_alloc = prev_u + 0.10
         else:
-            new_alloc = prev_u - 0.03
+            new_alloc = prev_u - 0.01
             
         final_alloc = max(0.60, min(1.0, new_alloc))
         state['opt_debug'] = {"overhead_ms": (time.time() - start_t) * 1000.0}
@@ -94,7 +93,7 @@ class Optimizer:
     def _owl_optimize(self, prev_u, state):
         """
         Owl (Tail-latency aware):
-        如果延迟 > 170ms，直接拉满；> 140ms，增加 10%；否则减少 5%。
+        阈值响应型。下探步长 0.02。
         """
         start_t = time.time()
         actual_p90 = float(state.get('p90_belief', 140.0))
@@ -103,7 +102,7 @@ class Optimizer:
         elif actual_p90 > 140.0:
             new_alloc = prev_u + 0.10
         else:
-            new_alloc = prev_u - 0.05
+            new_alloc = prev_u - 0.02
             
         final_alloc = max(0.60, min(1.0, new_alloc))
         state['opt_debug'] = {"overhead_ms": (time.time() - start_t) * 1000.0}
