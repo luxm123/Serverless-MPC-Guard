@@ -148,9 +148,9 @@ class MPCMiddleware:
         prev_rps = float(state.get('prev_rps', 0.0))
         trigger_prewarm = False
         
-        # 创新点逻辑：RPS 增长 >= 20% 触发预热 (仅在 full 或 prewarm 模式下开启)
-        if strategy in ['mpc_integrated', 'passive_prewarm'] and prev_rps > 1.0:
-            if current_rps >= 1.2 * prev_rps:
+        # 创新点逻辑：RPS 增长 >= 10% 触发预热 (v54.2 提高灵敏度)
+        if strategy in ['mpc_integrated', 'passive_prewarm'] and prev_rps > 0.5:
+            if current_rps >= 1.1 * prev_rps:
                 trigger_prewarm = True
                 debug_info['prewarm_triggered'] = True
         

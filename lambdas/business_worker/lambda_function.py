@@ -62,7 +62,7 @@ def lambda_handler(event, context):
     # --- 1. 动态决策 (Integrated Mode) ---
     scheduling_start = time.time()
     # 策略路由：支持 mpc_integrated, gsight, owl 以及 baseline
-    if strategy in ['mpc_integrated', 'gsight', 'owl'] and _MIDDLEWARE:
+    if strategy in ['mpc_integrated', 'gsight', 'owl', 'ours_basic', 'passive_prewarm'] and _MIDDLEWARE:
         # 统一走 MPC 中间件逻辑，由 optimization.py 内部根据 strategy 切换算法
         decision, debug = _MIDDLEWARE.decide(event)
         should_shed = decision.get('shouldShed', False)
@@ -112,12 +112,17 @@ def lambda_handler(event, context):
 
     start_time = time.time()
     
+    # v54.2: 人为增加冷启动惩罚，模拟生产环境下的初始化开销
+    if is_cold:
+        time.sleep(0.2) # 200ms cold start penalty
+
     # 核心逻辑：负载规模受 cpu_limit 指令严格控制
     # cpu_limit 越小，分配给 Lambda 的实际算力越低，我们通过调整计算量来实现这种物理效应
     scale = 1.0 / (cpu_limit + 0.01) 
 
     try:
-        if task_type == 'image_processing':
+        # v54.2: Use startswith to support isolated task names (e.g., linpack_mpc)
+        if task_type.startswith('image_processing'):
             # 校准：1.0 CPU 下约 150ms
             size = int(600 * scale)
             res = 0
@@ -126,7 +131,7 @@ def lambda_handler(event, context):
                     res = (res + i + j) % 1234
             result = {"status": "success", "type": "image", "val": res}
             
-        elif task_type == 'video_processing':
+        elif task_type.startswith('video_processing'):
             # 较重任务：1.0 CPU 下约 300ms
             iterations = int(1000 * scale)
             res = 0
@@ -135,7 +140,7 @@ def lambda_handler(event, context):
                     res = (res + i + j) % 10000
             result = {"status": "success", "type": "video", "val": res}
             
-        elif task_type == 'linpack':
+        elif task_type.startswith('linpack'):
             # 终极校准：n=50,000，目标执行时间 80ms 左右
             n = int(50000 * scale)
             res = 0.0
@@ -143,7 +148,7 @@ def lambda_handler(event, context):
                 res += (i * 0.0001)
             result = {"status": "success", "type": "linpack", "val": res}
             
-        elif task_type == 'gzip':
+        elif task_type.startswith('gzip'):
             # 终极校准：n=60,000，目标执行时间 100ms 左右
             n = int(60000 * scale)
             res = 0
@@ -151,7 +156,7 @@ def lambda_handler(event, context):
                 res = (res + i) % 123456
             result = {"status": "success", "type": "gzip", "val": res}
             
-        elif task_type == 'matmul':
+        elif task_type.startswith('matmul'):
             # 矩阵乘法模拟：1.0 CPU 下约 120ms
             n = int(250 * scale)
             res = 0
@@ -160,7 +165,7 @@ def lambda_handler(event, context):
                     res = (res + i * j) % 9999
             result = {"status": "success", "type": "matmul", "val": res}
             
-        elif task_type == 'chameleon':
+        elif task_type.startswith('chameleon'):
             # 模板渲染模拟：1.0 CPU 下约 140ms
             n = int(3500 * scale)
             res = ""

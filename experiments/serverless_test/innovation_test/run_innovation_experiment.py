@@ -73,8 +73,11 @@ class InnovationExperiment:
                     break
 
     def _run_single_req(self, func, strategy, rps=10.0, reset=False):
+        # v54.2: Strategy Isolation - Append strategy to func name to force separate containers
+        isolated_func = f"{func}_{strategy}"
+        
         task = {
-            "task_type": func,
+            "task_type": isolated_func,
             "id": f"innovation-{random.randint(1000,9999)}"
         }
         
