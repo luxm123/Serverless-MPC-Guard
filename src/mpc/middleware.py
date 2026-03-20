@@ -112,6 +112,7 @@ class MPCMiddleware:
         metrics = event.get('metrics', {})
         task = event.get('task', {})
         task_type = task.get('task_type', event.get('task_type', 'image_processing'))
+        strategy = event.get('strategy', 'mpc_integrated')
         
         # v53: Use per-task state + Asymmetric EMA
         original_state_id = self.state_id
@@ -132,6 +133,7 @@ class MPCMiddleware:
             state['last_alloc'] = 1.0 
             state['shadow_price'] = 0.0
             state['queue_backlog_belief'] = 0.0
+            state['prev_rps'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
             print(f"[Middleware-v53] NUCLEAR RESET for {self.state_id}: Academic Final mode.")
@@ -141,6 +143,19 @@ class MPCMiddleware:
         last_alloc = float(state.get('last_alloc', 1.0))
         debug_info['loaded_alloc'] = last_alloc
 
+        # --- Experiment 3: Pre-warming Trigger Logic ---
+        current_rps = float(metrics.get('rps', 0.0))
+        prev_rps = float(state.get('prev_rps', 0.0))
+        trigger_prewarm = False
+        
+        # 创新点逻辑：RPS 增长 >= 20% 触发预热 (仅在 full 或 prewarm 模式下开启)
+        if strategy in ['mpc_integrated', 'passive_prewarm'] and prev_rps > 1.0:
+            if current_rps >= 1.2 * prev_rps:
+                trigger_prewarm = True
+                debug_info['prewarm_triggered'] = True
+        
+        state['prev_rps'] = current_rps # 更新 RPS 记录
+        
         if not metrics or 'p90' not in metrics:
              metrics = metrics.copy()
              metrics['p90'] = float(state.get('p90_belief', 100.0))
@@ -299,6 +314,7 @@ class MPCMiddleware:
             'admit_threshold_ms': admit_thr,
             'queue_backlog': queue_backlog,
             'queue_backlog_source': backlog_source,
+            'trigger_prewarm': trigger_prewarm, # Experiment 3
         }
         dbg = debug_info or {}
         dbg.update(

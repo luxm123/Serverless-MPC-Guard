@@ -22,8 +22,15 @@ class Optimizer:
             return self._gsight_optimize(prev_u, kwargs.get('state', {}))
         elif strategy == 'owl':
             return self._owl_optimize(prev_u, kwargs.get('state', {}))
+        elif strategy == 'passive_prewarm':
+            # Experiment 3: Passive Prewarm Baseline (Fixed Alloc)
+            return 1.0 
+        elif strategy == 'ours_basic':
+            # Experiment 3: Basic Version (MPC only, No Prewarm)
+            # Use same logic as mpc_integrated for now
+            pass 
             
-        # Default: MPC-Guard (Ours)
+        # Default: MPC-Guard (Ours Full)
         start_t = time.time()
         state = kwargs.get('state', {})
         actual_p90 = float(state.get('p90_belief', 140.0))

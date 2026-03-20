@@ -29,12 +29,28 @@ except ImportError as e:
     _MIDDLEWARE = None
     _HPA = None
 
+# 容器级全局变量，用于检测冷启动
+_IS_COLD = True
+
 def lambda_handler(event, context):
     """
     JIAGU-Level 真实物理 Worker。
     动态调度 FunctionBench 中的 4 类典型计算任务。
     集成集成式 MPC (mpc_integrated) 与 HPA 基准逻辑。
     """
+    global _IS_COLD
+    is_cold = _IS_COLD
+    _IS_COLD = False # 第一次执行后设为 False
+
+    # 预热请求直接返回
+    if event.get('warmup'):
+        return {
+            'statusCode': 200,
+            'is_cold_start': is_cold,
+            'status': 'warmed',
+            'task_type': event.get('task_type', 'warmup')
+        }
+
     task_type = event.get('task_type', 'image_processing')
     strategy = event.get('strategy', 'default')
     
@@ -181,6 +197,7 @@ def lambda_handler(event, context):
         'latency_ms': latency_ms,
         'task_type': task_type,
         'cpu_limit': cpu_limit,
+        'is_cold_start': is_cold,
         'result': result,
         'debug': debug_info
     }
