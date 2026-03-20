@@ -4,8 +4,13 @@ import numpy as np
 import pandas as pd
 import threading
 import random
+import sys
+import os
 from concurrent.futures import ThreadPoolExecutor
-from serverless_utils import invoke_worker_lambda
+
+# 修正导入路径
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+from experiments.serverless_test.wcp_validation.serverless_utils import invoke_worker_lambda
 
 # --- Configuration (Experiment 3) ---
 # 6 types of functions same as Experiment 2
