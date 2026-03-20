@@ -91,11 +91,25 @@ class AcademicExperiment:
             res = res_wrapped.get('response', {})
             e2e = res_wrapped.get('client_duration', 0)
             
-            # 强化提取逻辑：尝试所有可能的字段名
-            meta = res.get('meta', {})
-            alloc = res.get('resource_alloc') or res.get('alloc') or meta.get('resource_alloc') or 1.0
-            overhead = meta.get('scheduling_overhead_ms') or res.get('scheduling_overhead_ms') or 0.0
-            srv_lat = res.get('duration_ms') or res.get('server_ms') or 0.0
+            # v52: 进一步强化提取逻辑，适配 business_worker 的返回结构
+            debug = res.get('debug', {})
+            meta = res.get('meta', {}) # 兼容旧版
+            
+            alloc = (res.get('resource_alloc') or 
+                     res.get('alloc') or 
+                     debug.get('resource_alloc') or 
+                     meta.get('resource_alloc') or 
+                     1.0)
+            
+            overhead = (debug.get('scheduling_overhead_ms') or 
+                        res.get('scheduling_overhead_ms') or 
+                        meta.get('scheduling_overhead_ms') or 
+                        0.0)
+            
+            srv_lat = (res.get('latency_ms') or 
+                       res.get('duration_ms') or 
+                       res.get('server_ms') or 
+                       0.0)
             
             self.results[strategy][func].append({
                 'e2e': float(e2e),

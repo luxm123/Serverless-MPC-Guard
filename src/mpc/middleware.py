@@ -111,15 +111,23 @@ class MPCMiddleware:
         # Parse Input
         metrics = event.get('metrics', {})
         task = event.get('task', {})
+        task_type = task.get('task_type', event.get('task_type', 'image_processing'))
+        
+        # v52: Use per-task state to avoid cross-pollution in multi-function experiments
+        # This is CRITICAL for academic comparison where 6 functions run sequentially/concurrently.
+        original_state_id = self.state_id
+        if self.state_id == 'global_params':
+            self.state_id = f"mpc_state_{task_type}"
+            
         # Metadata for debugging code version
-        current_ver = '20260319_v51_Academic'
+        current_ver = '20260320_v52_PerTaskState'
         debug_info = {'version': current_ver, 'state_id': self.state_id}
 
         # Step 1: Get latest state from DynamoDB
         state, version = self._load_state()
         
         # 终极重置逻辑
-        if not state or state.get('version') != current_ver:
+        if not state or state.get('version') != current_ver or event.get('reset_state'):
             state = self._get_default_params()
             state['version'] = current_ver
             state['last_alloc'] = 1.0 
@@ -127,11 +135,11 @@ class MPCMiddleware:
             state['queue_backlog_belief'] = 0.0
             version = None
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v51] NUCLEAR RESET: Academic comparison mode enabled.")
+            print(f"[Middleware-v52] NUCLEAR RESET for {self.state_id}: Per-task state enabled.")
         else:
             debug_info['state_source'] = 'dynamodb'
             
-        last_alloc = float(state.get('last_alloc', 0.7))
+        last_alloc = float(state.get('last_alloc', 1.0))
         debug_info['loaded_alloc'] = last_alloc
 
         if not metrics or 'p90' not in metrics:
@@ -173,8 +181,6 @@ class MPCMiddleware:
         else:
              service_time_ms = p90_val
         service_time_ms = min(max(10.0, service_time_ms), 500.0) # Safety clamp
-
-        task_type = task.get('task_type', event.get('task_type', 'image_processing'))
 
         # WCP Update (Prediction)
         pred_dict, uncertainty, wcp_dbg = wcp_update(
@@ -257,7 +263,7 @@ class MPCMiddleware:
         
         # Optimization
         system_state['last_alloc'] = last_alloc
-        system_state['p90_belief'] = float(state.get('p90_belief', 160.0))
+        system_state['p90_belief'] = float(state.get('p90_belief', 100.0))
         
         # Step 3: Call Controller
         result = self.controller.decide(task, wcp_constraints, system_state)
@@ -311,6 +317,10 @@ class MPCMiddleware:
                 'shed_reason': shed_reason
             }
         )
+        
+        # Restore original state_id for next request in this container if it's reused
+        self.state_id = original_state_id
+        
         return internal_decision, dbg
 
     def update_metrics(self, real_metrics):

@@ -45,15 +45,15 @@ def lambda_handler(event, context):
 
     # --- 1. 动态决策 (Integrated Mode) ---
     scheduling_start = time.time()
-    if strategy == 'mpc_integrated' and _MIDDLEWARE:
-        # 直接在 Worker 内部进行 MPC 决策，减少跨 Lambda 调用开销
+    # 策略路由：支持 mpc_integrated, gsight, owl 以及 baseline
+    if strategy in ['mpc_integrated', 'gsight', 'owl'] and _MIDDLEWARE:
+        # 统一走 MPC 中间件逻辑，由 optimization.py 内部根据 strategy 切换算法
         decision, debug = _MIDDLEWARE.decide(event)
         should_shed = decision.get('shouldShed', False)
         cpu_limit = float(decision.get('resource_alloc', 1.0))
         debug_info = debug or {}
-        # 补充决策字段
         debug_info['resource_alloc'] = cpu_limit
-        debug_info['strategy'] = 'mpc_integrated'
+        debug_info['strategy'] = strategy
         
     elif strategy == 'baseline' and _HPA:
         # 模拟 HPA (Jiagu ATC '24) 逻辑
@@ -63,7 +63,9 @@ def lambda_handler(event, context):
         
         # 负载观察：从全局状态中获取 P90 作为 HPA 的输入
         # 在真实 K8s 中这对应 Metrics Server
-        global_state, _ = _MIDDLEWARE._load_state()
+        # v52: HPA 应该根据任务类型获取对应的 P90
+        global_state_mw = MPCMiddleware(state_id=f"mpc_state_{task_type}")
+        global_state, _ = global_state_mw._load_state()
         p90 = float(global_state.get('p90_belief', 100.0))
         # 估算利用率：目标 180ms，如果 140ms 则利用率约 77% (低于 80% 阈值)
         # 映射公式：util = (p90 / SLO) * 0.8
@@ -100,22 +102,22 @@ def lambda_handler(event, context):
 
     try:
         if task_type == 'image_processing':
-            # 校准：1.0 CPU 下约 400ms
-            size = int(1500 * scale)
+            # 校准：1.0 CPU 下约 150ms
+            size = int(600 * scale)
             res = 0
             for i in range(size):
                 for j in range(400):
                     res = (res + i + j) % 1234
             result = {"status": "success", "type": "image", "val": res}
             
-        elif task_type == 'pyaes':
-            # 校准：1.0 CPU 下约 400ms
-            iterations = int(1200 * scale)
+        elif task_type == 'video_processing':
+            # 较重任务：1.0 CPU 下约 300ms
+            iterations = int(1000 * scale)
             res = 0
             for i in range(iterations):
-                for j in range(350):
+                for j in range(500):
                     res = (res + i + j) % 10000
-            result = {"status": "success", "type": "pyaes", "val": res}
+            result = {"status": "success", "type": "video", "val": res}
             
         elif task_type == 'linpack':
             # 终极校准：n=50,000，目标执行时间 80ms 左右
@@ -133,16 +135,30 @@ def lambda_handler(event, context):
                 res = (res + i) % 123456
             result = {"status": "success", "type": "gzip", "val": res}
             
-        elif task_type == 'model_serving':
-            # 校准：1.0 CPU 下约 400ms
-            iterations = int(1500000 * scale)
+        elif task_type == 'matmul':
+            # 矩阵乘法模拟：1.0 CPU 下约 120ms
+            n = int(250 * scale)
             res = 0
-            for i in range(iterations):
-                res = (res + i) % 9999
-            result = {"status": "success", "type": "model", "val": res}
+            for i in range(n):
+                for j in range(n):
+                    res = (res + i * j) % 9999
+            result = {"status": "success", "type": "matmul", "val": res}
+            
+        elif task_type == 'chameleon':
+            # 模板渲染模拟：1.0 CPU 下约 140ms
+            n = int(3500 * scale)
+            res = ""
+            for i in range(n):
+                res += str(i % 10)
+            result = {"status": "success", "type": "chameleon", "len": len(res)}
             
         else:
-            result = {"status": "error", "reason": "unknown_task"}
+            # 兜底：未知任务统一模拟为 150ms 左右负载
+            n = int(100000 * scale)
+            res = 0
+            for i in range(n):
+                res = (res + i) % 1234
+            result = {"status": "fallback", "reason": "unknown_task", "val": res}
             
     except Exception as e:
         result = {"status": "exception", "error": str(e)}
