@@ -349,6 +349,10 @@ class MPCMiddleware:
             curr_p90 = float(_L1_CACHE['params'].get('p90_belief', 100.0))
             new_val = float(real_metrics.get('latency', 100.0))
             
+            # v54: Persistence for RPS to ensure pre-warming trigger works
+            new_rps = float(real_metrics.get('rps', _L1_CACHE['params'].get('prev_rps', 0.0)))
+            _L1_CACHE['params']['prev_rps'] = new_rps
+
             # 非对称 EMA：上涨时反应快 (0.5)，下跌时反应慢 (0.05) 以保命
             if new_val > curr_p90:
                 alpha = 0.5 
@@ -379,7 +383,7 @@ class MPCMiddleware:
 
     def _async_save_state(self, params, version):
         """
-        Directly update DynamoDB to persist Fidelity/ShadowPrice.
+        Directly update DynamoDB to persist Fidelity/ShadowPrice/RPS.
         CRITICAL FIX for Distributed Amnesia (Flapping).
         """
         try:
@@ -391,6 +395,7 @@ class MPCMiddleware:
                     "SET #p = if_not_exists(#p, :empty_map), "
                     "#p.last_alloc = :la, #p.shadow_price = :sp, "
                     "shadow_price = :sp_top, #p.p90_belief = :p90, "
+                    "#p.prev_rps = :rps, "
                     "version_str = :vs, "
                     "version = :v, last_updated = :t"
                 ),
@@ -400,6 +405,7 @@ class MPCMiddleware:
                     ':sp': {'N': str(float(params.get('shadow_price', 0.0)))},
                     ':sp_top': {'N': str(float(params.get('shadow_price', 0.0)))},
                     ':p90': {'N': str(float(params.get('p90_belief', 100.0)))},
+                    ':rps': {'N': str(float(params.get('prev_rps', 0.0)))},
                     ':vs': {'S': str(version_str)},
                     ':v': {'N': str(int((version or 0) + 1))},
                     ':t': {'N': str(time.time())},
@@ -432,6 +438,7 @@ class MPCMiddleware:
             'wcp_alpha': get_float(params_map, 'wcp_alpha', 0.1),
             'shadow_price': get_float(item, 'shadow_price', 0.0),
             'last_alloc': get_float(params_map, 'last_alloc', 1.0),
+            'prev_rps': get_float(params_map, 'prev_rps', 0.0),
             'optimizer_weights': {'w1': 1.0, 'w2': 0.5, 'w3': 5.0}, 
             'gamma': get_float(params_map, 'gamma', 0.1),
             'u_eta': get_float(params_map, 'u_eta', 0.05),

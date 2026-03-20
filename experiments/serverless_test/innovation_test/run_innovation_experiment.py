@@ -66,26 +66,26 @@ class InnovationExperiment:
         
         with ThreadPoolExecutor(max_workers=50) as executor:
             for i in range(num_requests):
-                executor.submit(self._run_single_req, func, strategy)
+                # Pass current RPS to ensure middleware can trigger pre-warming
+                executor.submit(self._run_single_req, func, strategy, rps=rps)
                 time.sleep(interval)
                 if time.time() - start_time > 60:
                     break
 
-    def _run_single_req(self, func, strategy, reset=False):
+    def _run_single_req(self, func, strategy, rps=10.0, reset=False):
         task = {
             "task_type": func,
             "id": f"innovation-{random.randint(1000,9999)}"
         }
         
         # Include current RPS in metrics for pre-warming detection
-        # (In reality, middleware would fetch this from state or metrics)
         res_wrapped = invoke_worker_lambda(
             decision={}, 
             task=task, 
             mode='auto', 
             strategy=strategy,
             reset_state=reset,
-            metrics={'rps': 10.0} # Simplified RPS
+            metrics={'rps': rps} # Use real RPS from trace
         )
         
         if res_wrapped:
