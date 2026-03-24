@@ -174,7 +174,7 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
     # 如果实际延迟极其离谱 (例如 > 800ms)，我们认为这是不可控的冷启动/环境噪声。
     # 不允许这种噪声污染 WCP 的不确定性边界。
     is_outlier = False
-    if y_k > 300.0:
+    if y_k > 200.0:
         is_outlier = True
         
     # Non-conformity score is the absolute error
