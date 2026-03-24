@@ -2,6 +2,19 @@ import math
 
 # --- 1. Pure Python Matrix Helpers (Strict No-Numpy) ---
 
+def _clamp_ms(x, lo, hi, default):
+    try:
+        v = float(x)
+    except Exception:
+        return float(default)
+    if not math.isfinite(v):
+        return float(default)
+    if v < lo:
+        return float(lo)
+    if v > hi:
+        return float(hi)
+    return v
+
 def vec_dot(u, v):
     """Dot product: s = u . v"""
     return sum(u[i] * v[i] for i in range(len(u)))
@@ -154,8 +167,8 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
     Strict WCP Update for P90 Latency.
     v24: Added Outlier Rejection to prevent Margin Poisoning.
     """
-    y_k = float(p90_latency)
-    y_hat_k = float(state.get('last_prediction', 0.0))
+    y_k = _clamp_ms(p90_latency, 1.0, 500.0, 100.0)
+    y_hat_k = _clamp_ms(state.get('last_prediction', 0.0), 1.0, 500.0, y_k)
 
     # --- v24: Outlier Rejection ---
     # 如果实际延迟极其离谱 (例如 > 800ms)，我们认为这是不可控的冷启动/环境噪声。
@@ -213,9 +226,7 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
     
     # Predict next step using the updated model
     # Note: In the orchestrator, we will call this with future_concurrency
-    y_hat_next = rls.predict(phi)
-    if not math.isfinite(float(y_hat_next)):
-        y_hat_next = float(y_k)
+    y_hat_next = _clamp_ms(rls.predict(phi), 1.0, 500.0, y_k)
 
     # Persist state
     state['rls_state'] = rls.to_dict()
@@ -236,6 +247,7 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
         q_index = max(0, min(len(scores) - 1, q_index))
         uncertainty = sorted_scores[q_index]
         sorted_scores_len = len(sorted_scores)
+    uncertainty = _clamp_ms(uncertainty, 0.0, 60.0, 30.0)
 
     debug_info = {
         'score_k': score_k,

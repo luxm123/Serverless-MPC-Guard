@@ -35,15 +35,23 @@ class MPCMiddleware:
             return float(default)
         return x
 
+    def _clamp_ms(self, val, lo, hi, default):
+        x = self._finite_float(val, default)
+        if x < lo:
+            return float(lo)
+        if x > hi:
+            return float(hi)
+        return float(x)
+
     def _sanitize_params(self, params):
         if not isinstance(params, dict):
             return params
         out = dict(params)
         out['last_alloc'] = self._finite_float(out.get('last_alloc', 1.0), 1.0)
-        out['p90_belief'] = self._finite_float(out.get('p90_belief', 110.0), 110.0)
-        out['uncertainty'] = self._finite_float(out.get('uncertainty', 30.0), 30.0)
-        out['last_y'] = self._finite_float(out.get('last_y', out['p90_belief']), out['p90_belief'])
-        out['e2e_overhead_ms'] = self._finite_float(out.get('e2e_overhead_ms', 50.0), 50.0)
+        out['p90_belief'] = self._clamp_ms(out.get('p90_belief', 110.0), 1.0, 500.0, 110.0)
+        out['uncertainty'] = self._clamp_ms(out.get('uncertainty', 30.0), 0.0, 60.0, 30.0)
+        out['last_y'] = self._clamp_ms(out.get('last_y', out['p90_belief']), 1.0, 500.0, out['p90_belief'])
+        out['e2e_overhead_ms'] = self._clamp_ms(out.get('e2e_overhead_ms', 50.0), 0.0, 200.0, 50.0)
         try:
             out['safe_streak'] = int(out.get('safe_streak', 0))
         except Exception:
@@ -105,9 +113,9 @@ class MPCMiddleware:
         if state:
             if not math.isfinite(float(state.get('last_alloc', 1.0))):
                 should_reset = True
-            if not math.isfinite(float(state.get('p90_belief', 110.0))):
+            if float(state.get('p90_belief', 110.0)) > 1000.0:
                 should_reset = True
-            if not math.isfinite(float(state.get('uncertainty', 30.0))):
+            if float(state.get('uncertainty', 30.0)) > 200.0:
                 should_reset = True
 
         if should_reset:
@@ -124,13 +132,13 @@ class MPCMiddleware:
         state['prev_rps'] = current_rps
 
         # v64.0: Ensure belief is REAL
-        current_p90 = self._finite_float(state.get('p90_belief', 110.0), 110.0)
+        current_p90 = self._clamp_ms(state.get('p90_belief', 110.0), 1.0, 500.0, 110.0)
         if current_p90 < 1.0:
             current_p90 = 110.0
 
-        overhead_ms = self._finite_float(metrics.get('e2e_overhead_ms', state.get('e2e_overhead_ms', 50.0)), 50.0)
+        overhead_ms = self._clamp_ms(metrics.get('e2e_overhead_ms', state.get('e2e_overhead_ms', 50.0)), 0.0, 200.0, 50.0)
         state['e2e_overhead_ms'] = overhead_ms
-        state_last_y = self._finite_float(state.get('last_y', current_p90), current_p90)
+        state_last_y = self._clamp_ms(state.get('last_y', current_p90), 1.0, 500.0, current_p90)
 
         self._hydrate_controller(state)
         system_state = {
@@ -253,12 +261,12 @@ class MPCMiddleware:
             
             # 3. 更新关键决策字段
             # 我们将预测值和不确定性保存到状态中，供下一次 decide 使用
-            pred_p90 = self._finite_float(pred.get('p90', 0.0), state.get('p90_belief', 110.0))
-            unc_val = self._finite_float(uncertainty, state.get('uncertainty', 30.0))
+            pred_p90 = self._clamp_ms(pred.get('p90', 0.0), 1.0, 500.0, state.get('p90_belief', 110.0))
+            unc_val = self._clamp_ms(uncertainty, 0.0, 60.0, state.get('uncertainty', 30.0))
             state['p90_belief'] = pred_p90
             state['uncertainty'] = unc_val
             state['last_alloc'] = cpu # 确保状态同步
-            state['last_y'] = p90_lat
+            state['last_y'] = self._clamp_ms(p90_lat, 1.0, 500.0, pred_p90)
             
             # 保存状态
             update_params = {
