@@ -70,7 +70,7 @@ class MPCMiddleware:
             self.state_id = f"mpc_state_{task_type}"
             
         # v62: The "Truth" Version - exposes errors to the logs
-        current_logic_ver = 'v62.3'
+        current_logic_ver = 'v62.4'
         state, lock_ver = self._load_state()
         write_status = "NotAttempted"
 
@@ -78,9 +78,9 @@ class MPCMiddleware:
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
             lock_ver = '0'
-            print(f"[Middleware-v62.3] RESET for {self.state_id}")
+            print(f"[Middleware-v62.4] RESET for {self.state_id}")
             write_status = self._sync_save_state(state, lock_ver, force=True)
-            # v62.3: Update lock_ver to '1' after the reset write, so the next write succeeds
+            # v62.4: Update lock_ver after reset
             lock_ver = '1'
         
         last_alloc = float(state.get('last_alloc', 1.0))
@@ -88,9 +88,9 @@ class MPCMiddleware:
         prev_rps = float(state.get('prev_rps', 0.0))
         state['prev_rps'] = current_rps
 
-        # v62.3: Use the p90 from state (which is updated by update_metrics)
-        # If it's the very first request, it will be 100.0
+        # v62.4: Use the p90 from state, with a safety floor to prevent 0.0 belief death loop
         current_p90 = float(state.get('p90_belief', 100.0))
+        if current_p90 < 1.0: current_p90 = 100.0
 
         self._hydrate_controller(state)
         system_state = {
@@ -167,23 +167,28 @@ class MPCMiddleware:
             return f"Err_{type(e).__name__}"
 
     def update_metrics(self, real_metrics):
-        """v62.1: Restored update_metrics for worker Lambda"""
+        """v62.4: Enhanced reliability with reload-before-update"""
         global _L1_CACHE
-        if _L1_CACHE['params']:
-            curr_p90 = float(_L1_CACHE['params'].get('p90_belief', 100.0))
-            new_val = float(real_metrics.get('latency', 100.0))
-            
-            # Asymmetric EMA: rise fast, fall slow
-            alpha = 0.5 if new_val > curr_p90 else 0.05
-            updated_p90 = (1 - alpha) * curr_p90 + alpha * new_val
-            _L1_CACHE['params']['p90_belief'] = updated_p90
-            
-            new_rps = float(real_metrics.get('rps', _L1_CACHE['params'].get('prev_rps', 0.0)))
-            _L1_CACHE['params']['prev_rps'] = new_rps
-            
-            _L1_CACHE['last_sync'] = time.time()
-            # Synchronous save to ensure persistence
-            self._sync_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
+        # Reload latest state to ensure we have the most recent version and belief
+        # This reduces "0.0 belief" issues and LockConflicts
+        state, ver = self._load_state()
+        if not state: return
+
+        curr_p90 = float(state.get('p90_belief', 100.0))
+        if curr_p90 < 1.0: curr_p90 = 100.0 # Safety floor
+
+        new_val = float(real_metrics.get('latency', 100.0))
+        
+        # Asymmetric EMA: rise fast, fall slow
+        alpha = 0.5 if new_val > curr_p90 else 0.05
+        updated_p90 = (1 - alpha) * curr_p90 + alpha * new_val
+        state['p90_belief'] = updated_p90
+        
+        new_rps = float(real_metrics.get('rps', state.get('prev_rps', 0.0)))
+        state['prev_rps'] = new_rps
+        
+        # Synchronous save to ensure persistence
+        self._sync_save_state(state, ver)
 
     def _parse_dynamo_item(self, item):
         state = {}
@@ -202,7 +207,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'code_version': 'v62.3'
+            'code_version': 'v62.4'
         }
 
     def _hydrate_controller(self, state):
