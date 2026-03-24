@@ -71,7 +71,7 @@ class MPCMiddleware:
             self.state_id = f"mpc_state_{task_type}"
             
         # v59.6: Final attempt to fix state loop by going back to nested params
-        current_logic_ver = 'v59.6_OptimisticLocking'
+        current_logic_ver = 'v59.7_OptimisticLocking'
         debug_info = {'code_version': current_logic_ver, 'version': current_logic_ver, 'state_id': self.state_id}
 
         state, lock_ver = self._load_state()
@@ -81,7 +81,7 @@ class MPCMiddleware:
             state['code_version'] = current_logic_ver
             lock_ver = '0'
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v59.6] NUCLEAR RESET for {self.state_id}")
+            print(f"[Middleware-v59.7] NUCLEAR RESET for {self.state_id}")
         else:
             debug_info['state_source'] = 'dynamodb_or_cache'
             
@@ -152,12 +152,16 @@ class MPCMiddleware:
                 else:
                     params_m[k] = {'S': str(v)}
 
+            # v59.7: EXPLICITLY REMOVE all top-level attributes that could clobber our new nested format
+            # This is crucial for migrating from v59.2/v59.5
+            remove_clause = "REMOVE last_alloc, p90_belief, code_version, prev_rps, #v"
+            
             dynamodb_client.update_item(
                 TableName=TABLE_NAME,
                 Key={'id': {'S': self.state_id}},
-                UpdateExpression="SET #p = :p, #lv = :new_lv, last_updated = :t",
+                UpdateExpression=f"SET #p = :p, #lv = :new_lv, last_updated = :t {remove_clause}",
                 ConditionExpression="#lv = :expected_lv OR attribute_not_exists(#lv)",
-                ExpressionAttributeNames={'#p': 'params', '#lv': 'lock_version'},
+                ExpressionAttributeNames={'#p': 'params', '#lv': 'lock_version', '#v': 'version'},
                 ExpressionAttributeValues={
                     ':p': {'M': params_m},
                     ':new_lv': {'N': str(new_version)},
@@ -172,27 +176,15 @@ class MPCMiddleware:
             _L1_CACHE['state_id'] = self.state_id
             
         except Exception as e:
-            print(f"v59.6 Save Error: {e}")
-
-    def _async_save_state(self, params, version):
-        # Legacy method kept for safety, but decide() now calls _v2
-        self._async_save_state_v2(params, version)
+            print(f"v59.7 Save Error: {e}")
 
     def _parse_dynamo_item(self, item):
-        # v59.5: Optimized parsing to handle legacy clobbering
+        # v59.7: IGNORE all top-level attributes (except id/lock_version)
+        # ONLY read business logic from the nested 'params' map to avoid clobbering
         state = {}
         
-        # 1. Fallback to nested params map first (Legacy format)
         params_map = item.get('params', {}).get('M', {})
         for key, value in params_map.items():
-            if 'N' in value:
-                state[key] = float(value['N'])
-            elif 'S' in value:
-                state[key] = value['S']
-        
-        # 2. Top-level attributes take priority and overwrite params (New format)
-        for key, value in item.items():
-            if key in ['params', 'id']: continue
             if 'N' in value:
                 state[key] = float(value['N'])
             elif 'S' in value:
@@ -205,7 +197,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'code_version': 'v59.6_OptimisticLocking'
+            'code_version': 'v59.7_OptimisticLocking'
         }
 
     def _hydrate_controller(self, state):
