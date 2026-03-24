@@ -109,6 +109,7 @@ def run_single_request(idx, strategy, start_time):
             mode='auto',
             strategy='mpc_integrated',
             task_type=task_name,
+            reset_state=(idx == 0),
             metrics=payload['metrics']
         )
         

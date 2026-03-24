@@ -117,6 +117,8 @@ class MPCMiddleware:
                 should_reset = True
             if float(state.get('uncertainty', 30.0)) > 200.0:
                 should_reset = True
+            if float(state.get('p90_belief', 110.0)) >= 499.0 and float(state.get('last_y', 0.0)) < 250.0:
+                should_reset = True
 
         if should_reset:
             state = self._get_default_params()
