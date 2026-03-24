@@ -51,8 +51,11 @@ class Optimizer:
             grad = -1.0 * (error / (10.0 / urgency)) # 减小分母，增加推力
         else:
             # 处于安全区，提速下探资源以展现 MPC 的节省能力
-            # v53: 增加下探步长。0.4 * 0.1 = 0.04 (比之前快 10 倍)
-            grad = 0.4 
+            # v54.3: 如果余量非常大 (>30ms)，加大下探步长
+            if abs(error) > 30.0:
+                grad = 0.8 # 0.8 * 0.1 = 0.08 reduction
+            else:
+                grad = 0.4 # 0.4 * 0.1 = 0.04 reduction 
 
         lr = 0.1 
         new_alloc = prev_u - lr * grad

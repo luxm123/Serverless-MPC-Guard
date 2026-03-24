@@ -410,10 +410,9 @@ def print_comparison(baseline_results, mpc_results):
         latencies = sorted([r.get('e2e_latency', 0) for r in results])
         p90 = latencies[int(total * 0.9)] if total > 0 else 0
         
-        # Deployment Density (1.0 = ideal, >1.0 = over-provisioned)
-        # We use avg_alloc as a proxy for density in this vertical scaling context
-        # Higher alloc means more CPU time reserved per request
-        density = avg_alloc / 0.5 # Assuming 0.5 is the theoretical minimum for 180ms
+        # Deployment Density (Theoretical: 1.0 / avg_alloc)
+        # Higher density is better (means we can pack more functions)
+        density = 1.0 / (avg_alloc + 0.001)
         
         return e2e_viol_rate, server_viol_rate, density, p90, avg_alloc, avg_server_lat, avg_e2e_lat, avg_overhead
 
@@ -437,8 +436,11 @@ def print_comparison(baseline_results, mpc_results):
         
     if m_srv_viol < b_srv_viol:
         print(f"[SUCCESS] MPC-Guard reduced Server QoS violations by {b_srv_viol - m_srv_viol:.2f}%.")
+        
     if m_dens > b_dens:
         print(f"[SUCCESS] MPC-Guard improved deployment density by {m_dens/b_dens:.2f}x.")
+    elif m_dens < b_dens:
+        print(f"[WARNING] MPC-Guard deployment density is {b_dens/m_dens:.2f}x LOWER than baseline.")
 
 def parse_args():
     parser = argparse.ArgumentParser()
