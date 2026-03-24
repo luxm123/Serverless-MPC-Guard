@@ -23,12 +23,11 @@ class Optimizer:
         # pred_upper is (WCP Prediction + Margin). 
         # This represents the 90th percentile worst-case latency.
         # We want to keep this BELOW the slo_limit (180ms).
-        
-        # Define a safety target slightly below SLO to provide a buffer
-        safety_target = slo_limit - 20.0 # 160ms
-        
-        # Calculate error based on the ROBUST prediction
-        error = pred_upper - safety_target
+
+        overhead_ms = float(state.get('e2e_overhead_ms', 0.0))
+        pred_total = float(pred_upper) + overhead_ms
+        safety_target = float(slo_limit) - 20.0
+        error = pred_total - safety_target
         
         # Aggressive LR for QoS recovery, smoother for efficiency gains
         lr = 0.5 if error > 0 else 0.3
@@ -37,7 +36,7 @@ class Optimizer:
             # Risk detected -> Increase allocation
             # The higher the risk, the more we increase
             urgency = 1.0
-            if pred_upper > slo_limit: urgency = 10.0 # Extreme urgency if bound exceeds SLO
+            if pred_total > slo_limit: urgency = 10.0
             grad = -1.0 * (error / (10.0 / urgency))
         else:
             # Safe zone -> Decrease allocation to improve density
@@ -47,7 +46,7 @@ class Optimizer:
         new_alloc = prev_u - lr * grad
         
         # Safety Clamps & Adaptive Bounds
-        if pred_upper > slo_limit + 10.0:
+        if pred_total > slo_limit + 10.0:
             new_alloc = 1.0 # Emergency jump
         elif new_alloc < prev_u:
             # Efficiency gain: allow down-scaling
@@ -62,6 +61,8 @@ class Optimizer:
         
         state['opt_debug'] = {
             "pred_upper": pred_upper,
+            "pred_total": pred_total,
+            "e2e_overhead_ms": overhead_ms,
             "error": error,
             "grad": grad,
             "final_alloc": final_alloc,

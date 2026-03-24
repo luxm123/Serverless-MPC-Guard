@@ -90,11 +90,15 @@ class MPCMiddleware:
         current_p90 = float(state.get('p90_belief', 110.0))
         if current_p90 < 1.0: current_p90 = 110.0
 
+        overhead_ms = float(metrics.get('e2e_overhead_ms', state.get('e2e_overhead_ms', 50.0)))
+        state['e2e_overhead_ms'] = overhead_ms
+
         self._hydrate_controller(state)
         system_state = {
             'last_alloc': last_alloc,
             'p90_belief': current_p90,
             'uncertainty': float(state.get('uncertainty', 0.0)),
+            'e2e_overhead_ms': overhead_ms,
             'strategy': strategy,
             'current_rps': current_rps,
             'prev_rps': prev_rps,

@@ -11,7 +11,7 @@ import argparse
 
 # Experiment Configuration
 SERVER_SLO_MS = 180.0
-E2E_SLO_MS = 300.0
+E2E_SLO_MS = 180.0
 CURRENT_TASK = "linpack" # Global to be updated by args
 
 def generate_fixed_rps_arrivals(rps, duration_min):
@@ -77,7 +77,8 @@ def run_single_request(idx, strategy, start_time):
         "p90": 0.0,
         "backlog": 0,
         "cpu_util": 0.5,
-        "error_rate": 0.0
+        "error_rate": 0.0,
+        "e2e_overhead_ms": 50.0
     }
     
     # Payload contains only task info. 
