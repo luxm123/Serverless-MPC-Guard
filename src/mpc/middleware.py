@@ -70,7 +70,7 @@ class MPCMiddleware:
             self.state_id = f"mpc_state_{task_type}"
             
         # v62: The "Truth" Version - exposes errors to the logs
-        current_logic_ver = 'v62.1'
+        current_logic_ver = 'v62.2'
         state, lock_ver = self._load_state()
         write_status = "NotAttempted"
 
@@ -78,7 +78,7 @@ class MPCMiddleware:
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
             lock_ver = '0'
-            print(f"[Middleware-v62.1] RESET for {self.state_id}")
+            print(f"[Middleware-v62.2] RESET for {self.state_id}")
             write_status = self._sync_save_state(state, lock_ver, force=True)
         
         last_alloc = float(state.get('last_alloc', 1.0))

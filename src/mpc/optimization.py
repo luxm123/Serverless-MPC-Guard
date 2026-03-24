@@ -27,21 +27,24 @@ class Optimizer:
 
         # --- Regular P90-based Gradient Descent Control ---
         actual_p90 = float(state.get('p90_belief', 140.0))
-        target = 135.0 
+        # v62.2: Aggressive testing - Lowering target to 105ms (was 135ms)
+        # If actual latency is ~120ms, it will now be > 105ms, forcing Alloc UP.
+        target = 105.0 
         error = actual_p90 - target
         
         # v59.4: Increased learning rate and adjusted gradients for more responsive down-scaling
-        lr = 0.2 # Increased from 0.1 to 0.2
+        lr = 0.3 # Increased from 0.2 to 0.3 for faster response
         
         if error > 0:
+            # Positive error (latency too high) -> increase Alloc (grad must be negative)
+            # new_alloc = prev_u - lr * grad -> new_alloc = prev_u + lr * |grad|
             urgency = 1.0
-            if actual_p90 > 155.0: urgency = 5.0
-            if actual_p90 > 170.0: urgency = 20.0
-            grad = -1.0 * (error / (10.0 / urgency))
+            if actual_p90 > 130.0: urgency = 5.0
+            if actual_p90 > 150.0: urgency = 20.0
+            grad = -1.0 * (error / (5.0 / urgency)) # Doubled gain
         else:
-            # If we are very safe, explore downwards more aggressively
-            # If error is negative (e.g., p90=110, target=135, error=-25), we want to REDUCE alloc
-            # new_alloc = prev_u - lr * grad -> we need grad > 0 to reduce alloc
+            # Negative error (too safe) -> decrease Alloc (grad must be positive)
+            # new_alloc = prev_u - lr * grad
             grad = 0.5 if abs(error) > 20.0 else 0.2
 
         new_alloc = prev_u - lr * grad
