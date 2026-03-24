@@ -71,7 +71,7 @@ class MPCMiddleware:
             self.state_id = f"mpc_state_{task_type}"
             
         # v59.6: Final attempt to fix state loop by going back to nested params
-        current_logic_ver = 'v59.7_OptimisticLocking'
+        current_logic_ver = 'v59.8_OptimisticLocking'
         debug_info = {'code_version': current_logic_ver, 'version': current_logic_ver, 'state_id': self.state_id}
 
         state, lock_ver = self._load_state()
@@ -81,7 +81,7 @@ class MPCMiddleware:
             state['code_version'] = current_logic_ver
             lock_ver = '0'
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v59.7] NUCLEAR RESET for {self.state_id}")
+            print(f"[Middleware-v59.8] NUCLEAR RESET for {self.state_id}")
         else:
             debug_info['state_source'] = 'dynamodb_or_cache'
             
@@ -136,7 +136,8 @@ class MPCMiddleware:
             _L1_CACHE['params']['prev_rps'] = new_rps
             
             _L1_CACHE['last_sync'] = time.time()
-            self._async_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
+            # v59.8: Use the new v2 save method to maintain nested format
+            self._async_save_state_v2(_L1_CACHE['params'], _L1_CACHE['version'])
 
     def _async_save_state_v2(self, params, version):
         global _L1_CACHE
@@ -176,7 +177,11 @@ class MPCMiddleware:
             _L1_CACHE['state_id'] = self.state_id
             
         except Exception as e:
-            print(f"v59.7 Save Error: {e}")
+            print(f"v59.8 Save Error: {e}")
+
+    def _async_save_state(self, params, version):
+        """v59.8: Alias for backward compatibility with update_metrics or other calls"""
+        self._async_save_state_v2(params, version)
 
     def _parse_dynamo_item(self, item):
         # v59.7: IGNORE all top-level attributes (except id/lock_version)
@@ -197,7 +202,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'code_version': 'v59.7_OptimisticLocking'
+            'code_version': 'v59.8_OptimisticLocking'
         }
 
     def _hydrate_controller(self, state):
