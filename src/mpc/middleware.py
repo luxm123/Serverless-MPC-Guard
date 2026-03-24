@@ -146,8 +146,7 @@ class MPCMiddleware:
             expected_version = int(version)
             new_version = expected_version + 1
             
-            # v59.9: Simplest possible update expression - just SET everything at top level
-            # We use attribute_not_exists to handle new items, and version check for existing ones
+            # v59.9: Final attempt with detailed logging
             expression_attribute_names = {'#lv': 'lock_version', '#t': 'last_updated'}
             expression_attribute_values = {
                 ':new_lv': {'N': str(new_version)},
@@ -167,6 +166,8 @@ class MPCMiddleware:
                     else:
                         expression_attribute_values[attr_val] = {'S': str(value)}
 
+            print(f"[Middleware-v59.9] Attempting to write state for {self.state_id} (version {expected_version} -> {new_version})")
+            
             dynamodb_client.update_item(
                 TableName=TABLE_NAME,
                 Key={'id': {'S': self.state_id}},
@@ -176,6 +177,8 @@ class MPCMiddleware:
                 ExpressionAttributeValues=expression_attribute_values
             )
             
+            print(f"[Middleware-v59.9] Successfully wrote state for {self.state_id}. New lock_version: {new_version}")
+            
             _L1_CACHE['version'] = str(new_version)
             _L1_CACHE['params'] = params.copy()
             _L1_CACHE['last_sync'] = time.time()
@@ -184,11 +187,11 @@ class MPCMiddleware:
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                 _L1_CACHE['last_sync'] = 0 
-                print(f"[Middleware-v59.9] Lock failed for {self.state_id}. Invalidating cache.")
+                print(f"[Middleware-v59.9] Lock failed for {self.state_id} (current DB version is NOT {expected_version}). Cache invalidated.")
             else:
-                print(f"v59.9 Save Error: {e}")
+                print(f"[Middleware-v59.9] DynamoDB ClientError for {self.state_id}: {e}")
         except Exception as e:
-            print(f"Generic Save Error: {e}")
+            print(f"[Middleware-v59.9] Generic Save Error for {self.state_id}: {e}")
 
     def _parse_dynamo_item(self, item):
         # v59.9: Back to basics - read both nested (legacy) and top-level (new)
