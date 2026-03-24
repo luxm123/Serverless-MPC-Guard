@@ -29,12 +29,12 @@ class MPCMiddleware:
         global _L1_CACHE
         now = time.time()
         
-        # v59: Use L1 cache if valid and state_id matches
+        # v59.9: Use L1 cache if valid and state_id matches
         if _L1_CACHE['params'] and (now - _L1_CACHE['last_sync']) < _L1_CACHE['ttl_s'] and _L1_CACHE['state_id'] == self.state_id:
             return _L1_CACHE['params'], _L1_CACHE['version']
 
         try:
-            # v59.2: Force ConsistentRead to ensure we get the latest update from other containers
+            # v59.9: Force ConsistentRead to ensure we get the latest update from other containers
             response = dynamodb_client.get_item(
                 TableName=TABLE_NAME, 
                 Key={'id': {'S': self.state_id}},
@@ -43,10 +43,10 @@ class MPCMiddleware:
             item = response.get('Item')
             if item:
                 state = self._parse_dynamo_item(item)
-                # v59.3: Numeric lock version for optimistic concurrency
+                # v59.9: Numeric lock version for optimistic concurrency
                 lock_version = item.get('lock_version', {}).get('N', '0')
                 
-                # v59: Update cache
+                # Update cache
                 _L1_CACHE['params'] = state
                 _L1_CACHE['version'] = lock_version
                 _L1_CACHE['last_sync'] = now
@@ -70,18 +70,19 @@ class MPCMiddleware:
         if self.state_id == 'global_params':
             self.state_id = f"mpc_state_{task_type}"
             
-        # v59.6: Final attempt to fix state loop by going back to nested params
-        current_logic_ver = 'v59.8_OptimisticLocking'
+        # v59.9: Final simplified logic version
+        current_logic_ver = 'v59.9_FinalSimplified'
         debug_info = {'code_version': current_logic_ver, 'version': current_logic_ver, 'state_id': self.state_id}
 
         state, lock_ver = self._load_state()
         
+        # Check if we need to reset state based on version change or explicit reset
         if not state or state.get('code_version') != current_logic_ver or event.get('reset_state'):
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
-            lock_ver = '0'
+            lock_ver = '0' # Start lock version at 0 for new state
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v59.8] NUCLEAR RESET for {self.state_id}")
+            print(f"[Middleware-v59.9] NUCLEAR RESET for {self.state_id}: {current_logic_ver}")
         else:
             debug_info['state_source'] = 'dynamodb_or_cache'
             
@@ -111,14 +112,15 @@ class MPCMiddleware:
         state['last_alloc'] = new_alloc
         state['p90_belief'] = system_state['p90_belief']
         
-        # v59.6: Use a dedicated save method for the nested params format
-        self._async_save_state_v2(state, lock_ver)
+        # Save state back to DynamoDB (Top-level attributes for maximum reliability)
+        self._async_save_state(state, lock_ver)
 
         self.state_id = original_state_id
         
         debug_info['p90_belief'] = system_state['p90_belief']
         debug_info['prev_alloc'] = last_alloc
         debug_info['new_alloc'] = new_alloc
+        debug_info['lock_ver'] = lock_ver
         
         return result['decision'], {**debug_info, **result.get('meta', {})}
 
@@ -136,39 +138,42 @@ class MPCMiddleware:
             _L1_CACHE['params']['prev_rps'] = new_rps
             
             _L1_CACHE['last_sync'] = time.time()
-            # v59.8: Use the new v2 save method to maintain nested format
-            self._async_save_state_v2(_L1_CACHE['params'], _L1_CACHE['version'])
+            self._async_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
 
-    def _async_save_state_v2(self, params, version):
+    def _async_save_state(self, params, version):
         global _L1_CACHE
         try:
             expected_version = int(version)
             new_version = expected_version + 1
             
-            # Pack all attributes into a nested 'params' M-type for maximum reliability
-            params_m = {}
-            for k, v in params.items():
-                if isinstance(v, (int, float)):
-                    params_m[k] = {'N': str(v)}
-                else:
-                    params_m[k] = {'S': str(v)}
-
-            # v59.7: EXPLICITLY REMOVE all top-level attributes that could clobber our new nested format
-            # This is crucial for migrating from v59.2/v59.5
-            remove_clause = "REMOVE last_alloc, p90_belief, code_version, prev_rps, #v"
+            # v59.9: Simplest possible update expression - just SET everything at top level
+            # We use attribute_not_exists to handle new items, and version check for existing ones
+            expression_attribute_names = {'#lv': 'lock_version', '#t': 'last_updated'}
+            expression_attribute_values = {
+                ':new_lv': {'N': str(new_version)},
+                ':expected_lv': {'N': str(expected_version)},
+                ':t': {'N': str(time.time())}
+            }
             
+            set_clause = "SET #lv = :new_lv, #t = :t"
+            for key, value in params.items():
+                if key not in ['lock_version', 'id']:
+                    attr_name = f"#{key}"
+                    attr_val = f":{key}"
+                    expression_attribute_names[attr_name] = key
+                    set_clause += f", {attr_name} = {attr_val}"
+                    if isinstance(value, (int, float)):
+                        expression_attribute_values[attr_val] = {'N': str(value)}
+                    else:
+                        expression_attribute_values[attr_val] = {'S': str(value)}
+
             dynamodb_client.update_item(
                 TableName=TABLE_NAME,
                 Key={'id': {'S': self.state_id}},
-                UpdateExpression=f"SET #p = :p, #lv = :new_lv, last_updated = :t {remove_clause}",
+                UpdateExpression=set_clause,
                 ConditionExpression="#lv = :expected_lv OR attribute_not_exists(#lv)",
-                ExpressionAttributeNames={'#p': 'params', '#lv': 'lock_version', '#v': 'version'},
-                ExpressionAttributeValues={
-                    ':p': {'M': params_m},
-                    ':new_lv': {'N': str(new_version)},
-                    ':expected_lv': {'N': str(expected_version)},
-                    ':t': {'N': str(time.time())}
-                }
+                ExpressionAttributeNames=expression_attribute_names,
+                ExpressionAttributeValues=expression_attribute_values
             )
             
             _L1_CACHE['version'] = str(new_version)
@@ -176,24 +181,30 @@ class MPCMiddleware:
             _L1_CACHE['last_sync'] = time.time()
             _L1_CACHE['state_id'] = self.state_id
             
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                _L1_CACHE['last_sync'] = 0 
+                print(f"[Middleware-v59.9] Lock failed for {self.state_id}. Invalidating cache.")
+            else:
+                print(f"v59.9 Save Error: {e}")
         except Exception as e:
-            print(f"v59.8 Save Error: {e}")
-
-    def _async_save_state(self, params, version):
-        """v59.8: Alias for backward compatibility with update_metrics or other calls"""
-        self._async_save_state_v2(params, version)
+            print(f"Generic Save Error: {e}")
 
     def _parse_dynamo_item(self, item):
-        # v59.7: IGNORE all top-level attributes (except id/lock_version)
-        # ONLY read business logic from the nested 'params' map to avoid clobbering
+        # v59.9: Back to basics - read both nested (legacy) and top-level (new)
         state = {}
         
+        # 1. First read legacy nested params if they exist
         params_map = item.get('params', {}).get('M', {})
         for key, value in params_map.items():
-            if 'N' in value:
-                state[key] = float(value['N'])
-            elif 'S' in value:
-                state[key] = value['S']
+            if 'N' in value: state[key] = float(value['N'])
+            elif 'S' in value: state[key] = value['S']
+        
+        # 2. Then read top-level fields - they take priority
+        for key, value in item.items():
+            if key in ['params', 'id', 'lock_version']: continue
+            if 'N' in value: state[key] = float(value['N'])
+            elif 'S' in value: state[key] = value['S']
         
         return state
 
@@ -202,9 +213,8 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'code_version': 'v59.8_OptimisticLocking'
+            'code_version': 'v59.9_FinalSimplified'
         }
 
     def _hydrate_controller(self, state):
-        # This can be used to pass complex objects to the controller if needed
         pass
