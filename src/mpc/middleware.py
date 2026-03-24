@@ -105,9 +105,17 @@ class MPCMiddleware:
         new_alloc = float(result.get('decision', {}).get('resource_alloc', last_alloc))
         state['last_alloc'] = new_alloc
         
+        # v59.1: Store p90_belief back to state after decision
+        state['p90_belief'] = system_state['p90_belief']
+        
         self._async_save_state(state, version)
 
         self.state_id = original_state_id
+        
+        # Add more context to debug_info
+        debug_info['p90_belief'] = system_state['p90_belief']
+        debug_info['prev_alloc'] = last_alloc
+        debug_info['new_alloc'] = new_alloc
         
         return result['decision'], {**debug_info, **result.get('meta', {})}
 
@@ -128,6 +136,7 @@ class MPCMiddleware:
             self._async_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
 
     def _async_save_state(self, params, version):
+        global _L1_CACHE
         try:
             expected_version = int(version)
             new_version = expected_version + 1
@@ -142,7 +151,7 @@ class MPCMiddleware:
             # Build the SET clause dynamically
             set_clause = "SET #v = :new_v, last_updated = :t"
             for key, value in params.items():
-                if value is not None:
+                if value is not None and key != 'version': # Don't update version twice
                     attr_name = f"#{key}"
                     attr_val = f":{key}"
                     expression_attribute_names[attr_name] = key
@@ -160,10 +169,19 @@ class MPCMiddleware:
                 ExpressionAttributeNames=expression_attribute_names,
                 ExpressionAttributeValues=expression_attribute_values
             )
+            
+            # v59.1: IMPORTANT - Update L1 cache version after successful write
+            _L1_CACHE['version'] = str(new_version)
+            _L1_CACHE['params'] = params.copy()
+            _L1_CACHE['last_sync'] = time.time()
+            _L1_CACHE['state_id'] = self.state_id
+            
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-                # This is expected and good! It means another container won the race. We just drop our stale update.
-                print(f"[Middleware-v59] Optimistic lock failed for {self.state_id}. Stale update dropped.")
+                # This is expected and good! It means another container won the race. 
+                # We invalidate our cache to force a fresh read next time.
+                _L1_CACHE['last_sync'] = 0 
+                print(f"[Middleware-v59] Optimistic lock failed for {self.state_id}. Cache invalidated.")
             else:
                 print(f"Async save error for {self.state_id}: {e}")
         except Exception as e:
