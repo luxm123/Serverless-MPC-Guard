@@ -1,4 +1,5 @@
 import time
+import math
 
 class Optimizer:
     def __init__(self, params):
@@ -12,6 +13,20 @@ class Optimizer:
         strategy = kwargs.get('strategy', 'mpc_integrated')
         state = kwargs.get('state', {})
         start_t = time.time()
+
+        try:
+            prev_u = float(prev_u)
+        except Exception:
+            prev_u = 1.0
+        if not math.isfinite(prev_u):
+            prev_u = 1.0
+
+        try:
+            pred_upper = float(pred_upper)
+        except Exception:
+            pred_upper = float(slo_limit)
+        if not math.isfinite(pred_upper):
+            pred_upper = float(slo_limit)
 
         # --- v58: Shield Protocol ---
         current_rps = float(state.get('current_rps', 0.0))

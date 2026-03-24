@@ -105,9 +105,10 @@ def run_single_request(idx, strategy, start_time):
         # We pass metrics and other context directly to the worker
         worker_result = invoke_worker_lambda(
             decision={}, # Will be computed internally
-            task={"id": idx, "priority": priority, "risk": payload['risk']},
+            task={"id": idx, "priority": priority, "risk": payload['risk'], "task_type": task_name},
             mode='auto',
             strategy='mpc_integrated',
+            task_type=task_name,
             metrics=payload['metrics']
         )
         
@@ -136,9 +137,10 @@ def run_single_request(idx, strategy, start_time):
         # Worker handles 'baseline' strategy natively; do not override alloc.
         worker_result = invoke_worker_lambda(
             decision={},
-            task={"id": idx, "priority": priority, "risk": payload['risk']},
+            task={"id": idx, "priority": priority, "risk": payload['risk'], "task_type": task_name},
             mode='auto',
             strategy='baseline',
+            task_type=task_name,
             metrics=payload['metrics']
         )
         
@@ -168,9 +170,10 @@ def run_single_request(idx, strategy, start_time):
         # 2. Invoke Worker with decision
         worker_result = invoke_worker_lambda(
             decision=decision,
-            task={"id": idx, "priority": priority, "risk": payload['risk']},
+            task={"id": idx, "priority": priority, "risk": payload['risk'], "task_type": task_name},
             mode='auto',
             strategy=strategy,
+            task_type=task_name,
             metrics=payload['metrics']
         )
 

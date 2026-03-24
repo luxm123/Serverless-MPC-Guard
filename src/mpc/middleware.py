@@ -1,6 +1,7 @@
 import time
 import json
 import random
+import math
 import boto3
 from botocore.exceptions import ClientError
 
@@ -25,6 +26,32 @@ class MPCMiddleware:
         self.state_id = state_id
         self.controller = MPCController()
 
+    def _finite_float(self, val, default):
+        try:
+            x = float(val)
+        except Exception:
+            return float(default)
+        if not math.isfinite(x):
+            return float(default)
+        return x
+
+    def _sanitize_params(self, params):
+        if not isinstance(params, dict):
+            return params
+        out = dict(params)
+        out['last_alloc'] = self._finite_float(out.get('last_alloc', 1.0), 1.0)
+        out['p90_belief'] = self._finite_float(out.get('p90_belief', 110.0), 110.0)
+        out['uncertainty'] = self._finite_float(out.get('uncertainty', 30.0), 30.0)
+        out['last_y'] = self._finite_float(out.get('last_y', out['p90_belief']), out['p90_belief'])
+        out['e2e_overhead_ms'] = self._finite_float(out.get('e2e_overhead_ms', 50.0), 50.0)
+        try:
+            out['safe_streak'] = int(out.get('safe_streak', 0))
+        except Exception:
+            out['safe_streak'] = 0
+        if out['safe_streak'] < 0:
+            out['safe_streak'] = 0
+        return out
+
     def _load_state(self):
         global _L1_CACHE
         now = time.time()
@@ -42,10 +69,10 @@ class MPCMiddleware:
             if item:
                 # v62: New JSON Blob format takes priority
                 if 'state_blob' in item:
-                    state = json.loads(item['state_blob']['S'])
+                    state = self._sanitize_params(json.loads(item['state_blob']['S']))
                 else:
                     # Fallback to legacy parsing for migration
-                    state = self._parse_dynamo_item(item)
+                    state = self._sanitize_params(self._parse_dynamo_item(item))
                 
                 lock_version = item.get('lock_version', {}).get('N', '0')
                 _L1_CACHE['params'] = state
@@ -73,7 +100,17 @@ class MPCMiddleware:
         state, lock_ver = self._load_state()
         write_status = "NotAttempted"
 
-        if not state or state.get('code_version') != current_logic_ver or event.get('reset_state'):
+        state = self._sanitize_params(state) if state else None
+        should_reset = (not state) or (state.get('code_version') != current_logic_ver) or bool(event.get('reset_state'))
+        if state:
+            if not math.isfinite(float(state.get('last_alloc', 1.0))):
+                should_reset = True
+            if not math.isfinite(float(state.get('p90_belief', 110.0))):
+                should_reset = True
+            if not math.isfinite(float(state.get('uncertainty', 30.0))):
+                should_reset = True
+
+        if should_reset:
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
             lock_ver = '0'
@@ -81,18 +118,19 @@ class MPCMiddleware:
             write_status = self._sync_save_state(state, lock_ver, force=True)
             lock_ver = '1'
         
-        last_alloc = float(state.get('last_alloc', 1.0))
-        current_rps = float(metrics.get('rps', 0.0))
-        prev_rps = float(state.get('prev_rps', 0.0))
+        last_alloc = self._finite_float(state.get('last_alloc', 1.0), 1.0)
+        current_rps = self._finite_float(metrics.get('rps', 0.0), 0.0)
+        prev_rps = self._finite_float(state.get('prev_rps', 0.0), 0.0)
         state['prev_rps'] = current_rps
 
         # v64.0: Ensure belief is REAL
-        current_p90 = float(state.get('p90_belief', 110.0))
-        if current_p90 < 1.0: current_p90 = 110.0
+        current_p90 = self._finite_float(state.get('p90_belief', 110.0), 110.0)
+        if current_p90 < 1.0:
+            current_p90 = 110.0
 
-        overhead_ms = float(metrics.get('e2e_overhead_ms', state.get('e2e_overhead_ms', 50.0)))
+        overhead_ms = self._finite_float(metrics.get('e2e_overhead_ms', state.get('e2e_overhead_ms', 50.0)), 50.0)
         state['e2e_overhead_ms'] = overhead_ms
-        state_last_y = float(state.get('last_y', current_p90))
+        state_last_y = self._finite_float(state.get('last_y', current_p90), current_p90)
 
         self._hydrate_controller(state)
         system_state = {
@@ -107,7 +145,7 @@ class MPCMiddleware:
         }
 
         result = self.controller.decide(task, {}, system_state)
-        new_alloc = float(result.get('decision', {}).get('resource_alloc', last_alloc))
+        new_alloc = self._finite_float(result.get('decision', {}).get('resource_alloc', last_alloc), last_alloc)
         
         # v64.0: EXPLICITLY update state with the belief used for decision
         state['last_alloc'] = new_alloc
@@ -143,7 +181,8 @@ class MPCMiddleware:
             new_version = expected_version + 1
             
             # v62: Use a JSON blob to avoid all attribute naming/type issues
-            state_json = json.dumps(params)
+            safe_params = self._sanitize_params(params)
+            state_json = json.dumps(safe_params, allow_nan=False)
             
             update_params = {
                 'TableName': TABLE_NAME,
@@ -163,7 +202,7 @@ class MPCMiddleware:
             dynamodb_client.update_item(**update_params)
             
             _L1_CACHE['version'] = str(new_version)
-            _L1_CACHE['params'] = params.copy()
+            _L1_CACHE['params'] = safe_params.copy()
             _L1_CACHE['last_sync'] = time.time()
             _L1_CACHE['state_id'] = self.state_id
             return "OK"
@@ -193,18 +232,18 @@ class MPCMiddleware:
             item = response.get('Item')
             if not item or 'state_blob' not in item: return
             
-            state = json.loads(item['state_blob']['S'])
+            state = self._sanitize_params(json.loads(item['state_blob']['S']))
             ver = item.get('lock_version', {}).get('N', '0')
             
             # 2. 调用 WCP 核心更新算法
             from src.wcp.wcp_update import wcp_update
             
             # 提取特征
-            p90_lat = float(real_metrics.get('latency', 100.0))
-            concurrency = float(real_metrics.get('concurrency', 1.0))
-            cpu = float(real_metrics.get('cpu_limit', 1.0))
-            backlog = float(real_metrics.get('backlog', 0.0))
-            service_time = float(real_metrics.get('service_time', 100.0))
+            p90_lat = self._finite_float(real_metrics.get('latency', 100.0), 100.0)
+            concurrency = self._finite_float(real_metrics.get('concurrency', 1.0), 1.0)
+            cpu = self._finite_float(real_metrics.get('cpu_limit', 1.0), 1.0)
+            backlog = self._finite_float(real_metrics.get('backlog', 0.0), 0.0)
+            service_time = self._finite_float(real_metrics.get('service_time', 100.0), 100.0)
             
             # WCP 更新：返回预测值、不确定性和调试信息
             pred, uncertainty, debug = wcp_update(
@@ -214,9 +253,12 @@ class MPCMiddleware:
             
             # 3. 更新关键决策字段
             # 我们将预测值和不确定性保存到状态中，供下一次 decide 使用
-            state['p90_belief'] = pred['p90']
-            state['uncertainty'] = uncertainty
+            pred_p90 = self._finite_float(pred.get('p90', 0.0), state.get('p90_belief', 110.0))
+            unc_val = self._finite_float(uncertainty, state.get('uncertainty', 30.0))
+            state['p90_belief'] = pred_p90
+            state['uncertainty'] = unc_val
             state['last_alloc'] = cpu # 确保状态同步
+            state['last_y'] = p90_lat
             
             # 保存状态
             update_params = {
@@ -224,7 +266,7 @@ class MPCMiddleware:
                 'Key': {'id': {'S': target_id}},
                 'UpdateExpression': "SET state_blob = :b, lock_version = :new_lv, last_updated = :t",
                 'ExpressionAttributeValues': {
-                    ':b': {'S': json.dumps(state)},
+                    ':b': {'S': json.dumps(self._sanitize_params(state), allow_nan=False)},
                     ':new_lv': {'N': str(int(ver) + 1)},
                     ':t': {'N': str(time.time())}
                 },

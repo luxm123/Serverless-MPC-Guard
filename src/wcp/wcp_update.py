@@ -214,6 +214,8 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
     # Predict next step using the updated model
     # Note: In the orchestrator, we will call this with future_concurrency
     y_hat_next = rls.predict(phi)
+    if not math.isfinite(float(y_hat_next)):
+        y_hat_next = float(y_k)
 
     # Persist state
     state['rls_state'] = rls.to_dict()
