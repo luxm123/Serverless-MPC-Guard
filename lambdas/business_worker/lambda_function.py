@@ -77,14 +77,19 @@ def lambda_handler(event, context):
         baseline_mw = MPCMiddleware(state_id='baseline_params')
         state, version = baseline_mw._load_state()
         
+        # v65.0: 安全检查，防止数据库为空时崩溃
+        if state is None:
+            state = {'last_alloc': 1.0}
+            version = '0'
+        
         # 负载观察：从全局状态中获取 P90 作为 HPA 的输入
-        # 在真实 K8s 中这对应 Metrics Server
-        # v52: HPA 应该根据任务类型获取对应的 P90
         global_state_mw = MPCMiddleware(state_id=f"mpc_state_{task_type}")
         global_state, _ = global_state_mw._load_state()
-        p90 = float(global_state.get('p90_belief', 100.0))
-        # 估算利用率：目标 180ms，如果 140ms 则利用率约 77% (低于 80% 阈值)
-        # 映射公式：util = (p90 / SLO) * 0.8
+        
+        # v65.0: 同样为全局状态增加兜底
+        p90 = float(global_state.get('p90_belief', 100.0)) if global_state else 100.0
+        
+        # 估算利用率：目标 180ms
         slo = 180.0
         cpu_util = (p90 / slo) * 0.8
         
@@ -95,8 +100,7 @@ def lambda_handler(event, context):
         
         # 保存 Baseline 状态
         state['last_alloc'] = cpu_limit
-        if abs(cpu_limit - current_alloc) > 0.001 or random.random() < 0.2:
-             baseline_mw._async_save_state(state, version)
+        baseline_mw._sync_save_state(state, version)
              
         debug_info = {
             'resource_alloc': cpu_limit, 

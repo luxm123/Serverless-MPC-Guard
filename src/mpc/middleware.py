@@ -69,8 +69,8 @@ class MPCMiddleware:
         if self.state_id == 'global_params':
             self.state_id = f"mpc_state_{task_type}"
             
-        # v64.2: Aggressive feedback test
-        current_logic_ver = 'v64.2'
+        # v65: Zero-crash logic
+        current_logic_ver = 'v65.0'
         state, lock_ver = self._load_state()
         write_status = "NotAttempted"
 
@@ -78,7 +78,7 @@ class MPCMiddleware:
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
             lock_ver = '0'
-            print(f"[CRITICAL-DEBUG] v64.2 RESET for {self.state_id}")
+            print(f"[CRITICAL-DEBUG] v65.0 RESET for {self.state_id}")
             write_status = self._sync_save_state(state, lock_ver, force=True)
             lock_ver = '1'
         
@@ -237,7 +237,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 110.0,
             'prev_rps': 0.0,
-            'code_version': 'v64.2'
+            'code_version': 'v65.0'
         }
 
     def _hydrate_controller(self, state):
