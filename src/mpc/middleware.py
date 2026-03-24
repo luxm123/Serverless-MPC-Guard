@@ -43,16 +43,16 @@ class MPCMiddleware:
             item = response.get('Item')
             if item:
                 state = self._parse_dynamo_item(item)
-                # version is stored at the top level
-                version = item.get('version', {}).get('N', '0')
+                # v59.3: Numeric lock version for optimistic concurrency
+                lock_version = item.get('lock_version', {}).get('N', '0')
                 
                 # v59: Update cache
                 _L1_CACHE['params'] = state
-                _L1_CACHE['version'] = version
+                _L1_CACHE['version'] = lock_version
                 _L1_CACHE['last_sync'] = now
                 _L1_CACHE['state_id'] = self.state_id
                 
-                return state, version
+                return state, lock_version
         except Exception as e:
             print(f"Error loading state for {self.state_id}: {e}")
         
@@ -70,17 +70,19 @@ class MPCMiddleware:
         if self.state_id == 'global_params':
             self.state_id = f"mpc_state_{task_type}"
             
-        current_ver = 'v59_OptimisticLocking'
-        debug_info = {'version': current_ver, 'state_id': self.state_id}
+        # v59.3: logic version string for version check
+        current_logic_ver = 'v59.3_OptimisticLocking'
+        debug_info = {'code_version': current_logic_ver, 'state_id': self.state_id}
 
-        state, version = self._load_state()
+        state, lock_ver = self._load_state()
         
-        if not state or state.get('version') != current_ver or event.get('reset_state'):
+        # v59.3: Use code_version to check for state consistency across deployments
+        if not state or state.get('code_version') != current_logic_ver or event.get('reset_state'):
             state = self._get_default_params()
-            state['version'] = current_ver
-            version = '0' # Start version at 0 for new state
+            state['code_version'] = current_logic_ver
+            lock_ver = '0' # Start lock version at 0 for new state
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v59] NUCLEAR RESET for {self.state_id}: {current_ver} mode.")
+            print(f"[Middleware-v59.3] NUCLEAR RESET for {self.state_id}: {current_logic_ver} mode.")
         else:
             debug_info['state_source'] = 'dynamodb_or_cache'
             
@@ -114,7 +116,7 @@ class MPCMiddleware:
         # v59.1: Store p90_belief back to state after decision
         state['p90_belief'] = system_state['p90_belief']
         
-        self._async_save_state(state, version)
+        self._async_save_state(state, lock_ver)
 
         self.state_id = original_state_id
         
@@ -147,17 +149,21 @@ class MPCMiddleware:
             expected_version = int(version)
             new_version = expected_version + 1
             
-            expression_attribute_names = {'#v': 'version'}
+            # v59.3: Numeric lock version field
+            expression_attribute_names = {'#lv': 'lock_version'}
             expression_attribute_values = {
-                ':new_v': {'N': str(new_version)},
-                ':expected_v': {'N': str(expected_version)},
+                ':new_lv': {'N': str(new_version)},
+                ':expected_lv': {'N': str(expected_version)},
                 ':t': {'N': str(time.time())}
             }
             
-            # Build the SET clause dynamically
-            set_clause = "SET #v = :new_v, last_updated = :t"
+            # v59.3: Build the SET clause and ensure we REMOVE legacy 'params' map if it exists
+            set_clause = "SET #lv = :new_lv, last_updated = :t"
+            remove_clause = "REMOVE #p"
+            expression_attribute_names['#p'] = 'params'
+
             for key, value in params.items():
-                if value is not None and key != 'version': # Don't update version twice
+                if value is not None and key not in ['lock_version', 'params']:
                     attr_name = f"#{key}"
                     attr_val = f":{key}"
                     expression_attribute_names[attr_name] = key
@@ -170,8 +176,8 @@ class MPCMiddleware:
             dynamodb_client.update_item(
                 TableName=TABLE_NAME,
                 Key={'id': {'S': self.state_id}},
-                UpdateExpression=set_clause,
-                ConditionExpression="#v = :expected_v",
+                UpdateExpression=f"{set_clause} {remove_clause}",
+                ConditionExpression="#lv = :expected_lv OR attribute_not_exists(#lv)",
                 ExpressionAttributeNames=expression_attribute_names,
                 ExpressionAttributeValues=expression_attribute_values
             )
@@ -219,7 +225,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'version': 'v59_OptimisticLocking'
+            'code_version': 'v59.3_OptimisticLocking'
         }
 
     def _hydrate_controller(self, state):
