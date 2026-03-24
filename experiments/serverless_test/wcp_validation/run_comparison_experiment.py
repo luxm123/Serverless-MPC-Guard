@@ -469,14 +469,14 @@ if __name__ == "__main__":
     # 2. Run MPC-Guard (Ours) FIRST
     print(f"\n--- Running MPC-Guard (Ours) ---")
     run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50) # Warm up
-    # v55: 稍微降低 max_workers 以减轻排队延迟，使 CPU 分配成为决定因素
-    mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=30, arrival_times=arrival_times)
+    # v56: 极度压缩并发（15），彻底消除客户端排队，让“执行耗时”成为 E2E 的唯一变量
+    mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=15, arrival_times=arrival_times)
     
     # 3. Run HPA-Baseline (Jiagu Style)
     # We must reset the state to ensure a fair comparison
     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
     print(f"\n--- Running HPA-Baseline (Jiagu-ATC'24) ---")
-    baseline_results, baseline_cw = run_phase('baseline', max_workers=30, arrival_times=arrival_times)
+    baseline_results, baseline_cw = run_phase('baseline', max_workers=15, arrival_times=arrival_times)
     
     # 4. Final Comparison
     print_comparison(baseline_results, mpc_results)

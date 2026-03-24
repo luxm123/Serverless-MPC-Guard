@@ -141,10 +141,11 @@ def lambda_handler(event, context):
             result = {"status": "success", "type": "video", "val": res}
             
         elif task_type.startswith('linpack'):
-            # v55: 大幅增加计算量（地狱加压版）
-            # 目标：1.0 CPU 下约 140ms
-            # 这样一旦资源降到 0.7，耗时将达到 200ms，直接触发 SLO 违约
-            n = int(85000 * scale)
+            # v56: 负载再次翻倍（炼狱加压版）
+            # 既然 v55 的 8.5w 依然只有 70ms，说明 Python 循环开销被优化或环境性能极高
+            # 现在直接上到 18w，目标：1.0 CPU 下约 150ms
+            # 这样 MPC 降到 0.7 时，耗时约 215ms，必出违约，强制拉开算法差距
+            n = int(180000 * scale)
             res = 0.0
             for i in range(n):
                 res += (i * 0.0001)
