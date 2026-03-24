@@ -70,7 +70,7 @@ class MPCMiddleware:
             self.state_id = f"mpc_state_{task_type}"
             
         # v62: The "Truth" Version - exposes errors to the logs
-        current_logic_ver = 'v62.2'
+        current_logic_ver = 'v62.3'
         state, lock_ver = self._load_state()
         write_status = "NotAttempted"
 
@@ -78,22 +78,24 @@ class MPCMiddleware:
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
             lock_ver = '0'
-            print(f"[Middleware-v62.2] RESET for {self.state_id}")
+            print(f"[Middleware-v62.3] RESET for {self.state_id}")
             write_status = self._sync_save_state(state, lock_ver, force=True)
+            # v62.3: Update lock_ver to '1' after the reset write, so the next write succeeds
+            lock_ver = '1'
         
         last_alloc = float(state.get('last_alloc', 1.0))
         current_rps = float(metrics.get('rps', 0.0))
         prev_rps = float(state.get('prev_rps', 0.0))
         state['prev_rps'] = current_rps
 
-        if not metrics or 'p90' not in metrics:
-             metrics = metrics.copy()
-             metrics['p90'] = float(state.get('p90_belief', 100.0))
+        # v62.3: Use the p90 from state (which is updated by update_metrics)
+        # If it's the very first request, it will be 100.0
+        current_p90 = float(state.get('p90_belief', 100.0))
 
         self._hydrate_controller(state)
         system_state = {
             'last_alloc': last_alloc,
-            'p90_belief': float(state.get('p90_belief', 100.0)),
+            'p90_belief': current_p90,
             'strategy': strategy,
             'current_rps': current_rps,
             'prev_rps': prev_rps,
@@ -107,10 +109,11 @@ class MPCMiddleware:
         # Only attempt second write if reset didn't just happen, or if we want to update with new decision
         write_status = self._sync_save_state(state, lock_ver)
 
-        self.state_id = original_state_id
+        # v62.3: REMOVED the state_id reset. We want the middleware to STAY 
+        # on the task-specific state for the duration of this request (including update_metrics).
+        # self.state_id = original_state_id 
         
         # v62: We encode the write status into the version string so the user can see it!
-        # Format: v62.0_L[LockVersion]_W[WriteStatus]
         debug_info = {
             'version': f"{current_logic_ver}_L{lock_ver}_W{write_status}",
             'code_version': current_logic_ver,
@@ -199,7 +202,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'code_version': 'v62.1'
+            'code_version': 'v62.3'
         }
 
     def _hydrate_controller(self, state):
