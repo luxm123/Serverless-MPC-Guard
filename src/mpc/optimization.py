@@ -27,13 +27,13 @@ class Optimizer:
 
         # --- Regular P90-based Gradient Descent Control ---
         actual_p90 = float(state.get('p90_belief', 140.0))
-        # v62.4: Target 135ms (Stable)
-        # If actual latency is ~120ms, it will be < 135ms, allowing Alloc to drop slowly to save cost.
-        target = 135.0 
+        # v64.2: Aggressive target (100ms) to force Alloc movement
+        # Since current E2E is ~130ms, this will force Alloc UP.
+        target = 100.0 
         error = actual_p90 - target
         
-        # v59.4: Increased learning rate and adjusted gradients for more responsive down-scaling
-        lr = 0.2 # Back to 0.2 for stability
+        # v64.2: High LR for immediate visual feedback
+        lr = 0.4 
         
         if error > 0:
             # Positive error (latency too high) -> increase Alloc (grad must be negative)
