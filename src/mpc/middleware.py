@@ -70,7 +70,7 @@ class MPCMiddleware:
             self.state_id = f"mpc_state_{task_type}"
             
         # v62: The "Truth" Version - exposes errors to the logs
-        current_logic_ver = 'v62.0'
+        current_logic_ver = 'v62.1'
         state, lock_ver = self._load_state()
         write_status = "NotAttempted"
 
@@ -78,7 +78,7 @@ class MPCMiddleware:
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
             lock_ver = '0'
-            print(f"[Middleware-v62] RESET for {self.state_id}")
+            print(f"[Middleware-v62.1] RESET for {self.state_id}")
             write_status = self._sync_save_state(state, lock_ver, force=True)
         
         last_alloc = float(state.get('last_alloc', 1.0))
@@ -163,6 +163,25 @@ class MPCMiddleware:
         except Exception as e:
             return f"Err_{type(e).__name__}"
 
+    def update_metrics(self, real_metrics):
+        """v62.1: Restored update_metrics for worker Lambda"""
+        global _L1_CACHE
+        if _L1_CACHE['params']:
+            curr_p90 = float(_L1_CACHE['params'].get('p90_belief', 100.0))
+            new_val = float(real_metrics.get('latency', 100.0))
+            
+            # Asymmetric EMA: rise fast, fall slow
+            alpha = 0.5 if new_val > curr_p90 else 0.05
+            updated_p90 = (1 - alpha) * curr_p90 + alpha * new_val
+            _L1_CACHE['params']['p90_belief'] = updated_p90
+            
+            new_rps = float(real_metrics.get('rps', _L1_CACHE['params'].get('prev_rps', 0.0)))
+            _L1_CACHE['params']['prev_rps'] = new_rps
+            
+            _L1_CACHE['last_sync'] = time.time()
+            # Synchronous save to ensure persistence
+            self._sync_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
+
     def _parse_dynamo_item(self, item):
         state = {}
         params_map = item.get('params', {}).get('M', {})
@@ -180,33 +199,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'code_version': 'v62.0'
-        }
-
-    def _parse_dynamo_item(self, item):
-        # v59.9: Back to basics - read both nested (legacy) and top-level (new)
-        state = {}
-        
-        # 1. First read legacy nested params if they exist
-        params_map = item.get('params', {}).get('M', {})
-        for key, value in params_map.items():
-            if 'N' in value: state[key] = float(value['N'])
-            elif 'S' in value: state[key] = value['S']
-        
-        # 2. Then read top-level fields - they take priority
-        for key, value in item.items():
-            if key in ['params', 'id', 'lock_version']: continue
-            if 'N' in value: state[key] = float(value['N'])
-            elif 'S' in value: state[key] = value['S']
-        
-        return state
-
-    def _get_default_params(self):
-        return {
-            'last_alloc': 1.0,
-            'p90_belief': 100.0,
-            'prev_rps': 0.0,
-            'code_version': 'v61.0_BruteForceSync'
+            'code_version': 'v62.1'
         }
 
     def _hydrate_controller(self, state):
