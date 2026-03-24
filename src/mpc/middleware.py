@@ -69,8 +69,8 @@ class MPCMiddleware:
         if self.state_id == 'global_params':
             self.state_id = f"mpc_state_{task_type}"
             
-        # v64: The "Final Boss" fix for the 0.0 belief visibility issue
-        current_logic_ver = 'v64.0'
+        # v64.1: Final visibility fix
+        current_logic_ver = 'v64.1'
         state, lock_ver = self._load_state()
         write_status = "NotAttempted"
 
@@ -78,7 +78,7 @@ class MPCMiddleware:
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
             lock_ver = '0'
-            print(f"[CRITICAL-DEBUG] v64.0 RESET for {self.state_id}")
+            print(f"[CRITICAL-DEBUG] v64.1 RESET for {self.state_id}")
             write_status = self._sync_save_state(state, lock_ver, force=True)
             lock_ver = '1'
         
@@ -237,7 +237,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 110.0,
             'prev_rps': 0.0,
-            'code_version': 'v64.0'
+            'code_version': 'v64.1'
         }
 
     def _hydrate_controller(self, state):

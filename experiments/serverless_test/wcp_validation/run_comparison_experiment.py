@@ -111,6 +111,7 @@ def run_single_request(idx, strategy, start_time):
                 'resource_alloc': debug_data.get('resource_alloc', 1.0),
                 'uncertainty': debug_data.get('uncertainty', 0.0),
                 'p90_prediction': debug_data.get('p90_prediction', 0.0),
+                'p90_belief': debug_data.get('p90_belief', 0.0),
                 'version': debug_data.get('version', 'UNKNOWN'),
                 'source': debug_data.get('state_source', 'UNKNOWN'),
                 'prev_alloc': debug_data.get('prev_alloc', '?'),
