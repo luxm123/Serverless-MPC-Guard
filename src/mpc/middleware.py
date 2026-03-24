@@ -17,6 +17,7 @@ _L1_CACHE = {
     'version': None,
     'last_sync': 0,
     'ttl_s': 0.5, # Cache state for 500ms within a container
+    'last_write': 0.0,
     'state_id': None
 }
 
@@ -187,6 +188,16 @@ class MPCMiddleware:
     def _sync_save_state(self, params, version, force=False):
         global _L1_CACHE
         try:
+            now_t = time.time()
+            if not force:
+                last_write = float(_L1_CACHE.get('last_write', 0.0) or 0.0)
+                if (now_t - last_write) < 0.5:
+                    safe_params = self._sanitize_params(params)
+                    _L1_CACHE['params'] = safe_params.copy()
+                    _L1_CACHE['last_sync'] = now_t
+                    _L1_CACHE['state_id'] = self.state_id
+                    return "Skipped"
+
             expected_version = int(version)
             new_version = expected_version + 1
             
@@ -214,6 +225,7 @@ class MPCMiddleware:
             _L1_CACHE['version'] = str(new_version)
             _L1_CACHE['params'] = safe_params.copy()
             _L1_CACHE['last_sync'] = time.time()
+            _L1_CACHE['last_write'] = time.time()
             _L1_CACHE['state_id'] = self.state_id
             return "OK"
             

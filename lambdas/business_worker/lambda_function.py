@@ -31,6 +31,7 @@ except ImportError as e:
 
 # 容器级全局变量，用于检测冷启动
 _IS_COLD = True
+_LAST_FEEDBACK_T = 0.0
 
 def lambda_handler(event, context):
     """
@@ -199,17 +200,20 @@ def lambda_handler(event, context):
 
     # --- 3. 反馈更新 (Feedback Loop) ---
     if _MIDDLEWARE and strategy in ['mpc_integrated', 'gsight', 'owl', 'ours_basic', 'passive_prewarm']:
-        _MIDDLEWARE._load_state()
-        # v66.0: 提供完整上下文以启用 WCP (Weighted Conformal Prediction)
-        feedback_metrics = {
-            'latency': latency_ms,
-            'task_type': task_type,
-            'cpu_limit': cpu_limit,
-            'concurrency': event.get('metrics', {}).get('concurrency', 1.0),
-            'backlog': event.get('metrics', {}).get('backlog', 0.0),
-            'service_time': event.get('metrics', {}).get('service_time', 100.0)
-        }
-        _MIDDLEWARE.update_metrics(feedback_metrics)
+        global _LAST_FEEDBACK_T
+        now_t = time.time()
+        if is_cold or (now_t - _LAST_FEEDBACK_T) >= 0.5:
+            _MIDDLEWARE._load_state()
+            feedback_metrics = {
+                'latency': latency_ms,
+                'task_type': task_type,
+                'cpu_limit': cpu_limit,
+                'concurrency': event.get('metrics', {}).get('concurrency', 1.0),
+                'backlog': event.get('metrics', {}).get('backlog', 0.0),
+                'service_time': event.get('metrics', {}).get('service_time', 100.0)
+            }
+            _MIDDLEWARE.update_metrics(feedback_metrics)
+            _LAST_FEEDBACK_T = now_t
     
     return {
         'statusCode': 200,
