@@ -141,8 +141,9 @@ def lambda_handler(event, context):
             result = {"status": "success", "type": "video", "val": res}
             
         elif task_type.startswith('linpack'):
-            # 终极校准：n=50,000，目标执行时间 80ms 左右
-            n = int(50000 * scale)
+            # v54.4: 增加计算量以确保在低资源下产生真实的 QoS 违约
+            # 校准：1.0 CPU 下约 100ms
+            n = int(62500 * scale)
             res = 0.0
             for i in range(n):
                 res += (i * 0.0001)

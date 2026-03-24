@@ -454,22 +454,28 @@ if __name__ == "__main__":
     args = parse_args()
     os.environ["AWS_REGION"] = args.region
     CURRENT_TASK = args.task
-    print(f">>> Starting Experiment 1: MPC-Guard (Ours) Verification (Baseline Blocked)")
-    print(f">>> Task: {args.task}, Fixed RPS: {args.rps}, Duration: {args.minutes}m")
+    print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs HPA-Baseline (Jiagu)")
+    print(f">>> Task: {args.task}, Base RPS: {args.rps}, Duration: {args.minutes}m")
+    print(f">>> Mode: Real Azure Bursty Trace (Jiagu-Style stress test)")
     print(f">>> QoS Threshold: {SLO_LATENCY_MS}ms")
     
-    # 1. Generate Fixed RPS arrivals
-    arrival_times = generate_fixed_rps_arrivals(args.rps, args.minutes)
+    # 1. Generate Bursty arrivals using real Azure Trace
+    # This creates the "real" violations you saw in your previous screenshots
+    second_rates = load_azure_trace(duration_min=int(args.minutes))
+    arrival_times = generate_trace_arrivals(second_rates, base_rps=args.rps)
     num_requests = len(arrival_times)
+    print(f"Generated {num_requests} requests with dynamic bursts.")
     
     # 2. Run MPC-Guard (Ours) FIRST
     print(f"\n--- Running MPC-Guard (Ours) ---")
     run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50) # Warm up
-    mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=20, arrival_times=arrival_times)
+    mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=50, arrival_times=arrival_times)
     
     # 3. Run HPA-Baseline (Jiagu Style)
+    # We must reset the state to ensure a fair comparison
+    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
     print(f"\n--- Running HPA-Baseline (Jiagu-ATC'24) ---")
-    baseline_results, baseline_cw = run_phase('baseline', max_workers=20, arrival_times=arrival_times)
+    baseline_results, baseline_cw = run_phase('baseline', max_workers=50, arrival_times=arrival_times)
     
     # 4. Final Comparison
     print_comparison(baseline_results, mpc_results)
