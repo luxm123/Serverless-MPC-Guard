@@ -259,6 +259,8 @@ class MPCMiddleware:
             'slo_limit': slo_limit_ms,
             'pred_queue_delay_ms': queue_delay_ms,
             'queue_backlog': queue_backlog,
+            'current_rps': current_rps, # v58
+            'prev_rps': prev_rps,       # v58
             'metrics': {
                 'slo_violation_rate': slo_viol_rate
             }
