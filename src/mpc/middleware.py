@@ -71,7 +71,7 @@ class MPCMiddleware:
             self.state_id = f"mpc_state_{task_type}"
             
         # v60: Brute Force State Reset
-        current_logic_ver = 'v60_BruteForce'
+        current_logic_ver = 'v60.1_BruteForce'
         debug_info = {'code_version': current_logic_ver, 'version': current_logic_ver, 'state_id': self.state_id}
 
         state, lock_ver = self._load_state()
@@ -82,7 +82,7 @@ class MPCMiddleware:
             state['code_version'] = current_logic_ver
             lock_ver = '0'
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v60] NUCLEAR RESET for {self.state_id}")
+            print(f"[Middleware-v60.1] NUCLEAR RESET for {self.state_id}")
             # Force write to DB right now to break the cycle!
             self._async_save_state(state, lock_ver, force=True)
         else:
@@ -125,6 +125,24 @@ class MPCMiddleware:
         debug_info['lock_ver'] = lock_ver
         
         return result['decision'], {**debug_info, **result.get('meta', {})}
+
+    def update_metrics(self, real_metrics):
+        global _L1_CACHE
+        if _L1_CACHE['params']:
+            curr_p90 = float(_L1_CACHE['params'].get('p90_belief', 100.0))
+            new_val = float(real_metrics.get('latency', 100.0))
+            
+            # Asymmetric EMA: rise fast, fall slow
+            alpha = 0.5 if new_val > curr_p90 else 0.05
+            updated_p90 = (1 - alpha) * curr_p90 + alpha * new_val
+            _L1_CACHE['params']['p90_belief'] = updated_p90
+            
+            new_rps = float(real_metrics.get('rps', _L1_CACHE['params'].get('prev_rps', 0.0)))
+            _L1_CACHE['params']['prev_rps'] = new_rps
+            
+            _L1_CACHE['last_sync'] = time.time()
+            # v60.1: Use the brute-force capable save method
+            self._async_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
 
     def _async_save_state(self, params, version, force=False):
         global _L1_CACHE
@@ -206,7 +224,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'code_version': 'v60_BruteForce'
+            'code_version': 'v60.1_BruteForce'
         }
 
     def _hydrate_controller(self, state):
