@@ -51,7 +51,7 @@ class MPCMiddleware:
         out['p90_belief'] = self._clamp_ms(out.get('p90_belief', 110.0), 1.0, 500.0, 110.0)
         out['uncertainty'] = self._clamp_ms(out.get('uncertainty', 30.0), 0.0, 60.0, 30.0)
         out['last_y'] = self._clamp_ms(out.get('last_y', out['p90_belief']), 1.0, 500.0, out['p90_belief'])
-        out['e2e_overhead_ms'] = self._clamp_ms(out.get('e2e_overhead_ms', 50.0), 0.0, 200.0, 50.0)
+        out['e2e_overhead_ms'] = self._clamp_ms(out.get('e2e_overhead_ms', 50.0), 0.0, 120.0, 50.0)
         try:
             out['safe_streak'] = int(out.get('safe_streak', 0))
         except Exception:
@@ -138,7 +138,7 @@ class MPCMiddleware:
         if current_p90 < 1.0:
             current_p90 = 110.0
 
-        overhead_ms = self._clamp_ms(metrics.get('e2e_overhead_ms', state.get('e2e_overhead_ms', 50.0)), 0.0, 200.0, 50.0)
+        overhead_ms = self._clamp_ms(metrics.get('e2e_overhead_ms', state.get('e2e_overhead_ms', 50.0)), 0.0, 120.0, 50.0)
         state['e2e_overhead_ms'] = overhead_ms
         state_last_y = self._clamp_ms(state.get('last_y', current_p90), 1.0, 500.0, current_p90)
 
