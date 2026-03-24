@@ -71,7 +71,7 @@ class MPCMiddleware:
             self.state_id = f"mpc_state_{task_type}"
             
         # v60: Brute Force State Reset
-        current_logic_ver = 'v60.1_BruteForce'
+        current_logic_ver = 'v61.0_BruteForceSync'
         debug_info = {'code_version': current_logic_ver, 'version': current_logic_ver, 'state_id': self.state_id}
 
         state, lock_ver = self._load_state()
@@ -82,9 +82,9 @@ class MPCMiddleware:
             state['code_version'] = current_logic_ver
             lock_ver = '0'
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v60.1] NUCLEAR RESET for {self.state_id}")
+            print(f"[Middleware-v61.0] NUCLEAR RESET for {self.state_id}")
             # Force write to DB right now to break the cycle!
-            self._async_save_state(state, lock_ver, force=True)
+            self._sync_save_state(state, lock_ver, force=True)
         else:
             debug_info['state_source'] = 'dynamodb_or_cache'
             
@@ -114,8 +114,8 @@ class MPCMiddleware:
         state['last_alloc'] = new_alloc
         state['p90_belief'] = system_state['p90_belief']
         
-        # v60: Standard save
-        self._async_save_state(state, lock_ver)
+        # v61: Synchronous save to ensure data is written before the request finishes
+        self._sync_save_state(state, lock_ver)
 
         self.state_id = original_state_id
         
@@ -141,10 +141,11 @@ class MPCMiddleware:
             _L1_CACHE['params']['prev_rps'] = new_rps
             
             _L1_CACHE['last_sync'] = time.time()
-            # v60.1: Use the brute-force capable save method
-            self._async_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
+            # v61: Use synchronous save
+            self._sync_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
 
-    def _async_save_state(self, params, version, force=False):
+    def _sync_save_state(self, params, version, force=False):
+        """v61: Synchronous save with explicit success/error logging"""
         global _L1_CACHE
         try:
             expected_version = int(version)
@@ -169,8 +170,7 @@ class MPCMiddleware:
                     else:
                         expression_attribute_values[attr_val] = {'S': str(value)}
 
-            # v60: If forced, or if we want to bypass lock, we remove ConditionExpression
-            # This is the "Brute Force" part to ensure data gets written!
+            # v60/v61: If forced, or if we want to bypass lock, we remove ConditionExpression
             condition = "#lv = :expected_lv OR attribute_not_exists(#lv)"
             if force:
                 condition = None 
@@ -185,7 +185,9 @@ class MPCMiddleware:
             if condition:
                 update_params['ConditionExpression'] = condition
 
+            print(f"[Middleware-v61] SYNC WRITE START: {self.state_id} ({expected_version} -> {new_version})")
             dynamodb_client.update_item(**update_params)
+            print(f"[Middleware-v61] SYNC WRITE SUCCESS: {self.state_id}")
             
             _L1_CACHE['version'] = str(new_version)
             _L1_CACHE['params'] = params.copy()
@@ -195,11 +197,15 @@ class MPCMiddleware:
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                 _L1_CACHE['last_sync'] = 0 
-                print(f"[Middleware-v60] Lock failed for {self.state_id}. Cache invalidated.")
+                print(f"[Middleware-v61] Lock failed for {self.state_id}. Cache invalidated.")
             else:
-                print(f"[Middleware-v60] DynamoDB Error: {e}")
+                print(f"[Middleware-v61] DynamoDB Error: {e}")
         except Exception as e:
-            print(f"[Middleware-v60] Generic Error: {e}")
+            print(f"[Middleware-v61] Generic Error: {e}")
+
+    def _async_save_state(self, params, version, force=False):
+        """Backward compatibility alias for _sync_save_state"""
+        self._sync_save_state(params, version, force)
 
     def _parse_dynamo_item(self, item):
         # v59.9: Back to basics - read both nested (legacy) and top-level (new)
@@ -224,7 +230,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'code_version': 'v60.1_BruteForce'
+            'code_version': 'v61.0_BruteForceSync'
         }
 
     def _hydrate_controller(self, state):
