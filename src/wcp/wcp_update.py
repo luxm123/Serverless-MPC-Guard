@@ -161,13 +161,13 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
     # 如果实际延迟极其离谱 (例如 > 800ms)，我们认为这是不可控的冷启动/环境噪声。
     # 不允许这种噪声污染 WCP 的不确定性边界。
     is_outlier = False
-    if y_k > 800.0:
+    if y_k > 300.0:
         is_outlier = True
         
     # Non-conformity score is the absolute error
     raw_score = abs(y_k - y_hat_k)
     # v24: 进一步收紧误差截断，最大误差贡献限制在 30ms
-    score_k = min(30.0, raw_score) 
+    score_k = min(20.0, raw_score) 
     
     if 'scores' not in state:
         state['scores'] = []
@@ -208,12 +208,12 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
         # 修正：冷启动回退也必须使用高增益 delta=10000.0
         rls = RLS(feat_len, lambda_factor=0.98, delta=10000.0)
     
-    # Update RLS with current observation
-    rls.update(phi, y_k)
+    if not is_outlier:
+        rls.update(phi, y_k)
     
     # Predict next step using the updated model
     # Note: In the orchestrator, we will call this with future_concurrency
-    y_hat_next = rls.predict(phi) # Prediction for current state (for next WCP score)
+    y_hat_next = rls.predict(phi)
 
     # Persist state
     state['rls_state'] = rls.to_dict()
