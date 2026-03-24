@@ -288,7 +288,7 @@ class TraceReplayer:
             else:
                 met_slo = True
         else:
-            # FIX: Allow 'degraded' (Fidelity Scaling) for Q1/Q2 to count as success if latency <= slo_bound
+            # FIX: Allow 'degraded' (Allocation Scaling) for Q1/Q2 to count as success if latency <= slo_bound
             # Previously: if qos_class in ["Q1", "Q2"] and worker_status in ["degraded", "shedded"]: met_slo = False
             if qos_class in ["Q1", "Q2"] and worker_status == "shedded":
                 met_slo = False

@@ -69,8 +69,7 @@ class MPCMiddleware:
         if self.state_id == 'global_params':
             self.state_id = f"mpc_state_{task_type}"
             
-        # v65: Zero-crash logic
-        current_logic_ver = 'v65.0'
+        current_logic_ver = 'v66.0'
         state, lock_ver = self._load_state()
         write_status = "NotAttempted"
 
@@ -78,7 +77,7 @@ class MPCMiddleware:
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
             lock_ver = '0'
-            print(f"[CRITICAL-DEBUG] v65.0 RESET for {self.state_id}")
+            print(f"[CRITICAL-DEBUG] {current_logic_ver} RESET for {self.state_id}")
             write_status = self._sync_save_state(state, lock_ver, force=True)
             lock_ver = '1'
         
@@ -95,6 +94,7 @@ class MPCMiddleware:
         system_state = {
             'last_alloc': last_alloc,
             'p90_belief': current_p90,
+            'uncertainty': float(state.get('uncertainty', 0.0)),
             'strategy': strategy,
             'current_rps': current_rps,
             'prev_rps': prev_rps,

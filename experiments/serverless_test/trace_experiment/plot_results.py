@@ -352,7 +352,7 @@ if __name__ == "__main__":
             ('results_baseline.csv', 'Baseline'),
             ('results_static.csv', 'Static'),
             ('results_mpc.csv', 'MPC'),
-            ('results_ablation_no_fidelity.csv', 'No-Fidelity'),
+            ('results_ablation_no_fidelity.csv', 'No-Scaling'),
             ('results_ablation_no_shedding.csv', 'No-Shedding')
         ]
         
