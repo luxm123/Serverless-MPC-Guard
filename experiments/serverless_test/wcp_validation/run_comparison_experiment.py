@@ -13,6 +13,9 @@ import argparse
 SERVER_SLO_MS = 180.0
 E2E_SLO_MS = 180.0
 CURRENT_TASK = "linpack" # Global to be updated by args
+BASE_RPS = 10.0
+_E2E_OVERHEAD_EMA = 50.0
+_OVERHEAD_LOCK = threading.Lock()
 
 def generate_fixed_rps_arrivals(rps, duration_min):
     """Generates arrival timestamps for a fixed RPS (Exp 1 style)."""
@@ -78,7 +81,8 @@ def run_single_request(idx, strategy, start_time):
         "backlog": 0,
         "cpu_util": 0.5,
         "error_rate": 0.0,
-        "e2e_overhead_ms": 50.0
+        "rps": float(BASE_RPS),
+        "e2e_overhead_ms": float(_E2E_OVERHEAD_EMA)
     }
     
     # Payload contains only task info. 
@@ -225,6 +229,12 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
         try:
             res = future.result()
             results.append(res)
+            if res.get('success') and ('server_latency' in res) and ('e2e_latency' in res):
+                overhead = float(res.get('e2e_latency', 0.0)) - float(res.get('server_latency', 0.0))
+                if overhead > 0.0 and overhead < 1000.0:
+                    global _E2E_OVERHEAD_EMA
+                    with _OVERHEAD_LOCK:
+                        _E2E_OVERHEAD_EMA = 0.9 * float(_E2E_OVERHEAD_EMA) + 0.1 * overhead
             if not warm_up:
                 # 实时打印每个请求的结果 (v29.2 - 修复 Baseline 格式化错误)
                 try:
@@ -459,6 +469,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+    BASE_RPS = float(args.rps)
     os.environ["AWS_REGION"] = args.region
     CURRENT_TASK = args.task
     print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs HPA-Baseline (Jiagu)")

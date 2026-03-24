@@ -28,6 +28,13 @@ class Optimizer:
         pred_total = float(pred_upper) + overhead_ms
         safety_target = float(slo_limit) - 20.0
         error = pred_total - safety_target
+
+        if pred_total <= (safety_target - 30.0):
+            alloc_floor = 0.40
+        elif pred_total >= safety_target:
+            alloc_floor = 0.60
+        else:
+            alloc_floor = 0.40 + 0.20 * ((pred_total - (safety_target - 30.0)) / 30.0)
         
         # Aggressive LR for QoS recovery, smoother for efficiency gains
         lr = 0.5 if error > 0 else 0.3
@@ -44,25 +51,29 @@ class Optimizer:
             grad = 0.6 if abs(error) > 30.0 else 0.2
 
         new_alloc = prev_u - lr * grad
+
+        if pred_total >= (safety_target - 10.0) and new_alloc < prev_u:
+            new_alloc = prev_u
         
         # Safety Clamps & Adaptive Bounds
         if pred_total > slo_limit + 10.0:
             new_alloc = 1.0 # Emergency jump
         elif new_alloc < prev_u:
             # Efficiency gain: allow down-scaling
-            max_reduction = 0.15 if error < -40.0 else 0.08
+            max_reduction = 0.12 if error < -40.0 else 0.06
             new_alloc = max(new_alloc, prev_u - max_reduction)
         else:
             # QoS protection: allow up-scaling
             new_alloc = min(new_alloc, prev_u + 0.40)
 
         # v65.1: Minimum allocation 0.40 for high density
-        final_alloc = max(0.40, min(1.0, new_alloc))
+        final_alloc = max(alloc_floor, min(1.0, new_alloc))
         
         state['opt_debug'] = {
             "pred_upper": pred_upper,
             "pred_total": pred_total,
             "e2e_overhead_ms": overhead_ms,
+            "alloc_floor": alloc_floor,
             "error": error,
             "grad": grad,
             "final_alloc": final_alloc,
