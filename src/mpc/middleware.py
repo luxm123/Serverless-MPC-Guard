@@ -70,19 +70,21 @@ class MPCMiddleware:
         if self.state_id == 'global_params':
             self.state_id = f"mpc_state_{task_type}"
             
-        # v59.9: Final simplified logic version
-        current_logic_ver = 'v59.9_FinalSimplified'
+        # v60: Brute Force State Reset
+        current_logic_ver = 'v60_BruteForce'
         debug_info = {'code_version': current_logic_ver, 'version': current_logic_ver, 'state_id': self.state_id}
 
         state, lock_ver = self._load_state()
         
-        # Check if we need to reset state based on version change or explicit reset
+        # v60: If version doesn't match, force a synchronous save to update DB immediately
         if not state or state.get('code_version') != current_logic_ver or event.get('reset_state'):
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
-            lock_ver = '0' # Start lock version at 0 for new state
+            lock_ver = '0'
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v59.9] NUCLEAR RESET for {self.state_id}: {current_logic_ver}")
+            print(f"[Middleware-v60] NUCLEAR RESET for {self.state_id}")
+            # Force write to DB right now to break the cycle!
+            self._async_save_state(state, lock_ver, force=True)
         else:
             debug_info['state_source'] = 'dynamodb_or_cache'
             
@@ -112,7 +114,7 @@ class MPCMiddleware:
         state['last_alloc'] = new_alloc
         state['p90_belief'] = system_state['p90_belief']
         
-        # Save state back to DynamoDB (Top-level attributes for maximum reliability)
+        # v60: Standard save
         self._async_save_state(state, lock_ver)
 
         self.state_id = original_state_id
@@ -124,29 +126,12 @@ class MPCMiddleware:
         
         return result['decision'], {**debug_info, **result.get('meta', {})}
 
-    def update_metrics(self, real_metrics):
-        global _L1_CACHE
-        if _L1_CACHE['params']:
-            curr_p90 = float(_L1_CACHE['params'].get('p90_belief', 100.0))
-            new_val = float(real_metrics.get('latency', 100.0))
-            
-            alpha = 0.5 if new_val > curr_p90 else 0.05
-            updated_p90 = (1 - alpha) * curr_p90 + alpha * new_val
-            _L1_CACHE['params']['p90_belief'] = updated_p90
-            
-            new_rps = float(real_metrics.get('rps', _L1_CACHE['params'].get('prev_rps', 0.0)))
-            _L1_CACHE['params']['prev_rps'] = new_rps
-            
-            _L1_CACHE['last_sync'] = time.time()
-            self._async_save_state(_L1_CACHE['params'], _L1_CACHE['version'])
-
-    def _async_save_state(self, params, version):
+    def _async_save_state(self, params, version, force=False):
         global _L1_CACHE
         try:
             expected_version = int(version)
             new_version = expected_version + 1
             
-            # v59.9: Final attempt with detailed logging
             expression_attribute_names = {'#lv': 'lock_version', '#t': 'last_updated'}
             expression_attribute_values = {
                 ':new_lv': {'N': str(new_version)},
@@ -166,18 +151,23 @@ class MPCMiddleware:
                     else:
                         expression_attribute_values[attr_val] = {'S': str(value)}
 
-            print(f"[Middleware-v59.9] Attempting to write state for {self.state_id} (version {expected_version} -> {new_version})")
+            # v60: If forced, or if we want to bypass lock, we remove ConditionExpression
+            # This is the "Brute Force" part to ensure data gets written!
+            condition = "#lv = :expected_lv OR attribute_not_exists(#lv)"
+            if force:
+                condition = None 
             
-            dynamodb_client.update_item(
-                TableName=TABLE_NAME,
-                Key={'id': {'S': self.state_id}},
-                UpdateExpression=set_clause,
-                ConditionExpression="#lv = :expected_lv OR attribute_not_exists(#lv)",
-                ExpressionAttributeNames=expression_attribute_names,
-                ExpressionAttributeValues=expression_attribute_values
-            )
-            
-            print(f"[Middleware-v59.9] Successfully wrote state for {self.state_id}. New lock_version: {new_version}")
+            update_params = {
+                'TableName': TABLE_NAME,
+                'Key': {'id': {'S': self.state_id}},
+                'UpdateExpression': set_clause,
+                'ExpressionAttributeNames': expression_attribute_names,
+                'ExpressionAttributeValues': expression_attribute_values
+            }
+            if condition:
+                update_params['ConditionExpression'] = condition
+
+            dynamodb_client.update_item(**update_params)
             
             _L1_CACHE['version'] = str(new_version)
             _L1_CACHE['params'] = params.copy()
@@ -187,11 +177,11 @@ class MPCMiddleware:
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                 _L1_CACHE['last_sync'] = 0 
-                print(f"[Middleware-v59.9] Lock failed for {self.state_id} (current DB version is NOT {expected_version}). Cache invalidated.")
+                print(f"[Middleware-v60] Lock failed for {self.state_id}. Cache invalidated.")
             else:
-                print(f"[Middleware-v59.9] DynamoDB ClientError for {self.state_id}: {e}")
+                print(f"[Middleware-v60] DynamoDB Error: {e}")
         except Exception as e:
-            print(f"[Middleware-v59.9] Generic Save Error for {self.state_id}: {e}")
+            print(f"[Middleware-v60] Generic Error: {e}")
 
     def _parse_dynamo_item(self, item):
         # v59.9: Back to basics - read both nested (legacy) and top-level (new)
@@ -216,7 +206,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'code_version': 'v59.9_FinalSimplified'
+            'code_version': 'v60_BruteForce'
         }
 
     def _hydrate_controller(self, state):
