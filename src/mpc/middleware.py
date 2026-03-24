@@ -308,6 +308,38 @@ class MPCMiddleware:
         except Exception as e:
             print(f"[WCP-Update-Error] {e}")
 
+    def update_metrics_ema(self, real_metrics):
+        global _L1_CACHE
+        try:
+            response = dynamodb_client.get_item(
+                TableName=TABLE_NAME,
+                Key={'id': {'S': self.state_id}},
+                ConsistentRead=True
+            )
+            item = response.get('Item')
+            if not item or 'state_blob' not in item:
+                state = self._get_default_params()
+                state['code_version'] = 'baseline_ema'
+                lock_ver = '0'
+            else:
+                state = self._sanitize_params(json.loads(item['state_blob']['S']))
+                lock_ver = item.get('lock_version', {}).get('N', '0')
+
+            curr_p90 = self._clamp_ms(state.get('p90_belief', 110.0), 1.0, 500.0, 110.0)
+            new_val = self._clamp_ms(real_metrics.get('latency', 100.0), 1.0, 500.0, 100.0)
+
+            alpha = 0.5 if new_val > curr_p90 else 0.05
+            updated_p90 = (1 - alpha) * curr_p90 + alpha * new_val
+            updated_p90 = self._clamp_ms(updated_p90, 1.0, 500.0, 110.0)
+
+            state['p90_belief'] = updated_p90
+            state['last_y'] = new_val
+
+            self._sync_save_state(state, lock_ver)
+            return updated_p90
+        except Exception:
+            return None
+
     def _parse_dynamo_item(self, item):
         state = {}
         params_map = item.get('params', {}).get('M', {})

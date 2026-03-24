@@ -32,8 +32,10 @@ except ImportError as e:
 # 容器级全局变量，用于检测冷启动
 _IS_COLD = True
 _LAST_FEEDBACK_T = 0.0
+_BASELINE_LAST_DECISION_T = 0.0
 
 def lambda_handler(event, context):
+    global _BASELINE_LAST_DECISION_T
     """
     JIAGU-Level 真实物理 Worker。
     动态调度 FunctionBench 中的 4 类典型计算任务。
@@ -77,18 +79,24 @@ def lambda_handler(event, context):
         # 使用单独的 baseline_params 存储状态，避免与 MPC 冲突
         baseline_mw = MPCMiddleware(state_id='baseline_params')
         state, version = baseline_mw._load_state()
+
+        if event.get('reset_state'):
+            state = {'last_alloc': 1.0, 'code_version': 'baseline'}
+            version = '0'
+            baseline_mw._sync_save_state(state, version, force=True)
+            baseline_pred_mw = MPCMiddleware(state_id=f"baseline_state_{task_type}")
+            pred_state = {'p90_belief': 110.0, 'last_y': 110.0, 'code_version': 'baseline_ema'}
+            baseline_pred_mw._sync_save_state(pred_state, '0', force=True)
+            _BASELINE_LAST_DECISION_T = 0.0
         
         # v65.0: 安全检查，防止数据库为空时崩溃
         if state is None:
             state = {'last_alloc': 1.0}
             version = '0'
         
-        # 负载观察：从全局状态中获取 P90 作为 HPA 的输入
-        global_state_mw = MPCMiddleware(state_id=f"mpc_state_{task_type}")
-        global_state, _ = global_state_mw._load_state()
-        
-        # v65.0: 同样为全局状态增加兜底
-        p90 = float(global_state.get('p90_belief', 100.0)) if global_state else 100.0
+        baseline_pred_mw = MPCMiddleware(state_id=f"baseline_state_{task_type}")
+        pred_state, _ = baseline_pred_mw._load_state()
+        p90 = float(pred_state.get('p90_belief', 100.0)) if pred_state else 100.0
         
         # 估算利用率：目标 180ms
         slo = 180.0
@@ -96,8 +104,13 @@ def lambda_handler(event, context):
         
         metrics = {'cpu_util': cpu_util}
         current_alloc = float(state.get('last_alloc', 1.0))
-        decision = _HPA.get_decision(metrics, current_alloc)
-        cpu_limit = float(decision.get('cpu_cores', 1.0))
+        now_t = time.time()
+        if is_cold or (now_t - _BASELINE_LAST_DECISION_T) >= 5.0:
+            decision = _HPA.get_decision(metrics, current_alloc)
+            cpu_limit = float(decision.get('cpu_cores', 1.0))
+            _BASELINE_LAST_DECISION_T = now_t
+        else:
+            cpu_limit = current_alloc
         
         # 保存 Baseline 状态
         state['last_alloc'] = cpu_limit
@@ -214,6 +227,12 @@ def lambda_handler(event, context):
             }
             _MIDDLEWARE.update_metrics(feedback_metrics)
             _LAST_FEEDBACK_T = now_t
+    elif strategy == 'baseline':
+        try:
+            baseline_pred_mw = MPCMiddleware(state_id=f"baseline_state_{task_type}")
+            baseline_pred_mw.update_metrics_ema({'latency': latency_ms})
+        except Exception:
+            pass
     
     return {
         'statusCode': 200,

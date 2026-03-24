@@ -66,7 +66,7 @@ def generate_poisson_arrivals(rate, num):
     arrival_times = np.cumsum(intervals)
     return arrival_times
 
-def run_single_request(idx, strategy, start_time):
+def run_single_request(idx, strategy, start_time, inflight=1):
     # 1. Real Scenario: No injected metrics. System must learn.
     
     # For a pure vertical scaling experiment, priority is not a variable.
@@ -79,7 +79,8 @@ def run_single_request(idx, strategy, start_time):
     risk = {}
     metrics = {
         "p90": 0.0,
-        "backlog": 0,
+        "backlog": int(inflight),
+        "concurrency": float(inflight),
         "cpu_util": 0.5,
         "error_rate": 0.0,
         "rps": float(BASE_RPS),
@@ -229,8 +230,13 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
     results = []
     
     phase_start = time.time()
+    inflight_lock = threading.Lock()
+    inflight_count = 0
     
     def process_result(future):
+        nonlocal inflight_count
+        with inflight_lock:
+            inflight_count = max(0, inflight_count - 1)
         try:
             res = future.result()
             results.append(res)
@@ -265,7 +271,10 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
             if wait > 0:
                 time.sleep(wait)
             
-            f = executor.submit(run_single_request, i, strategy_name, phase_start)
+            with inflight_lock:
+                inflight_count += 1
+                inflight_snapshot = inflight_count
+            f = executor.submit(run_single_request, i, strategy_name, phase_start, inflight_snapshot)
             f.add_done_callback(process_result)
             
     # 等待本阶段所有请求完成
@@ -471,6 +480,7 @@ def parse_args():
     parser.add_argument("--minutes", type=float, default=30.0)
     parser.add_argument("--task", type=str, default="linpack") # linpack or gzip
     parser.add_argument("--region", type=str, default=os.environ.get("AWS_REGION","us-east-1"))
+    parser.add_argument("--workers", type=int, default=200)
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -495,13 +505,13 @@ if __name__ == "__main__":
     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
     run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50) # Warm up
     # v56: 极度压缩并发（15），彻底消除客户端排队，让“执行耗时”成为 E2E 的唯一变量
-    mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=15, arrival_times=arrival_times)
+    mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
     
     # 3. Run HPA-Baseline (Jiagu Style)
     # We must reset the state to ensure a fair comparison
     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
     print(f"\n--- Running HPA-Baseline (Jiagu-ATC'24) ---")
-    baseline_results, baseline_cw = run_phase('baseline', max_workers=15, arrival_times=arrival_times)
+    baseline_results, baseline_cw = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times)
     
     # 4. Final Comparison
     print_comparison(baseline_results, mpc_results)
