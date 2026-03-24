@@ -263,10 +263,16 @@ class MPCMiddleware:
             # 我们将预测值和不确定性保存到状态中，供下一次 decide 使用
             pred_p90 = self._clamp_ms(pred.get('p90', 0.0), 1.0, 500.0, state.get('p90_belief', 110.0))
             unc_val = self._clamp_ms(uncertainty, 0.0, 60.0, state.get('uncertainty', 30.0))
+            if pred_p90 >= 499.0 and p90_lat < 250.0:
+                state['rls_state'] = {}
+                state['scores'] = []
+                pred_p90 = self._clamp_ms(p90_lat, 1.0, 500.0, 110.0)
+                unc_val = min(20.0, unc_val)
             state['p90_belief'] = pred_p90
             state['uncertainty'] = unc_val
             state['last_alloc'] = cpu # 确保状态同步
             state['last_y'] = self._clamp_ms(p90_lat, 1.0, 500.0, pred_p90)
+            state['last_prediction'] = pred_p90
             
             # 保存状态
             update_params = {
