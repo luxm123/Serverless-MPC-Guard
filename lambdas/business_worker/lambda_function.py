@@ -198,7 +198,7 @@ def lambda_handler(event, context):
     latency_ms = (end_time - start_time) * 1000.0
 
     # --- 3. 反馈更新 (Feedback Loop) ---
-    if _MIDDLEWARE:
+    if _MIDDLEWARE and strategy in ['mpc_integrated', 'gsight', 'owl', 'ours_basic', 'passive_prewarm']:
         _MIDDLEWARE._load_state()
         # v66.0: 提供完整上下文以启用 WCP (Weighted Conformal Prediction)
         feedback_metrics = {

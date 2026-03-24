@@ -92,6 +92,7 @@ class MPCMiddleware:
 
         overhead_ms = float(metrics.get('e2e_overhead_ms', state.get('e2e_overhead_ms', 50.0)))
         state['e2e_overhead_ms'] = overhead_ms
+        state_last_y = float(state.get('last_y', current_p90))
 
         self._hydrate_controller(state)
         system_state = {
@@ -99,6 +100,7 @@ class MPCMiddleware:
             'p90_belief': current_p90,
             'uncertainty': float(state.get('uncertainty', 0.0)),
             'e2e_overhead_ms': overhead_ms,
+            'last_y': state_last_y,
             'strategy': strategy,
             'current_rps': current_rps,
             'prev_rps': prev_rps,
@@ -110,6 +112,8 @@ class MPCMiddleware:
         # v64.0: EXPLICITLY update state with the belief used for decision
         state['last_alloc'] = new_alloc
         state['p90_belief'] = current_p90 
+        if 'safe_streak' in system_state:
+            state['safe_streak'] = int(system_state.get('safe_streak', 0))
         
         write_status = self._sync_save_state(state, lock_ver)
         self.state_id = original_state_id 

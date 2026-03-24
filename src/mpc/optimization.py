@@ -25,9 +25,19 @@ class Optimizer:
         # We want to keep this BELOW the slo_limit (180ms).
 
         overhead_ms = float(state.get('e2e_overhead_ms', 0.0))
+        last_y = float(state.get('last_y', 0.0))
+        uncertainty = float(state.get('uncertainty', 0.0))
         pred_total = float(pred_upper) + overhead_ms
+        obs_total = last_y + overhead_ms
         safety_target = float(slo_limit) - 20.0
         error = pred_total - safety_target
+
+        safe_streak = int(state.get('safe_streak', 0))
+        if pred_total <= (safety_target - 35.0) and obs_total <= (safety_target - 35.0) and uncertainty <= 15.0:
+            safe_streak += 1
+        else:
+            safe_streak = max(0, safe_streak - 1)
+        state['safe_streak'] = safe_streak
 
         if pred_total <= (safety_target - 30.0):
             alloc_floor = 0.40
@@ -35,6 +45,11 @@ class Optimizer:
             alloc_floor = 0.60
         else:
             alloc_floor = 0.40 + 0.20 * ((pred_total - (safety_target - 30.0)) / 30.0)
+
+        if safe_streak >= 30:
+            alloc_floor = min(alloc_floor, 0.50)
+        if safe_streak >= 60:
+            alloc_floor = min(alloc_floor, 0.45)
         
         # Aggressive LR for QoS recovery, smoother for efficiency gains
         lr = 0.5 if error > 0 else 0.3
@@ -72,8 +87,11 @@ class Optimizer:
         state['opt_debug'] = {
             "pred_upper": pred_upper,
             "pred_total": pred_total,
+            "obs_total": obs_total,
             "e2e_overhead_ms": overhead_ms,
             "alloc_floor": alloc_floor,
+            "uncertainty": uncertainty,
+            "safe_streak": safe_streak,
             "error": error,
             "grad": grad,
             "final_alloc": final_alloc,
