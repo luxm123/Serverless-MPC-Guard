@@ -71,8 +71,9 @@ class MPCMiddleware:
             self.state_id = f"mpc_state_{task_type}"
             
         # v59.3: logic version string for version check
-        current_logic_ver = 'v59.3_OptimisticLocking'
-        debug_info = {'code_version': current_logic_ver, 'state_id': self.state_id}
+        current_logic_ver = 'v59.5_OptimisticLocking'
+        # v59.5: Add 'version' back for experiment script compatibility
+        debug_info = {'code_version': current_logic_ver, 'version': current_logic_ver, 'state_id': self.state_id}
 
         state, lock_ver = self._load_state()
         
@@ -82,7 +83,7 @@ class MPCMiddleware:
             state['code_version'] = current_logic_ver
             lock_ver = '0' # Start lock version at 0 for new state
             debug_info['state_source'] = 'forced_reset'
-            print(f"[Middleware-v59.3] NUCLEAR RESET for {self.state_id}: {current_logic_ver} mode.")
+            print(f"[Middleware-v59.5] NUCLEAR RESET for {self.state_id}: {current_logic_ver} mode.")
         else:
             debug_info['state_source'] = 'dynamodb_or_cache'
             
@@ -200,20 +201,21 @@ class MPCMiddleware:
             print(f"Generic async save error: {e}")
 
     def _parse_dynamo_item(self, item):
+        # v59.5: Optimized parsing to handle legacy clobbering
         state = {}
-        # v59.2: Top-level attributes (including last_alloc and version)
-        for key, value in item.items():
-            if key == 'params' or key == 'id': continue
+        
+        # 1. Fallback to nested params map first (Legacy format)
+        params_map = item.get('params', {}).get('M', {})
+        for key, value in params_map.items():
             if 'N' in value:
                 state[key] = float(value['N'])
             elif 'S' in value:
                 state[key] = value['S']
         
-        # Backward compatibility for nested params map
-        params_map = item.get('params', {}).get('M', {})
-        for key, value in params_map.items():
+        # 2. Top-level attributes take priority and overwrite params (New format)
+        for key, value in item.items():
+            if key in ['params', 'id']: continue
             if 'N' in value:
-                # Nested value takes priority if exists
                 state[key] = float(value['N'])
             elif 'S' in value:
                 state[key] = value['S']
@@ -225,7 +227,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 100.0,
             'prev_rps': 0.0,
-            'code_version': 'v59.3_OptimisticLocking'
+            'code_version': 'v59.5_OptimisticLocking'
         }
 
     def _hydrate_controller(self, state):
