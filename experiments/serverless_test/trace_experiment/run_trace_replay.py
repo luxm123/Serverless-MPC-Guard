@@ -146,8 +146,8 @@ class TraceReplayer:
         # Why 70?
         # Total Req = 500.
         # Baseline (200ms): 500/70 * 200 = 1428ms > 1000ms SLO. (Fail ~30%)
-        # MPC (60% Fid -> 140ms): 500/70 * 140 = 1000ms <= 1000ms SLO. (Success ~100%)
-        # This creates the "Best of Both Worlds": Baseline fails, MPC wins with decent fidelity.
+        # MPC (60% Alloc -> 140ms): 500/70 * 140 = 1000ms <= 1000ms SLO. (Success ~100%)
+        # This creates the "Best of Both Worlds": Baseline fails, MPC wins with decent allocation.
         MAX_SIMULATED_CONCURRENCY = 70
 
         payload = {
@@ -244,11 +244,10 @@ class TraceReplayer:
 
                         # Debug Visibility: Show protection activation
                         worker_backlog = dbg.get('raw_backlog_seen', -1)
-                        fidelity = dbg.get('fidelity_applied', 1.0)
                         alloc = dbg.get('resource_alloc', 1.0)
                         opt_debug = dbg.get('opt_debug')
-                        if worker_backlog > 10 or fidelity < 1.0 or controller_should_shed:
-                             print(f"   [Protection Active v2] QoS: {qos_class} | Backlog: {worker_backlog} | Fidelity: {fidelity:.2f} | Alloc: {alloc:.2f}")
+                        if worker_backlog > 10 or alloc < 1.0 or controller_should_shed:
+                             print(f"   [Protection Active v2] QoS: {qos_class} | Backlog: {worker_backlog} | Alloc: {alloc:.2f}")
                              if opt_debug:
                                  # Check for Override
                                  if opt_debug.get('override'):
@@ -323,11 +322,11 @@ class TraceReplayer:
                 if len(self.latency_window) > 50:
                     self.latency_window.pop(0)
 
-        # Extract fidelity for reporting
-        fidelity_val = 1.0
+        # Extract resource allocation for reporting
+        alloc_val = 1.0
         try:
             if 'worker_result' in locals() and worker_result:
-                fidelity_val = float(worker_result.get('response', {}).get('debug', {}).get('fidelity_applied', 1.0))
+                alloc_val = float(worker_result.get('response', {}).get('debug', {}).get('resource_alloc', 1.0))
         except:
             pass
 
@@ -337,7 +336,7 @@ class TraceReplayer:
             "trace_duration": ideal_duration,
             "e2e_latency": e2e_latency,
             "slowdown": slowdown,
-            "fidelity": fidelity_val,  # Add fidelity metric
+            "alloc": alloc_val,  # Resource allocation metric
             "slo_violation": is_violation,
             "strategy": strategy,
             "controller_ok": controller_ok,
@@ -482,18 +481,18 @@ class TraceReplayer:
                     # 真实违约率 = 100% - 满足率
                     slo_violation_rate_q = 100.0 - met_slo_rate
                     
-                    # 延迟统计 (仅针对成功请求)
+                    # Latency stats (only for successful requests)
                     if not d_success.empty:
                         p50 = d_success['e2e_latency'].quantile(0.50)
                         p90 = d_success['e2e_latency'].quantile(0.90)
                         p99 = d_success['e2e_latency'].quantile(0.99)
-                        avg_fidelity = d_success['fidelity'].mean() * 100.0
+                        avg_alloc = d_success['alloc'].mean() * 100.0
                     else:
                         p50 = p90 = p99 = 0.0
-                        avg_fidelity = 0.0
+                        avg_alloc = 0.0
                         
-                    print(f"- {qos}: 数量={q_total} (失{q_fail}) | 满足SLO={met_slo_rate:.2f}% | 违约率={slo_violation_rate_q:.2f}% | 实际丢弃={shed_rate:.2f}%")
-                    print(f"       延迟(P50/P90/P99) = {p50:.1f}/{p90:.1f}/{p99:.1f} ms | 平均保真度(Fidelity)={avg_fidelity:.1f}%")
+                    print(f"- {qos}: Count={q_total} (Fail={q_fail}) | SLO Met={met_slo_rate:.2f}% | Violation={slo_violation_rate_q:.2f}% | Shedded={shed_rate:.2f}%")
+                    print(f"       Latency(P50/P90/P99) = {p50:.1f}/{p90:.1f}/{p99:.1f} ms | Avg Alloc={avg_alloc:.1f}%")
         print("==============================\n")
 
 

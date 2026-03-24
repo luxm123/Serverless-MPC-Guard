@@ -181,24 +181,24 @@ def plot_goodput_stacked(df, output_dir):
     plt.close()
     print("[图表] 请求结果分布图 (分组柱状版) 已生成")
 
-def plot_fidelity_comparison(df, output_dir):
+def plot_allocation_comparison(df, output_dir):
     """
-    图4: 平均保真度对比 (Grouped Bar Chart)
+    图4: 平均资源分配对比 (Grouped Bar Chart)
     """
-    if 'fidelity' not in df.columns:
-        df['fidelity'] = 1.0
+    if 'alloc' not in df.columns:
+        df['alloc'] = 1.0
     else:
-        df['fidelity'] = df['fidelity'].fillna(1.0)
+        df['alloc'] = df['alloc'].fillna(1.0)
 
-    stats = df.groupby(['Strategy', 'qos_class'])['fidelity'].mean().reset_index()
-    stats['fidelity'] = stats['fidelity'] * 100.0
+    stats = df.groupby(['Strategy', 'qos_class'])['alloc'].mean().reset_index()
+    stats['alloc'] = stats['alloc'] * 100.0
 
     plt.figure(figsize=(10, 6))
-    sns.barplot(x='qos_class', y='fidelity', hue='Strategy', data=stats, palette='muted')
+    sns.barplot(x='qos_class', y='alloc', hue='Strategy', data=stats, palette='muted')
     
-    plt.title('Average Fidelity Comparison (Trade-off Analysis)', fontsize=16, fontweight='bold')
+    plt.title('Average CPU Allocation Comparison', fontsize=16, fontweight='bold')
     plt.xlabel('QoS Class', fontsize=14)
-    plt.ylabel('Average Fidelity (%)', fontsize=14)
+    plt.ylabel('Average Allocation (%)', fontsize=14)
     plt.ylim(0, 110)
     
     for p in plt.gca().patches:
@@ -210,9 +210,9 @@ def plot_fidelity_comparison(df, output_dir):
                                textcoords = 'offset points', fontsize=9)
 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, '4_fidelity_comparison.png'), dpi=300)
+    plt.savefig(os.path.join(output_dir, '4_allocation_comparison.png'), dpi=300)
     plt.close()
-    print("[图表] 保真度对比图已生成")
+    print("[图表] 资源分配对比图已生成")
 
 def plot_p99_latency_comparison(df, output_dir):
     """
@@ -283,14 +283,14 @@ def plot_time_series_adaptation(df, output_dir):
     axes[1].set_ylim(0, 3000) # Cap at 3s for readability
     axes[1].legend(loc='upper right')
 
-    # Subplot 3: Fidelity (Rolling Mean)
+    # Subplot 3: Allocation (Rolling Mean)
     for strategy in strategies:
         subset = df[df['Strategy'] == strategy].sort_values('timestamp')
-        subset['fid_smooth'] = subset['fidelity'].rolling(window=50, min_periods=1).mean()
-        axes[2].plot(subset['timestamp'], subset['fid_smooth'], label=strategy, linewidth=2)
+        subset['alloc_smooth'] = subset['alloc'].rolling(window=50, min_periods=1).mean()
+        axes[2].plot(subset['timestamp'], subset['alloc_smooth'], label=strategy, linewidth=2)
 
-    axes[2].set_ylabel('Fidelity (0-1)', fontsize=12)
-    axes[2].set_title('Fidelity Scaling', fontsize=14, fontweight='bold')
+    axes[2].set_ylabel('CPU Alloc (0.4-1.0)', fontsize=12)
+    axes[2].set_title('Dynamic Resource Allocation', fontsize=14, fontweight='bold')
     axes[2].set_xlabel('Time (s)', fontsize=14)
     axes[2].set_ylim(0, 1.1)
     axes[2].legend(loc='upper right')
@@ -311,18 +311,18 @@ def print_summary_table(df):
     if 'success' not in df.columns:
         df['success'] = True
     
-    # 确保 fidelity 列
-    if 'fidelity' not in df.columns:
-        df['fidelity'] = 1.0
+    # 确保 alloc 列
+    if 'alloc' not in df.columns:
+        df['alloc'] = 1.0
     else:
-        df['fidelity'] = df['fidelity'].fillna(1.0)
+        df['alloc'] = df['alloc'].fillna(1.0)
 
     # 计算关键指标
     stats = df.groupby(['Strategy', 'qos_class']).apply(
         lambda x: pd.Series({
             'Total Reqs': len(x),
             'SLO Violation (%)': ((x['slo_violation'] | (~x['success'])).sum() / len(x)) * 100,
-            'Avg Fidelity (%)': x['fidelity'].mean() * 100,
+            'Avg Alloc (%)': x['alloc'].mean() * 100,
             'P99 Latency (ms)': x['e2e_latency'].quantile(0.99)
         })
     ).reset_index()
@@ -389,7 +389,7 @@ if __name__ == "__main__":
         plot_slo_comparison(merged_df, output_dir)
         plot_q1_cdf(merged_df, output_dir)
         plot_goodput_stacked(merged_df, output_dir)
-        plot_fidelity_comparison(merged_df, output_dir)
+        plot_allocation_comparison(merged_df, output_dir)
         plot_p99_latency_comparison(merged_df, output_dir)
         plot_time_series_adaptation(merged_df, output_dir)
         print(f"=== 所有图表生成完毕: {output_dir} ===")

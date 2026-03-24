@@ -170,12 +170,13 @@ class MPCMiddleware:
             return f"Err_{type(e).__name__}"
 
     def update_metrics(self, real_metrics):
-        """v64.0: Final reliability fix for P90 feedback"""
+        """v66.0: 使用 WCP (Weighted Conformal Prediction) 代替 EMA，实现高精度低开销预测"""
         global _L1_CACHE
         task_type = real_metrics.get('task_type', 'image_processing')
         target_id = f"mpc_state_{task_type}"
         
         try:
+            # 1. 加载当前状态
             response = dynamodb_client.get_item(
                 TableName=TABLE_NAME, 
                 Key={'id': {'S': target_id}},
@@ -187,19 +188,29 @@ class MPCMiddleware:
             state = json.loads(item['state_blob']['S'])
             ver = item.get('lock_version', {}).get('N', '0')
             
-            curr_p90 = float(state.get('p90_belief', 110.0))
-            if curr_p90 < 1.0: curr_p90 = 110.0 
-
-            new_val = float(real_metrics.get('latency', 100.0))
+            # 2. 调用 WCP 核心更新算法
+            from src.wcp.wcp_update import wcp_update
             
-            # Rise fast (alpha=0.5), fall slow (alpha=0.05)
-            alpha = 0.5 if new_val > curr_p90 else 0.05
-            updated_p90 = (1 - alpha) * curr_p90 + alpha * new_val
+            # 提取特征
+            p90_lat = float(real_metrics.get('latency', 100.0))
+            concurrency = float(real_metrics.get('concurrency', 1.0))
+            cpu = float(real_metrics.get('cpu_limit', 1.0))
+            backlog = float(real_metrics.get('backlog', 0.0))
+            service_time = float(real_metrics.get('service_time', 100.0))
             
-            # v64.0: DOUBLE PROTECTION - NEVER SAVE 0.0
-            if updated_p90 < 1.0: updated_p90 = 110.0
-            state['p90_belief'] = updated_p90
+            # WCP 更新：返回预测值、不确定性和调试信息
+            pred, uncertainty, debug = wcp_update(
+                state, p90_lat, concurrency, cpu, backlog, service_time, 
+                task_type=task_type, alpha=0.1
+            )
             
+            # 3. 更新关键决策字段
+            # 我们将预测值和不确定性保存到状态中，供下一次 decide 使用
+            state['p90_belief'] = pred['p90']
+            state['uncertainty'] = uncertainty
+            state['last_alloc'] = cpu # 确保状态同步
+            
+            # 保存状态
             update_params = {
                 'TableName': TABLE_NAME,
                 'Key': {'id': {'S': target_id}},
@@ -214,11 +225,10 @@ class MPCMiddleware:
             update_params['ExpressionAttributeValues'][':expected_lv'] = {'N': str(ver)}
             
             dynamodb_client.update_item(**update_params)
-            print(f"[v64.0-Feedback] {target_id} P90 -> {updated_p90:.1f}")
+            print(f"[WCP-v66] {target_id}: Pred={pred['p90']:.1f}, Margin={uncertainty:.1f}, E2E={p90_lat:.1f}")
             
         except Exception as e:
-            # Silently fail for now to avoid breaking the worker, but print for CloudWatch
-            print(f"[v63.0-Feedback-Error] {e}")
+            print(f"[WCP-Update-Error] {e}")
 
     def _parse_dynamo_item(self, item):
         state = {}
@@ -236,8 +246,9 @@ class MPCMiddleware:
         return {
             'last_alloc': 1.0,
             'p90_belief': 110.0,
+            'uncertainty': 30.0, # Default margin for cold start
             'prev_rps': 0.0,
-            'code_version': 'v65.0'
+            'code_version': 'v66.0'
         }
 
     def _hydrate_controller(self, state):

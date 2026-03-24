@@ -6,65 +6,65 @@ class Optimizer:
 
     def optimize_u(self, prev_u, pred_upper, slo_limit, price, **kwargs):
         """
-        v59: Ours (MPC-Guard) - Proactive Burst-Awareness + Optimistic Locking
+        v66.0: Robust MPC - Breaking the Performance-Overhead Trade-off
+        Uses WCP Upper Bound (pred_upper) for proactive QoS protection.
         """
         strategy = kwargs.get('strategy', 'mpc_integrated')
         state = kwargs.get('state', {})
         start_t = time.time()
 
-        # --- v58: Shield Protocol (护盾协议) ---
+        # --- v58: Shield Protocol ---
         current_rps = float(state.get('current_rps', 0.0))
         prev_rps = float(state.get('prev_rps', 0.0))
-        
-        # Activate shield if RPS grows by >50% and the base RPS is meaningful
         if current_rps > 1.5 * prev_rps and prev_rps > 5.0:
-            state['opt_debug'] = {
-                "overhead_ms": (time.time() - start_t) * 1000.0,
-                "final_alloc": 1.0,
-                "reason": "Shield Protocol Activated: RPS burst detected."
-            }
             return 1.0
 
-        # --- Regular P90-based Gradient Descent Control ---
-        actual_p90 = float(state.get('p90_belief', 140.0))
-        # v64.2: Aggressive target (100ms) to force Alloc movement
-        # Since current E2E is ~130ms, this will force Alloc UP.
-        target = 100.0 
-        error = actual_p90 - target
+        # --- v66.0: Robust Prediction-Based Control ---
+        # pred_upper is (WCP Prediction + Margin). 
+        # This represents the 90th percentile worst-case latency.
+        # We want to keep this BELOW the slo_limit (180ms).
         
-        # v64.2: High LR for immediate visual feedback
-        lr = 0.4 
+        # Define a safety target slightly below SLO to provide a buffer
+        safety_target = slo_limit - 20.0 # 160ms
+        
+        # Calculate error based on the ROBUST prediction
+        error = pred_upper - safety_target
+        
+        # Aggressive LR for QoS recovery, smoother for efficiency gains
+        lr = 0.5 if error > 0 else 0.3
         
         if error > 0:
-            # Positive error (latency too high) -> increase Alloc (grad must be negative)
-            # new_alloc = prev_u - lr * grad -> new_alloc = prev_u + lr * |grad|
+            # Risk detected -> Increase allocation
+            # The higher the risk, the more we increase
             urgency = 1.0
-            if actual_p90 > 130.0: urgency = 5.0
-            if actual_p90 > 150.0: urgency = 20.0
-            grad = -1.0 * (error / (5.0 / urgency)) # Doubled gain
+            if pred_upper > slo_limit: urgency = 10.0 # Extreme urgency if bound exceeds SLO
+            grad = -1.0 * (error / (10.0 / urgency))
         else:
-            # Negative error (too safe) -> decrease Alloc (grad must be positive)
-            # new_alloc = prev_u - lr * grad
-            grad = 0.5 if abs(error) > 20.0 else 0.2
+            # Safe zone -> Decrease allocation to improve density
+            # We use a smaller gradient to avoid jitter
+            grad = 0.6 if abs(error) > 30.0 else 0.2
 
         new_alloc = prev_u - lr * grad
         
-        # Safety clamps
-        if actual_p90 > 176.0:
-            new_alloc = 1.0 # Jump to max if we are about to violate SLO
+        # Safety Clamps & Adaptive Bounds
+        if pred_upper > slo_limit + 10.0:
+            new_alloc = 1.0 # Emergency jump
         elif new_alloc < prev_u:
-            # Allow up to 10% reduction if we are very safe
-            max_reduction = 0.10 if error < -20.0 else 0.05
+            # Efficiency gain: allow down-scaling
+            max_reduction = 0.15 if error < -40.0 else 0.08
             new_alloc = max(new_alloc, prev_u - max_reduction)
         else:
-            new_alloc = min(new_alloc, prev_u + 0.50) # Max 50% increase per step
+            # QoS protection: allow up-scaling
+            new_alloc = min(new_alloc, prev_u + 0.40)
 
-        final_alloc = max(0.60, min(1.0, new_alloc))
+        # v65.1: Minimum allocation 0.40 for high density
+        final_alloc = max(0.40, min(1.0, new_alloc))
+        
         state['opt_debug'] = {
-            "grad": grad,
+            "pred_upper": pred_upper,
             "error": error,
-            "overhead_ms": (time.time() - start_t) * 1000.0,
+            "grad": grad,
             "final_alloc": final_alloc,
-            "p90": actual_p90
+            "overhead_ms": (time.time() - start_t) * 1000.0
         }
         return final_alloc

@@ -199,10 +199,17 @@ def lambda_handler(event, context):
 
     # --- 3. 反馈更新 (Feedback Loop) ---
     if _MIDDLEWARE:
-        # 确保加载了状态（如果之前没调用 decide 的话）
         _MIDDLEWARE._load_state()
-        # 无论什么策略，都更新全局 P90 信仰，以便后续决策参考
-        _MIDDLEWARE.update_metrics({'latency': latency_ms})
+        # v66.0: 提供完整上下文以启用 WCP (Weighted Conformal Prediction)
+        feedback_metrics = {
+            'latency': latency_ms,
+            'task_type': task_type,
+            'cpu_limit': cpu_limit,
+            'concurrency': event.get('metrics', {}).get('concurrency', 1.0),
+            'backlog': event.get('metrics', {}).get('backlog', 0.0),
+            'service_time': event.get('metrics', {}).get('service_time', 100.0)
+        }
+        _MIDDLEWARE.update_metrics(feedback_metrics)
     
     return {
         'statusCode': 200,
