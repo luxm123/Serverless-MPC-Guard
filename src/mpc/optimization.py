@@ -30,6 +30,9 @@ class Optimizer:
         target = 135.0 
         error = actual_p90 - target
         
+        # v59.4: Increased learning rate and adjusted gradients for more responsive down-scaling
+        lr = 0.2 # Increased from 0.1 to 0.2
+        
         if error > 0:
             urgency = 1.0
             if actual_p90 > 155.0: urgency = 5.0
@@ -37,16 +40,19 @@ class Optimizer:
             grad = -1.0 * (error / (10.0 / urgency))
         else:
             # If we are very safe, explore downwards more aggressively
-            grad = 0.8 if abs(error) > 30.0 else 0.4
+            # If error is negative (e.g., p90=110, target=135, error=-25), we want to REDUCE alloc
+            # new_alloc = prev_u - lr * grad -> we need grad > 0 to reduce alloc
+            grad = 0.5 if abs(error) > 20.0 else 0.2
 
-        lr = 0.1 
         new_alloc = prev_u - lr * grad
         
         # Safety clamps
         if actual_p90 > 176.0:
             new_alloc = 1.0 # Jump to max if we are about to violate SLO
         elif new_alloc < prev_u:
-            new_alloc = max(new_alloc, prev_u - 0.05) # Max 5% reduction per step
+            # Allow up to 10% reduction if we are very safe
+            max_reduction = 0.10 if error < -20.0 else 0.05
+            new_alloc = max(new_alloc, prev_u - max_reduction)
         else:
             new_alloc = min(new_alloc, prev_u + 0.50) # Max 50% increase per step
 
