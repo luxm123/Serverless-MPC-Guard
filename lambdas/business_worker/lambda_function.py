@@ -141,9 +141,10 @@ def lambda_handler(event, context):
             result = {"status": "success", "type": "video", "val": res}
             
         elif task_type.startswith('linpack'):
-            # v54.4: 增加计算量以确保在低资源下产生真实的 QoS 违约
-            # 校准：1.0 CPU 下约 100ms
-            n = int(62500 * scale)
+            # v55: 大幅增加计算量（地狱加压版）
+            # 目标：1.0 CPU 下约 140ms
+            # 这样一旦资源降到 0.7，耗时将达到 200ms，直接触发 SLO 违约
+            n = int(85000 * scale)
             res = 0.0
             for i in range(n):
                 res += (i * 0.0001)
