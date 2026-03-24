@@ -34,10 +34,16 @@ class MPCMiddleware:
             return _L1_CACHE['params'], _L1_CACHE['version']
 
         try:
-            response = dynamodb_client.get_item(TableName=TABLE_NAME, Key={'id': {'S': self.state_id}})
+            # v59.2: Force ConsistentRead to ensure we get the latest update from other containers
+            response = dynamodb_client.get_item(
+                TableName=TABLE_NAME, 
+                Key={'id': {'S': self.state_id}},
+                ConsistentRead=True
+            )
             item = response.get('Item')
             if item:
                 state = self._parse_dynamo_item(item)
+                # version is stored at the top level
                 version = item.get('version', {}).get('N', '0')
                 
                 # v59: Update cache
@@ -189,7 +195,7 @@ class MPCMiddleware:
 
     def _parse_dynamo_item(self, item):
         state = {}
-        # The top-level attributes
+        # v59.2: Top-level attributes (including last_alloc and version)
         for key, value in item.items():
             if key == 'params' or key == 'id': continue
             if 'N' in value:
@@ -197,10 +203,11 @@ class MPCMiddleware:
             elif 'S' in value:
                 state[key] = value['S']
         
-        # The nested params map
+        # Backward compatibility for nested params map
         params_map = item.get('params', {}).get('M', {})
         for key, value in params_map.items():
             if 'N' in value:
+                # Nested value takes priority if exists
                 state[key] = float(value['N'])
             elif 'S' in value:
                 state[key] = value['S']
