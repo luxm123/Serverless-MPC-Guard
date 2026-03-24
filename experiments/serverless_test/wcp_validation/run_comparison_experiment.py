@@ -182,6 +182,7 @@ def run_single_request(idx, strategy, start_time):
             'alloc': decision.get('resource_alloc', 1.0),
             'uncertainty': decision.get('uncertainty', 0.0),
             'p90_prediction': decision.get('p90_prediction', 0.0),
+            'p90_belief': decision.get('p90_belief', 0.0),
             'version': decision.get('version', 'UNKNOWN'),
             'prev_alloc': decision.get('prev_alloc', '?'),
             'new_alloc': decision.get('new_alloc', '?'),
@@ -228,7 +229,7 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
                     prev_str = f"{float(prev_a):.3f}" if isinstance(prev_a, (int, float)) or (isinstance(prev_a, str) and prev_a.replace('.','',1).isdigit()) else str(prev_a)
                     new_str = f"{float(new_a):.3f}" if isinstance(new_a, (int, float)) or (isinstance(new_a, str) and new_a.replace('.','',1).isdigit()) else str(new_a)
                     
-                    print(f"[{strategy_name}] Req {res['id']:2d}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Ver={res['version']}, PrevA={prev_str}, NewA={new_str}, Price={res.get('shadow_price', 0.0):.1f}")
+                    print(f"[{strategy_name}] Req {res['id']:2d}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Ver={res['version']}, PrevA={prev_str}, NewA={new_str}, P90_B={res.get('p90_belief', 0.0):.1f}, Price={res.get('shadow_price', 0.0):.1f}")
                 except Exception as fmt_e:
                     # Fallback print if formatting fails
                     print(f"[{strategy_name}] Req {res['id']:2d}: Alloc={res['alloc']}, E2E={res['e2e_latency']:.1f}ms (Fmt Error: {fmt_e})")
