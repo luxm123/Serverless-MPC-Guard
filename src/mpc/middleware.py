@@ -69,17 +69,16 @@ class MPCMiddleware:
         if self.state_id == 'global_params':
             self.state_id = f"mpc_state_{task_type}"
             
-        # v63: Force a clean break from the corrupted v62 series
-        current_logic_ver = 'v63.0'
+        # v64: The "Final Boss" fix for the 0.0 belief visibility issue
+        current_logic_ver = 'v64.0'
         state, lock_ver = self._load_state()
         write_status = "NotAttempted"
 
-        # Force reset if version doesn't match or state is missing
         if not state or state.get('code_version') != current_logic_ver or event.get('reset_state'):
             state = self._get_default_params()
             state['code_version'] = current_logic_ver
             lock_ver = '0'
-            print(f"[CRITICAL-DEBUG] v63.0 RESET TRIGGERED for {self.state_id}")
+            print(f"[CRITICAL-DEBUG] v64.0 RESET for {self.state_id}")
             write_status = self._sync_save_state(state, lock_ver, force=True)
             lock_ver = '1'
         
@@ -88,11 +87,9 @@ class MPCMiddleware:
         prev_rps = float(state.get('prev_rps', 0.0))
         state['prev_rps'] = current_rps
 
-        # v63.0: Double-check belief before use
+        # v64.0: Ensure belief is REAL
         current_p90 = float(state.get('p90_belief', 110.0))
-        if current_p90 < 1.0: 
-            print(f"[CRITICAL-DEBUG] Found 0.0 belief, forcing to 110.0")
-            current_p90 = 110.0
+        if current_p90 < 1.0: current_p90 = 110.0
 
         self._hydrate_controller(state)
         system_state = {
@@ -105,24 +102,30 @@ class MPCMiddleware:
 
         result = self.controller.decide(task, {}, system_state)
         new_alloc = float(result.get('decision', {}).get('resource_alloc', last_alloc))
-        state['last_alloc'] = new_alloc
-        state['p90_belief'] = system_state['p90_belief']
         
-        # Save decision
+        # v64.0: EXPLICITLY update state with the belief used for decision
+        state['last_alloc'] = new_alloc
+        state['p90_belief'] = current_p90 
+        
         write_status = self._sync_save_state(state, lock_ver)
-
-        # IMPORTANT: Reset state_id to original to prevent container pollution
         self.state_id = original_state_id 
         
+        # v64.0: Pack everything into the result for visibility
         debug_info = {
             'version': f"{current_logic_ver}_L{lock_ver}_W{write_status}",
             'code_version': current_logic_ver,
             'state_id': self.state_id,
-            'p90_belief': current_p90,
+            'p90_belief': current_p90, # THIS IS THE ONE THE SCRIPT READS
             'prev_alloc': last_alloc,
             'new_alloc': new_alloc
         }
         
+        # Ensure result['decision'] also has these for legacy scripts
+        result['decision']['p90_belief'] = current_p90
+        result['decision']['version'] = debug_info['version']
+        result['decision']['prev_alloc'] = last_alloc
+        result['decision']['new_alloc'] = new_alloc
+
         return result['decision'], {**debug_info, **result.get('meta', {})}
 
     def _sync_save_state(self, params, version, force=False):
@@ -167,13 +170,11 @@ class MPCMiddleware:
             return f"Err_{type(e).__name__}"
 
     def update_metrics(self, real_metrics):
-        """v63.0: Ultra-reliable feedback loop"""
+        """v64.0: Final reliability fix for P90 feedback"""
         global _L1_CACHE
-        # 1. Determine task-specific state_id
         task_type = real_metrics.get('task_type', 'image_processing')
         target_id = f"mpc_state_{task_type}"
         
-        # 2. Reload latest state from DynamoDB
         try:
             response = dynamodb_client.get_item(
                 TableName=TABLE_NAME, 
@@ -187,16 +188,18 @@ class MPCMiddleware:
             ver = item.get('lock_version', {}).get('N', '0')
             
             curr_p90 = float(state.get('p90_belief', 110.0))
-            if curr_p90 < 1.0: curr_p90 = 110.0 # Safety floor
+            if curr_p90 < 1.0: curr_p90 = 110.0 
 
             new_val = float(real_metrics.get('latency', 100.0))
             
-            # Asymmetric EMA: rise fast, fall slow
+            # Rise fast (alpha=0.5), fall slow (alpha=0.05)
             alpha = 0.5 if new_val > curr_p90 else 0.05
             updated_p90 = (1 - alpha) * curr_p90 + alpha * new_val
+            
+            # v64.0: DOUBLE PROTECTION - NEVER SAVE 0.0
+            if updated_p90 < 1.0: updated_p90 = 110.0
             state['p90_belief'] = updated_p90
             
-            # 3. Synchronous save back to the SPECIFIC state_id
             update_params = {
                 'TableName': TABLE_NAME,
                 'Key': {'id': {'S': target_id}},
@@ -211,7 +214,7 @@ class MPCMiddleware:
             update_params['ExpressionAttributeValues'][':expected_lv'] = {'N': str(ver)}
             
             dynamodb_client.update_item(**update_params)
-            print(f"[v63.0-Feedback] Updated {target_id} P90 to {updated_p90:.1f}")
+            print(f"[v64.0-Feedback] {target_id} P90 -> {updated_p90:.1f}")
             
         except Exception as e:
             # Silently fail for now to avoid breaking the worker, but print for CloudWatch
@@ -234,7 +237,7 @@ class MPCMiddleware:
             'last_alloc': 1.0,
             'p90_belief': 110.0,
             'prev_rps': 0.0,
-            'code_version': 'v63.0'
+            'code_version': 'v64.0'
         }
 
     def _hydrate_controller(self, state):
