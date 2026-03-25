@@ -133,6 +133,8 @@ class MPCMiddleware:
         current_rps = self._finite_float(metrics.get('rps', 0.0), 0.0)
         prev_rps = self._finite_float(state.get('prev_rps', 0.0), 0.0)
         state['prev_rps'] = current_rps
+        concurrency = self._finite_float(metrics.get('concurrency', metrics.get('backlog', 0.0)), 0.0)
+        backlog = self._finite_float(metrics.get('backlog', concurrency), concurrency)
 
         # v64.0: Ensure belief is REAL
         current_p90 = self._clamp_ms(state.get('p90_belief', 110.0), 1.0, 500.0, 110.0)
@@ -153,6 +155,8 @@ class MPCMiddleware:
             'strategy': strategy,
             'current_rps': current_rps,
             'prev_rps': prev_rps,
+            'concurrency': concurrency,
+            'backlog': backlog,
         }
 
         result = self.controller.decide(task, {}, system_state)

@@ -42,6 +42,7 @@ class Optimizer:
         overhead_ms = float(state.get('e2e_overhead_ms', 0.0))
         last_y = float(state.get('last_y', 0.0))
         uncertainty = float(state.get('uncertainty', 0.0))
+        concurrency = float(state.get('concurrency', state.get('backlog', 0.0)))
         pred_total = float(pred_upper) + overhead_ms
         obs_total = last_y + overhead_ms
         safety_target = float(slo_limit) - 20.0
@@ -61,13 +62,20 @@ class Optimizer:
         else:
             alloc_floor = 0.40 + 0.20 * ((pred_total - (safety_target - 30.0)) / 30.0)
 
+        if concurrency >= 180.0:
+            alloc_floor = max(alloc_floor, 0.90)
+        elif concurrency >= 120.0:
+            alloc_floor = max(alloc_floor, 0.75)
+        elif concurrency >= 60.0:
+            alloc_floor = max(alloc_floor, 0.60)
+
         if safe_streak >= 30:
             alloc_floor = min(alloc_floor, 0.50)
         if safe_streak >= 60:
             alloc_floor = min(alloc_floor, 0.45)
         
         # Aggressive LR for QoS recovery, smoother for efficiency gains
-        lr = 0.5 if error > 0 else 0.3
+        lr = 0.6 if (error > 0 and concurrency >= 60.0) else (0.5 if error > 0 else 0.3)
         
         if error > 0:
             # Risk detected -> Increase allocation
@@ -94,7 +102,8 @@ class Optimizer:
             new_alloc = max(new_alloc, prev_u - max_reduction)
         else:
             # QoS protection: allow up-scaling
-            new_alloc = min(new_alloc, prev_u + 0.40)
+            max_inc = 0.60 if concurrency >= 120.0 else 0.40
+            new_alloc = min(new_alloc, prev_u + max_inc)
 
         # v65.1: Minimum allocation 0.40 for high density
         final_alloc = max(alloc_floor, min(1.0, new_alloc))
@@ -106,6 +115,7 @@ class Optimizer:
             "e2e_overhead_ms": overhead_ms,
             "alloc_floor": alloc_floor,
             "uncertainty": uncertainty,
+            "concurrency": concurrency,
             "safe_streak": safe_streak,
             "error": error,
             "grad": grad,
