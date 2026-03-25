@@ -12,7 +12,7 @@ class HpaBaselineController:
         - scale_up_limit: 100% (Max scale up per step)
         - scale_down_limit: 50% (Max scale down per step)
     """
-    def __init__(self, target_utilization=0.8, window_sec=15):
+    def __init__(self, target_utilization=0.8, window_sec=5):
         self.target_utilization = target_utilization
         self.window_sec = window_sec
         self.last_decision_time = 0
@@ -43,8 +43,8 @@ class HpaBaselineController:
         
         final_alloc = max(min_down, min(desired_alloc, max_up))
         
-        # 4. Physical boundaries (matching our AWS Lambda worker limits)
-        final_alloc = max(0.5, min(final_alloc, 4.0))
+        # 4. Physical boundaries (match worker limits fairly with MPC)
+        final_alloc = max(0.40, min(final_alloc, 4.0))
 
         if final_alloc != self.current_alloc:
             self.last_decision_time = now
