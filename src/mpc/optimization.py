@@ -76,6 +76,8 @@ class Optimizer:
         
         # Aggressive LR for QoS recovery, smoother for efficiency gains
         lr = 0.6 if (error > 0 and concurrency >= 60.0) else (0.5 if error > 0 else 0.3)
+        if concurrency < 30.0:
+            lr = 0.4 if error > 0 else 0.25
         
         if error > 0:
             # Risk detected -> Increase allocation
@@ -98,11 +100,14 @@ class Optimizer:
             new_alloc = 1.0 # Emergency jump
         elif new_alloc < prev_u:
             # Efficiency gain: allow down-scaling
-            max_reduction = 0.12 if error < -40.0 else 0.06
+            if concurrency < 30.0:
+                max_reduction = 0.18 if error < -50.0 else 0.10
+            else:
+                max_reduction = 0.12 if error < -40.0 else 0.06
             new_alloc = max(new_alloc, prev_u - max_reduction)
         else:
             # QoS protection: allow up-scaling
-            max_inc = 0.60 if concurrency >= 120.0 else 0.40
+            max_inc = 0.60 if concurrency >= 120.0 else (0.20 if concurrency < 30.0 else 0.40)
             new_alloc = min(new_alloc, prev_u + max_inc)
 
         # v65.1: Minimum allocation 0.40 for high density

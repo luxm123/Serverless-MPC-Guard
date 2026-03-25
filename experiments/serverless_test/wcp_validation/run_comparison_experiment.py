@@ -243,7 +243,7 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
             if res.get('success') and ('server_latency' in res) and ('e2e_latency' in res):
                 overhead = float(res.get('e2e_latency', 0.0)) - float(res.get('server_latency', 0.0))
                 if overhead > 0.0 and overhead < 200.0:
-                    overhead = max(20.0, min(120.0, overhead))
+                    overhead = max(20.0, min(90.0, overhead))
                     global _E2E_OVERHEAD_EMA
                     with _OVERHEAD_LOCK:
                         _E2E_OVERHEAD_EMA = 0.95 * float(_E2E_OVERHEAD_EMA) + 0.05 * overhead
