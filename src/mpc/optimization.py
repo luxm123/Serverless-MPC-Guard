@@ -43,10 +43,15 @@ class Optimizer:
         last_y = float(state.get('last_y', 0.0))
         uncertainty = float(state.get('uncertainty', 0.0))
         concurrency = float(state.get('concurrency', state.get('backlog', 0.0)))
+        backlog = float(state.get('backlog', concurrency))
         pred_total = float(pred_upper) + overhead_ms
         obs_total = last_y + overhead_ms
         safety_target = float(slo_limit) - 20.0
-        error = pred_total - safety_target
+        servers = max(1.0, concurrency)
+        service_est = max(40.0, last_y)
+        queue_delay = min(1500.0, (backlog / servers) * service_est)
+        e2e_pred = pred_total + queue_delay
+        error = e2e_pred - safety_target
 
         safe_streak = int(state.get('safe_streak', 0))
         if pred_total <= (safety_target - 35.0) and obs_total <= (safety_target - 35.0) and uncertainty <= 15.0:
@@ -92,11 +97,11 @@ class Optimizer:
 
         new_alloc = prev_u - lr * grad
 
-        if pred_total >= (safety_target - 10.0) and new_alloc < prev_u:
+        if e2e_pred >= (safety_target - 10.0) and new_alloc < prev_u:
             new_alloc = prev_u
         
         # Safety Clamps & Adaptive Bounds
-        if pred_total > slo_limit + 10.0:
+        if e2e_pred > slo_limit + 50.0:
             new_alloc = 1.0 # Emergency jump
         elif new_alloc < prev_u:
             # Efficiency gain: allow down-scaling
@@ -121,6 +126,9 @@ class Optimizer:
             "alloc_floor": alloc_floor,
             "uncertainty": uncertainty,
             "concurrency": concurrency,
+            "backlog": backlog,
+            "queue_delay": queue_delay,
+            "e2e_pred": e2e_pred,
             "safe_streak": safe_streak,
             "error": error,
             "grad": grad,
