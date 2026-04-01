@@ -17,6 +17,8 @@ CURRENT_TASK = "linpack" # Global to be updated by args
 BASE_RPS = 10.0
 _E2E_OVERHEAD_EMA = 50.0
 _OVERHEAD_LOCK = threading.Lock()
+_MPC_MIN_ALLOC_LOCK = threading.Lock()
+_MPC_MIN_ALLOC = 0.0
 
 def _p90(values):
     if not values:
@@ -155,6 +157,9 @@ def run_single_request(idx, strategy, start_time, inflight=1):
         "e2e_overhead_ms": float(_E2E_OVERHEAD_EMA),
         "slo_limit": float(SERVER_SLO_MS)
     }
+    if strategy == 'mpc_integrated':
+        with _MPC_MIN_ALLOC_LOCK:
+            metrics["min_alloc"] = float(_MPC_MIN_ALLOC)
     
     # Payload contains only task info. 
     payload = {
@@ -542,6 +547,53 @@ def print_comparison(baseline_results, mpc_results):
     elif m_dens < b_dens:
         print(f"[WARNING] MPC-Guard deployment density is {b_dens/m_dens:.2f}x LOWER than baseline.")
 
+def _calc_metrics(results):
+    if not results:
+        return {
+            "e2e_vio": 0.0,
+            "srv_vio": 0.0,
+            "density": 0.0,
+            "p90_e2e": 0.0,
+            "avg_alloc": 0.0,
+            "avg_srv": 0.0,
+            "avg_e2e": 0.0,
+            "avg_overhead": 0.0,
+        }
+    total = len(results)
+    e2e_violations = sum(1 for r in results if r.get('e2e_latency', 0) > E2E_SLO_MS)
+    e2e_viol_rate = (e2e_violations / total) * 100
+    server_violations = sum(1 for r in results if r.get('server_latency', 0) > SERVER_SLO_MS)
+    server_viol_rate = (server_violations / total) * 100
+
+    success = [r for r in results if r.get('success', False)]
+    denom = max(1, len(success))
+    avg_alloc = sum(r.get('alloc', 1.0) for r in results) / total
+    avg_srv = sum(r.get('server_latency', 0) for r in success) / denom
+    avg_e2e = sum(r.get('e2e_latency', 0) for r in success) / denom
+    avg_overhead = sum(r.get('scheduling_overhead_ms', 0.0) for r in results) / total
+    latencies = sorted([r.get('e2e_latency', 0) for r in success])
+    p90 = latencies[int(len(latencies) * 0.9)] if latencies else 0.0
+    density = 1.0 / (avg_alloc + 0.001)
+    return {
+        "e2e_vio": e2e_viol_rate,
+        "srv_vio": server_viol_rate,
+        "density": density,
+        "p90_e2e": p90,
+        "avg_alloc": avg_alloc,
+        "avg_srv": avg_srv,
+        "avg_e2e": avg_e2e,
+        "avg_overhead": avg_overhead,
+    }
+
+def print_summary(results_by_name):
+    print("\n======================================================================")
+    print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'Overhead':<8}")
+    print("----------------------------------------------------------------------")
+    for name, results in results_by_name.items():
+        m = _calc_metrics(results)
+        print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['avg_overhead']:<8.2f}")
+    print("======================================================================\n")
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rps", type=float, default=10.0) # Saturated RPS for Exp 1
@@ -549,6 +601,10 @@ def parse_args():
     parser.add_argument("--task", type=str, default="linpack") # linpack or gzip
     parser.add_argument("--region", type=str, default=os.environ.get("AWS_REGION","us-east-1"))
     parser.add_argument("--workers", type=int, default=200)
+    parser.add_argument("--baselines", type=str, default="hpa,aws_tt,static")
+    parser.add_argument("--static_allocs", type=str, default="0.6,0.8,1.0")
+    parser.add_argument("--mode", type=str, default="fixed")
+    parser.add_argument("--pareto_min_allocs", type=str, default="0.4,0.5,0.6,0.7,0.8,0.9")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -556,7 +612,7 @@ if __name__ == "__main__":
     BASE_RPS = float(args.rps)
     os.environ["AWS_REGION"] = args.region
     CURRENT_TASK = args.task
-    print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs HPA Baseline")
+    print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs Baselines")
     print(f">>> Task: {args.task}, Base RPS: {args.rps}, Duration: {args.minutes}m")
     print(f">>> Mode: Real Azure Bursty Trace (Jiagu-Style stress test)")
 
@@ -572,16 +628,67 @@ if __name__ == "__main__":
     num_requests = len(arrival_times)
     print(f"Generated {num_requests} requests with dynamic bursts.")
     
-    # 2. Run MPC-Guard (Ours) FIRST
-    print(f"\n--- Running MPC-Guard (Ours) ---")
-    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
-    run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50) # Warm up
-    # v56: 极度压缩并发（15），彻底消除客户端排队，让“执行耗时”成为 E2E 的唯一变量
-    mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
-    
-    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
-    print(f"\n--- Running HPA Baseline ---")
-    baseline_results, baseline_cw = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times)
-    
-    # 4. Final Comparison
-    print_comparison(baseline_results, mpc_results)
+    baselines = [x.strip() for x in str(args.baselines).split(',') if x.strip()]
+    static_allocs = []
+    for seg in str(args.static_allocs).split(','):
+        seg = seg.strip()
+        if not seg:
+            continue
+        try:
+            static_allocs.append(float(seg))
+        except Exception:
+            pass
+    pareto_mins = []
+    for seg in str(args.pareto_min_allocs).split(','):
+        seg = seg.strip()
+        if not seg:
+            continue
+        try:
+            pareto_mins.append(float(seg))
+        except Exception:
+            pass
+
+    results_by_name = {}
+
+    if str(args.mode).lower() == "pareto":
+        for mi in pareto_mins:
+            with _MPC_MIN_ALLOC_LOCK:
+                _MPC_MIN_ALLOC = float(mi)
+            name = f"mpc(min={mi:.2f})"
+            print(f"\n--- Running {name} ---")
+            invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
+            run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50)
+            res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
+            results_by_name[name] = res
+    else:
+        with _MPC_MIN_ALLOC_LOCK:
+            _MPC_MIN_ALLOC = 0.0
+        print(f"\n--- Running MPC-Guard (Ours) ---")
+        invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
+        run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50)
+        mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
+        results_by_name["mpc_integrated"] = mpc_results
+
+    if str(args.mode).lower() != "pareto":
+        for b in baselines:
+            if b == "hpa":
+                print(f"\n--- Running HPA Baseline ---")
+                invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
+                run_phase('baseline', warm_up=True, max_workers=10, num_requests=50)
+                res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times)
+                results_by_name["hpa_baseline"] = res
+            elif b == "aws_tt":
+                print(f"\n--- Running AWS Target Tracking ---")
+                invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='aws_tt', reset_state=True)
+                run_phase('aws_tt', warm_up=True, max_workers=10, num_requests=50)
+                res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times)
+                results_by_name["aws_tt"] = res
+            elif b == "static":
+                for u in static_allocs:
+                    name = f"static_{u:.2f}"
+                    print(f"\n--- Running {name} ---")
+                    run_phase(f"static_{u}", warm_up=True, max_workers=10, num_requests=50)
+                    res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times)
+                    results_by_name[name] = res
+
+    print_summary(results_by_name)

@@ -55,6 +55,14 @@ class Optimizer:
         server_pred = pred_total + queue_delay
         e2e_pred = server_pred + overhead_ms
         error = server_pred - safety_target
+        min_alloc = 0.0
+        try:
+            min_alloc = float(state.get('min_alloc', 0.0) or 0.0)
+        except Exception:
+            min_alloc = 0.0
+        if not math.isfinite(min_alloc):
+            min_alloc = 0.0
+        min_alloc = float(max(0.0, min(1.0, min_alloc)))
 
         safe_streak = int(state.get('safe_streak', 0))
         if pred_total <= (safety_target - 35.0) and obs_total <= (safety_target - 35.0) and uncertainty <= 15.0:
@@ -119,8 +127,7 @@ class Optimizer:
             max_inc = 0.60 if concurrency >= 120.0 else (0.20 if concurrency < 30.0 else 0.40)
             new_alloc = min(new_alloc, prev_u + max_inc)
 
-        # v65.1: Minimum allocation 0.40 for high density
-        final_alloc = max(alloc_floor, min(1.0, new_alloc))
+        final_alloc = max(alloc_floor, min_alloc, min(1.0, new_alloc))
         
         state['opt_debug'] = {
             "pred_upper": pred_upper,

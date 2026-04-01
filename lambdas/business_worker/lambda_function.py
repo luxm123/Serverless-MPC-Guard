@@ -22,12 +22,15 @@ except ImportError as e:
 try:
     from src.mpc.middleware import MPCMiddleware
     from src.controllers.hpa_baseline_controller import HpaBaselineController
+    from src.controllers.aws_baseline_controller import AwsBaselineController
     _MIDDLEWARE = MPCMiddleware()
     _HPA = HpaBaselineController(target_utilization=0.8, window_sec=15)
+    _AWS_TT = AwsBaselineController(target_utilization=0.75, scale_up_cooldown_sec=5, scale_down_cooldown_sec=5)
 except ImportError as e:
     print(f"Middleware import error: {e}")
     _MIDDLEWARE = None
     _HPA = None
+    _AWS_TT = None
 
 # 容器级全局变量，用于检测冷启动
 _IS_COLD = True
@@ -141,6 +144,82 @@ def lambda_handler(event, context):
             'cpu_util': cpu_util,
             'version': 'HPA_BASELINE'
         }
+    elif strategy == 'aws_tt' and _AWS_TT:
+        baseline_mw = MPCMiddleware(state_id='aws_tt_params')
+        state, version = baseline_mw._load_state()
+
+        if event.get('reset_state'):
+            state = {'last_alloc': 1.0, 'code_version': 'aws_tt'}
+            version = '0'
+            baseline_mw._sync_save_state(state, version, force=True)
+            baseline_pred_mw = MPCMiddleware(state_id=f"aws_tt_state_{task_type}")
+            try:
+                init_slo = float(event.get('metrics', {}).get('slo_limit', 180.0) or 180.0)
+            except Exception:
+                init_slo = 180.0
+            if not init_slo or init_slo <= 0.0:
+                init_slo = 180.0
+            init_p90 = float(max(10.0, min(500.0, 0.8 * init_slo)))
+            pred_state = {'p90_belief': init_p90, 'last_y': init_p90, 'code_version': 'baseline_ema'}
+            baseline_pred_mw._sync_save_state(pred_state, '0', force=True)
+
+        if state is None:
+            state = {'last_alloc': 1.0}
+            version = '0'
+
+        baseline_pred_mw = MPCMiddleware(state_id=f"aws_tt_state_{task_type}")
+        pred_state, _ = baseline_pred_mw._load_state()
+        p90 = float(pred_state.get('p90_belief', 100.0)) if pred_state else 100.0
+
+        try:
+            slo = float(event.get('metrics', {}).get('slo_limit', 180.0) or 180.0)
+        except Exception:
+            slo = 180.0
+        if not slo or slo <= 0.0:
+            slo = 180.0
+        slo = float(max(1.0, min(10000.0, slo)))
+        cpu_util = float(_AWS_TT.target_utilization) * (p90 / slo)
+        cpu_util = float(max(0.0, min(2.0, cpu_util)))
+
+        metrics = {'cpu_util': cpu_util}
+        current_alloc = float(state.get('last_alloc', 1.0))
+        decision = _AWS_TT.get_decision(metrics, current_alloc)
+        cpu_limit = float(decision.get('cpu_cores', current_alloc))
+        cpu_limit = float(max(0.40, min(1.0, cpu_limit)))
+
+        state['last_alloc'] = cpu_limit
+        baseline_mw._sync_save_state(state, version)
+
+        debug_info = {
+            'resource_alloc': cpu_limit,
+            'prev_alloc': current_alloc,
+            'new_alloc': cpu_limit,
+            'strategy': 'aws_tt',
+            'p90': p90,
+            'cpu_util': cpu_util,
+            'version': 'AWS_TARGET_TRACKING'
+        }
+    elif strategy.startswith('static'):
+        static_u = None
+        try:
+            parts = str(strategy).split('_', 1)
+            if len(parts) == 2:
+                static_u = float(parts[1])
+        except Exception:
+            static_u = None
+        if static_u is None:
+            try:
+                static_u = float(event.get('resource_alloc', event.get('cpu_limit', 1.0)) or 1.0)
+            except Exception:
+                static_u = 1.0
+        cpu_limit = float(max(0.40, min(1.0, static_u)))
+        debug_info = {
+            'resource_alloc': cpu_limit,
+            'prev_alloc': cpu_limit,
+            'new_alloc': cpu_limit,
+            'strategy': strategy,
+            'version': 'STATIC_ALLOC'
+        }
     scheduling_overhead_ms = (time.time() - scheduling_start) * 1000.0
     debug_info['scheduling_overhead_ms'] = scheduling_overhead_ms
 
@@ -246,6 +325,12 @@ def lambda_handler(event, context):
     elif strategy == 'baseline':
         try:
             baseline_pred_mw = MPCMiddleware(state_id=f"baseline_state_{task_type}")
+            baseline_pred_mw.update_metrics_ema({'latency': latency_ms})
+        except Exception:
+            pass
+    elif strategy == 'aws_tt':
+        try:
+            baseline_pred_mw = MPCMiddleware(state_id=f"aws_tt_state_{task_type}")
             baseline_pred_mw.update_metrics_ema({'latency': latency_ms})
         except Exception:
             pass
