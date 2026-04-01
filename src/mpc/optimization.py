@@ -49,7 +49,8 @@ class Optimizer:
         safety_target = float(slo_limit) - 20.0
         servers = max(1.0, concurrency)
         service_est = max(40.0, last_y)
-        queue_delay = min(1500.0, (backlog / servers) * service_est)
+        queue_depth_per_server = max(0.0, (backlog - servers) / servers)
+        queue_delay = min(1500.0, queue_depth_per_server * service_est)
         e2e_pred = pred_total + queue_delay
         error = e2e_pred - safety_target
 
