@@ -44,7 +44,7 @@ class Optimizer:
         uncertainty = float(state.get('uncertainty', 0.0))
         concurrency = float(state.get('concurrency', state.get('backlog', 0.0)))
         backlog = float(state.get('backlog', concurrency))
-        pred_total = float(pred_upper)
+        pred_total = max(float(pred_upper), float(last_y) + float(uncertainty))
         obs_total = last_y
         margin_ms = min(10.0, 0.10 * float(slo_limit))
         safety_target = max(1.0, float(slo_limit) - margin_ms)
