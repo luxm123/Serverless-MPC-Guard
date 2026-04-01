@@ -52,8 +52,9 @@ class Optimizer:
         service_est = max(40.0, last_y)
         queue_depth_per_server = max(0.0, (backlog - servers) / servers)
         queue_delay = min(1500.0, queue_depth_per_server * service_est)
-        e2e_pred = pred_total + queue_delay + overhead_ms
-        error = (pred_total + queue_delay) - safety_target
+        server_pred = pred_total + queue_delay
+        e2e_pred = server_pred + overhead_ms
+        error = server_pred - safety_target
 
         safe_streak = int(state.get('safe_streak', 0))
         if pred_total <= (safety_target - 35.0) and obs_total <= (safety_target - 35.0) and uncertainty <= 15.0:
@@ -99,11 +100,12 @@ class Optimizer:
 
         new_alloc = prev_u - lr * grad
 
-        if e2e_pred >= (safety_target - 10.0) and new_alloc < prev_u:
+        if server_pred >= (safety_target - 10.0) and new_alloc < prev_u:
             new_alloc = prev_u
         
         # Safety Clamps & Adaptive Bounds
-        if e2e_pred > slo_limit + 50.0:
+        emergency_margin = max(20.0, 0.3 * float(slo_limit))
+        if server_pred > float(slo_limit) + emergency_margin:
             new_alloc = 1.0 # Emergency jump
         elif new_alloc < prev_u:
             # Efficiency gain: allow down-scaling
