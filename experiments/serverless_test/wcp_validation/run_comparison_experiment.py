@@ -18,6 +18,74 @@ BASE_RPS = 10.0
 _E2E_OVERHEAD_EMA = 50.0
 _OVERHEAD_LOCK = threading.Lock()
 
+def _p90(values):
+    if not values:
+        return 0.0
+    arr = np.array([float(v) for v in values if v is not None], dtype=float)
+    if arr.size == 0:
+        return 0.0
+    return float(np.percentile(arr, 90))
+
+def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=15, sample_requests=80):
+    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
+    server_lats = []
+    e2e_lats = []
+
+    metrics = {
+        "p90": 0.0,
+        "backlog": 1,
+        "concurrency": 1.0,
+        "cpu_util": 0.5,
+        "error_rate": 0.0,
+        "rps": 0.0,
+        "e2e_overhead_ms": float(_E2E_OVERHEAD_EMA)
+    }
+
+    for i in range(max(0, int(warmup_requests))):
+        invoke_worker_lambda(
+            decision={},
+            task={"id": f"cal-warm-{i}", "priority": "standard", "risk": {}, "task_type": task_name},
+            mode='auto',
+            strategy='baseline',
+            task_type=task_name,
+            resource_alloc=1.0,
+            metrics=metrics
+        )
+
+    for i in range(max(1, int(sample_requests))):
+        res = invoke_worker_lambda(
+            decision={},
+            task={"id": f"cal-{i}", "priority": "standard", "risk": {}, "task_type": task_name},
+            mode='auto',
+            strategy='baseline',
+            task_type=task_name,
+            resource_alloc=1.0,
+            metrics=metrics
+        )
+        if not res:
+            continue
+        try:
+            e2e_lats.append(float(res.get('client_duration', 0.0)))
+        except Exception:
+            pass
+        try:
+            body = res.get('response', {}) or {}
+            server_lats.append(float(body.get('latency_ms', 0.0) or 0.0))
+        except Exception:
+            pass
+
+    base_p90_e2e = _p90([v for v in e2e_lats if v and v > 0.0])
+    base_p90_srv = _p90([v for v in server_lats if v and v > 0.0])
+
+    qos_e2e = float(max(1.0, base_p90_e2e * float(factor)))
+    qos_srv = float(max(1.0, base_p90_srv * float(factor)))
+    return {
+        "base_p90_e2e_ms": base_p90_e2e,
+        "base_p90_srv_ms": base_p90_srv,
+        "qos_e2e_ms": qos_e2e,
+        "qos_srv_ms": qos_srv
+    }
+
 def generate_fixed_rps_arrivals(rps, duration_min):
     """Generates arrival timestamps for a fixed RPS (Exp 1 style)."""
     num_requests = int(rps * duration_min * 60)
@@ -84,7 +152,8 @@ def run_single_request(idx, strategy, start_time, inflight=1):
         "cpu_util": 0.5,
         "error_rate": 0.0,
         "rps": float(BASE_RPS),
-        "e2e_overhead_ms": float(_E2E_OVERHEAD_EMA)
+        "e2e_overhead_ms": float(_E2E_OVERHEAD_EMA),
+        "slo_limit": float(E2E_SLO_MS)
     }
     
     # Payload contains only task info. 
@@ -491,7 +560,11 @@ if __name__ == "__main__":
     print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs HPA-Baseline (Jiagu)")
     print(f">>> Task: {args.task}, Base RPS: {args.rps}, Duration: {args.minutes}m")
     print(f">>> Mode: Real Azure Bursty Trace (Jiagu-Style stress test)")
-    print(f">>> QoS Thresholds: Server={SERVER_SLO_MS}ms, E2E={E2E_SLO_MS}ms")
+
+    cal = calibrate_qos_threshold(args.task, factor=1.2, warmup_requests=15, sample_requests=80)
+    SERVER_SLO_MS = float(cal["qos_srv_ms"])
+    E2E_SLO_MS = float(cal["qos_e2e_ms"])
+    print(f">>> QoS Thresholds (auto): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
     
     # 1. Generate Bursty arrivals using real Azure Trace
     # This creates the "real" violations you saw in your previous screenshots

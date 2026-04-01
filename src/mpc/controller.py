@@ -16,10 +16,11 @@ class MPCController:
         pred_upper = float(system_state.get('p90_belief', 120.0)) + float(uncertainty)
         
         # The core optimization logic
+        slo_limit = float(system_state.get('slo_limit', 180.0))
         new_alloc = self.optimizer.optimize_u(
             prev_u=prev_u,
             pred_upper=pred_upper,
-            slo_limit=180.0,
+            slo_limit=slo_limit,
             price=0.0, # Not used
             state=system_state # Pass the full state
         )
