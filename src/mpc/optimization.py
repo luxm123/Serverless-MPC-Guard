@@ -44,15 +44,16 @@ class Optimizer:
         uncertainty = float(state.get('uncertainty', 0.0))
         concurrency = float(state.get('concurrency', state.get('backlog', 0.0)))
         backlog = float(state.get('backlog', concurrency))
-        pred_total = float(pred_upper) + overhead_ms
-        obs_total = last_y + overhead_ms
-        safety_target = float(slo_limit) - 20.0
+        pred_total = float(pred_upper)
+        obs_total = last_y
+        margin_ms = min(10.0, 0.10 * float(slo_limit))
+        safety_target = max(1.0, float(slo_limit) - margin_ms)
         servers = max(1.0, concurrency)
         service_est = max(40.0, last_y)
         queue_depth_per_server = max(0.0, (backlog - servers) / servers)
         queue_delay = min(1500.0, queue_depth_per_server * service_est)
-        e2e_pred = pred_total + queue_delay
-        error = e2e_pred - safety_target
+        e2e_pred = pred_total + queue_delay + overhead_ms
+        error = (pred_total + queue_delay) - safety_target
 
         safe_streak = int(state.get('safe_streak', 0))
         if pred_total <= (safety_target - 35.0) and obs_total <= (safety_target - 35.0) and uncertainty <= 15.0:

@@ -153,7 +153,7 @@ def run_single_request(idx, strategy, start_time, inflight=1):
         "error_rate": 0.0,
         "rps": float(BASE_RPS),
         "e2e_overhead_ms": float(_E2E_OVERHEAD_EMA),
-        "slo_limit": float(E2E_SLO_MS)
+        "slo_limit": float(SERVER_SLO_MS)
     }
     
     # Payload contains only task info. 
