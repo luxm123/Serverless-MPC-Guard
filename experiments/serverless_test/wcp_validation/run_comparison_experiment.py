@@ -207,12 +207,12 @@ def run_single_request(idx, strategy, start_time, inflight=1):
              decision = {'version': 'FAILED'}
 
         ctrl_latency = 0 # No external controller overhead
-    elif strategy == 'baseline':
+    elif strategy in ['baseline', 'aws_tt'] or str(strategy).startswith('static'):
         worker_result = invoke_worker_lambda(
             decision={},
             task={"id": idx, "priority": priority, "risk": payload['risk'], "task_type": task_name},
             mode='auto',
-            strategy='baseline',
+            strategy=strategy,
             task_type=task_name,
             metrics=payload['metrics']
         )
@@ -597,6 +597,7 @@ def print_summary(results_by_name):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rps", type=float, default=10.0) # Saturated RPS for Exp 1
+    parser.add_argument("--rps_list", type=str, default="")
     parser.add_argument("--minutes", type=float, default=30.0)
     parser.add_argument("--task", type=str, default="linpack") # linpack or gzip
     parser.add_argument("--region", type=str, default=os.environ.get("AWS_REGION","us-east-1"))
@@ -621,13 +622,6 @@ if __name__ == "__main__":
     E2E_SLO_MS = float(cal["qos_e2e_ms"])
     print(f">>> QoS Thresholds (auto): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
     
-    # 1. Generate Bursty arrivals using real Azure Trace
-    # This creates the "real" violations you saw in your previous screenshots
-    second_rates = load_azure_trace(duration_min=int(args.minutes))
-    arrival_times = generate_trace_arrivals(second_rates, base_rps=args.rps)
-    num_requests = len(arrival_times)
-    print(f"Generated {num_requests} requests with dynamic bursts.")
-    
     baselines = [x.strip() for x in str(args.baselines).split(',') if x.strip()]
     static_allocs = []
     for seg in str(args.static_allocs).split(','):
@@ -648,47 +642,85 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-    results_by_name = {}
+    rps_list = []
+    for seg in str(args.rps_list).split(','):
+        seg = seg.strip()
+        if not seg:
+            continue
+        try:
+            rps_list.append(float(seg))
+        except Exception:
+            pass
+    if not rps_list:
+        rps_list = [float(args.rps)]
 
-    if str(args.mode).lower() == "pareto":
-        for mi in pareto_mins:
+    sweep_rows = []
+    for rps in rps_list:
+        BASE_RPS = float(rps)
+        print(f"\n>>> Running RPS={rps:.2f} <<<")
+
+        second_rates = load_azure_trace(duration_min=int(args.minutes))
+        arrival_times = generate_trace_arrivals(second_rates, base_rps=rps)
+        num_requests = len(arrival_times)
+        print(f"Generated {num_requests} requests with dynamic bursts.")
+
+        results_by_name = {}
+
+        if str(args.mode).lower() == "pareto":
+            for mi in pareto_mins:
+                with _MPC_MIN_ALLOC_LOCK:
+                    _MPC_MIN_ALLOC = float(mi)
+                name = f"mpc(min={mi:.2f})"
+                print(f"\n--- Running {name} ---")
+                invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
+                run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50)
+                res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
+                results_by_name[name] = res
+        else:
             with _MPC_MIN_ALLOC_LOCK:
-                _MPC_MIN_ALLOC = float(mi)
-            name = f"mpc(min={mi:.2f})"
-            print(f"\n--- Running {name} ---")
+                _MPC_MIN_ALLOC = 0.0
+            print(f"\n--- Running MPC-Guard (Ours) ---")
             invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
             run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50)
-            res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
-            results_by_name[name] = res
-    else:
-        with _MPC_MIN_ALLOC_LOCK:
-            _MPC_MIN_ALLOC = 0.0
-        print(f"\n--- Running MPC-Guard (Ours) ---")
-        invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
-        run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50)
-        mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
-        results_by_name["mpc_integrated"] = mpc_results
+            mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
+            results_by_name["mpc_integrated"] = mpc_results
 
-    if str(args.mode).lower() != "pareto":
-        for b in baselines:
-            if b == "hpa":
-                print(f"\n--- Running HPA Baseline ---")
-                invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
-                run_phase('baseline', warm_up=True, max_workers=10, num_requests=50)
-                res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times)
-                results_by_name["hpa_baseline"] = res
-            elif b == "aws_tt":
-                print(f"\n--- Running AWS Target Tracking ---")
-                invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='aws_tt', reset_state=True)
-                run_phase('aws_tt', warm_up=True, max_workers=10, num_requests=50)
-                res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times)
-                results_by_name["aws_tt"] = res
-            elif b == "static":
-                for u in static_allocs:
-                    name = f"static_{u:.2f}"
-                    print(f"\n--- Running {name} ---")
-                    run_phase(f"static_{u}", warm_up=True, max_workers=10, num_requests=50)
-                    res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times)
-                    results_by_name[name] = res
+        if str(args.mode).lower() != "pareto":
+            for b in baselines:
+                if b == "hpa":
+                    print(f"\n--- Running HPA Baseline ---")
+                    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
+                    run_phase('baseline', warm_up=True, max_workers=10, num_requests=50)
+                    res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times)
+                    results_by_name["hpa_baseline"] = res
+                elif b == "aws_tt":
+                    print(f"\n--- Running AWS Target Tracking ---")
+                    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='aws_tt', reset_state=True)
+                    run_phase('aws_tt', warm_up=True, max_workers=10, num_requests=50)
+                    res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times)
+                    results_by_name["aws_tt"] = res
+                elif b == "static":
+                    for u in static_allocs:
+                        name = f"static_{u:.2f}"
+                        print(f"\n--- Running {name} ---")
+                        run_phase(f"static_{u}", warm_up=True, max_workers=10, num_requests=50)
+                        res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times)
+                        results_by_name[name] = res
 
-    print_summary(results_by_name)
+        print_summary(results_by_name)
+
+        for name, results in results_by_name.items():
+            m = _calc_metrics(results)
+            sweep_rows.append({
+                "rps": float(rps),
+                "strategy": name,
+                **m
+            })
+
+    if len(rps_list) > 1 and str(args.mode).lower() != "pareto":
+        print("\n==================== FINAL SUMMARY (ALL RPS) ====================")
+        print(f"{'RPS':<6} | {'Strategy':<16} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'Overhead':<8}")
+        print("-----------------------------------------------------------------")
+        for row in sweep_rows:
+            print(f"{row['rps']:<6.0f} | {row['strategy']:<16} | {row['e2e_vio']:<10.2f} | {row['srv_vio']:<10.2f} | {row['avg_alloc']:<6.2f} | {row['density']:<6.2f} | {row['p90_e2e']:<10.2f} | {row['avg_srv']:<8.2f} | {row['avg_e2e']:<8.2f} | {row['avg_overhead']:<8.2f}")
+        print("=================================================================\n")
