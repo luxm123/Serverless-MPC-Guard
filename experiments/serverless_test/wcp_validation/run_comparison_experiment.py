@@ -17,6 +17,8 @@ CURRENT_TASK = "linpack" # Global to be updated by args
 BASE_RPS = 10.0
 _E2E_OVERHEAD_EMA = 50.0
 _OVERHEAD_LOCK = threading.Lock()
+_BASELINE_LOCK = threading.Lock()
+_BASELINE_U = 0.6
 
 def _p90(values):
     if not values:
@@ -203,21 +205,36 @@ def run_single_request(idx, strategy, start_time, inflight=1):
 
         ctrl_latency = 0 # No external controller overhead
     elif strategy == 'baseline':
-        # --- BASELINE: AWS Native ---
-        # No MPC Controller. Direct invocation.
-        # Worker handles 'baseline' strategy natively; do not override alloc.
+        global _BASELINE_U
+        with _BASELINE_LOCK:
+            u_now = float(_BASELINE_U)
         worker_result = invoke_worker_lambda(
             decision={},
             task={"id": idx, "priority": priority, "risk": payload['risk'], "task_type": task_name},
             mode='auto',
             strategy='baseline',
             task_type=task_name,
-            metrics=payload['metrics']
+            metrics=payload['metrics'],
+            resource_alloc=u_now
         )
         
         if worker_result and 'response' in worker_result:
             resp_body = worker_result['response']
             debug_data = resp_body.get('debug', {})
+            try:
+                srv_lat = float(resp_body.get('latency_ms', 0.0) or 0.0)
+            except Exception:
+                srv_lat = 0.0
+            if srv_lat > 0.0:
+                target = float(SERVER_SLO_MS)
+                ratio = (srv_lat - target) / max(1.0, target)
+                step_up = min(0.12, max(0.0, 0.6 * ratio))
+                step_down = min(0.06, max(0.0, -0.25 * ratio))
+                with _BASELINE_LOCK:
+                    if ratio > 0.0:
+                        _BASELINE_U = min(1.0, float(_BASELINE_U) + step_up)
+                    else:
+                        _BASELINE_U = max(0.4, float(_BASELINE_U) - step_down)
             decision = {
                 'resource_alloc': debug_data.get('resource_alloc', 1.0),
                 'version': 'BASELINE',
@@ -289,10 +306,14 @@ def run_single_request(idx, strategy, start_time, inflight=1):
     return res
 
 def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, num_requests=100, arrival_rate=5.0):
+    global _BASELINE_U
     if warm_up:
         print(f"\n>>> Warming up WCP state ({strategy_name})...")
     else:
         print(f"\n>>> Starting Phase: {strategy_name}")
+    if strategy_name == 'baseline':
+        with _BASELINE_LOCK:
+            _BASELINE_U = 0.6
         
     if arrival_times is None:
         arrival_times = generate_poisson_arrivals(arrival_rate, num_requests)
@@ -487,7 +508,7 @@ def calc_priority_stats(data, use_server=False):
 
 def print_comparison(baseline_results, mpc_results):
     print("\n======================================================================")
-    print(f"{'Metric':<25} | {'HPA-Baseline (Jiagu)':<20} | {'MPC-Guard (Ours)':<20}")
+    print(f"{'Metric':<25} | {'Reactive Baseline':<20} | {'MPC-Guard (Ours)':<20}")
     print("----------------------------------------------------------------------")
     
     def calc_metrics(results):
@@ -503,13 +524,15 @@ def print_comparison(baseline_results, mpc_results):
         server_violations = sum(1 for r in results if r.get('server_latency', 0) > SERVER_SLO_MS)
         server_viol_rate = (server_violations / total) * 100
         
+        success = [r for r in results if r.get('success', False)]
+        denom = max(1, len(success))
         avg_alloc = sum(r.get('alloc', 1.0) for r in results) / total
-        avg_server_lat = sum(r.get('server_latency', 0) for r in results) / total
-        avg_e2e_lat = sum(r.get('e2e_latency', 0) for r in results) / total
+        avg_server_lat = sum(r.get('server_latency', 0) for r in success) / denom
+        avg_e2e_lat = sum(r.get('e2e_latency', 0) for r in success) / denom
         avg_overhead = sum(r.get('scheduling_overhead_ms', 0.0) for r in results) / total
         
-        latencies = sorted([r.get('e2e_latency', 0) for r in results])
-        p90 = latencies[int(total * 0.9)] if total > 0 else 0
+        latencies = sorted([r.get('e2e_latency', 0) for r in success])
+        p90 = latencies[int(len(latencies) * 0.9)] if latencies else 0
         
         # Deployment Density (Theoretical: 1.0 / avg_alloc)
         # Higher density is better (means we can pack more functions)
@@ -557,7 +580,7 @@ if __name__ == "__main__":
     BASE_RPS = float(args.rps)
     os.environ["AWS_REGION"] = args.region
     CURRENT_TASK = args.task
-    print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs HPA-Baseline (Jiagu)")
+    print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs Reactive Baseline")
     print(f">>> Task: {args.task}, Base RPS: {args.rps}, Duration: {args.minutes}m")
     print(f">>> Mode: Real Azure Bursty Trace (Jiagu-Style stress test)")
 
@@ -580,10 +603,8 @@ if __name__ == "__main__":
     # v56: 极度压缩并发（15），彻底消除客户端排队，让“执行耗时”成为 E2E 的唯一变量
     mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
     
-    # 3. Run HPA-Baseline (Jiagu Style)
-    # We must reset the state to ensure a fair comparison
     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
-    print(f"\n--- Running HPA-Baseline (Jiagu-ATC'24) ---")
+    print(f"\n--- Running Reactive Baseline ---")
     baseline_results, baseline_cw = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times)
     
     # 4. Final Comparison
