@@ -17,8 +17,6 @@ CURRENT_TASK = "linpack" # Global to be updated by args
 BASE_RPS = 10.0
 _E2E_OVERHEAD_EMA = 50.0
 _OVERHEAD_LOCK = threading.Lock()
-_BASELINE_LOCK = threading.Lock()
-_BASELINE_U = 0.6
 
 def _p90(values):
     if not values:
@@ -205,36 +203,18 @@ def run_single_request(idx, strategy, start_time, inflight=1):
 
         ctrl_latency = 0 # No external controller overhead
     elif strategy == 'baseline':
-        global _BASELINE_U
-        with _BASELINE_LOCK:
-            u_now = float(_BASELINE_U)
         worker_result = invoke_worker_lambda(
             decision={},
             task={"id": idx, "priority": priority, "risk": payload['risk'], "task_type": task_name},
             mode='auto',
             strategy='baseline',
             task_type=task_name,
-            metrics=payload['metrics'],
-            resource_alloc=u_now
+            metrics=payload['metrics']
         )
         
         if worker_result and 'response' in worker_result:
             resp_body = worker_result['response']
             debug_data = resp_body.get('debug', {})
-            try:
-                srv_lat = float(resp_body.get('latency_ms', 0.0) or 0.0)
-            except Exception:
-                srv_lat = 0.0
-            if srv_lat > 0.0:
-                target = float(SERVER_SLO_MS)
-                ratio = (srv_lat - target) / max(1.0, target)
-                step_up = min(0.12, max(0.0, 0.6 * ratio))
-                step_down = min(0.06, max(0.0, -0.25 * ratio))
-                with _BASELINE_LOCK:
-                    if ratio > 0.0:
-                        _BASELINE_U = min(1.0, float(_BASELINE_U) + step_up)
-                    else:
-                        _BASELINE_U = max(0.4, float(_BASELINE_U) - step_down)
             decision = {
                 'resource_alloc': debug_data.get('resource_alloc', 1.0),
                 'version': 'BASELINE',
@@ -306,14 +286,10 @@ def run_single_request(idx, strategy, start_time, inflight=1):
     return res
 
 def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, num_requests=100, arrival_rate=5.0):
-    global _BASELINE_U
     if warm_up:
         print(f"\n>>> Warming up WCP state ({strategy_name})...")
     else:
         print(f"\n>>> Starting Phase: {strategy_name}")
-    if strategy_name == 'baseline':
-        with _BASELINE_LOCK:
-            _BASELINE_U = 0.6
         
     if arrival_times is None:
         arrival_times = generate_poisson_arrivals(arrival_rate, num_requests)
@@ -508,7 +484,7 @@ def calc_priority_stats(data, use_server=False):
 
 def print_comparison(baseline_results, mpc_results):
     print("\n======================================================================")
-    print(f"{'Metric':<25} | {'Reactive Baseline':<20} | {'MPC-Guard (Ours)':<20}")
+    print(f"{'Metric':<25} | {'HPA Baseline':<20} | {'MPC-Guard (Ours)':<20}")
     print("----------------------------------------------------------------------")
     
     def calc_metrics(results):
@@ -580,7 +556,7 @@ if __name__ == "__main__":
     BASE_RPS = float(args.rps)
     os.environ["AWS_REGION"] = args.region
     CURRENT_TASK = args.task
-    print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs Reactive Baseline")
+    print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs HPA Baseline")
     print(f">>> Task: {args.task}, Base RPS: {args.rps}, Duration: {args.minutes}m")
     print(f">>> Mode: Real Azure Bursty Trace (Jiagu-Style stress test)")
 
@@ -604,7 +580,7 @@ if __name__ == "__main__":
     mpc_results, mpc_cw = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
     
     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
-    print(f"\n--- Running Reactive Baseline ---")
+    print(f"\n--- Running HPA Baseline ---")
     baseline_results, baseline_cw = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times)
     
     # 4. Final Comparison

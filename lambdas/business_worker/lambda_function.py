@@ -85,7 +85,14 @@ def lambda_handler(event, context):
             version = '0'
             baseline_mw._sync_save_state(state, version, force=True)
             baseline_pred_mw = MPCMiddleware(state_id=f"baseline_state_{task_type}")
-            pred_state = {'p90_belief': 110.0, 'last_y': 110.0, 'code_version': 'baseline_ema'}
+            try:
+                init_slo = float(event.get('metrics', {}).get('slo_limit', 180.0) or 180.0)
+            except Exception:
+                init_slo = 180.0
+            if not init_slo or init_slo <= 0.0:
+                init_slo = 180.0
+            init_p90 = float(max(10.0, min(500.0, 0.8 * init_slo)))
+            pred_state = {'p90_belief': init_p90, 'last_y': init_p90, 'code_version': 'baseline_ema'}
             baseline_pred_mw._sync_save_state(pred_state, '0', force=True)
             _BASELINE_LAST_DECISION_T = 0.0
         
@@ -98,19 +105,28 @@ def lambda_handler(event, context):
         pred_state, _ = baseline_pred_mw._load_state()
         p90 = float(pred_state.get('p90_belief', 100.0)) if pred_state else 100.0
         
-        # 估算利用率：目标 180ms
-        slo = 180.0
-        cpu_util = (p90 / slo) * 0.8
+        try:
+            slo = float(event.get('metrics', {}).get('slo_limit', 180.0) or 180.0)
+        except Exception:
+            slo = 180.0
+        if not slo or slo <= 0.0:
+            slo = 180.0
+        slo = float(max(1.0, min(10000.0, slo)))
+        cpu_util = float(_HPA.target_utilization) * (p90 / slo)
+        cpu_util = float(max(0.0, min(2.0, cpu_util)))
         
         metrics = {'cpu_util': cpu_util}
         current_alloc = float(state.get('last_alloc', 1.0))
         now_t = time.time()
-        if is_cold or (now_t - _BASELINE_LAST_DECISION_T) >= 5.0:
+        decision_window = float(getattr(_HPA, 'window_sec', 5.0) or 5.0)
+        if is_cold or (now_t - _BASELINE_LAST_DECISION_T) >= decision_window:
             decision = _HPA.get_decision(metrics, current_alloc)
             cpu_limit = float(decision.get('cpu_cores', 1.0))
             _BASELINE_LAST_DECISION_T = now_t
         else:
             cpu_limit = current_alloc
+
+        cpu_limit = float(max(0.40, min(1.0, cpu_limit)))
         
         # 保存 Baseline 状态
         state['last_alloc'] = cpu_limit
