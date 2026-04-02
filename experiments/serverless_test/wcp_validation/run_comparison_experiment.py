@@ -577,6 +577,8 @@ def _calc_metrics(results):
             "avg_srv": 0.0,
             "avg_e2e": 0.0,
             "avg_overhead": 0.0,
+            "achieved_rps": 0.0,
+            "achieved_success_rps": 0.0,
         }
     total = len(results)
     e2e_violations = sum(1 for r in results if r.get('e2e_latency', 0) > E2E_SLO_MS)
@@ -586,6 +588,13 @@ def _calc_metrics(results):
 
     success = [r for r in results if r.get('success', False)]
     denom = max(1, len(success))
+    ts = [r.get('timestamp') for r in results if r.get('timestamp') is not None]
+    if ts:
+        duration_s = max(0.001, float(max(ts) - min(ts)))
+    else:
+        duration_s = 1.0
+    achieved_rps = float(total) / duration_s
+    achieved_success_rps = float(len(success)) / duration_s
     avg_alloc = sum(r.get('alloc', 1.0) for r in results) / total
     avg_srv = sum(r.get('server_latency', 0) for r in success) / denom
     avg_e2e = sum(r.get('e2e_latency', 0) for r in success) / denom
@@ -602,15 +611,17 @@ def _calc_metrics(results):
         "avg_srv": avg_srv,
         "avg_e2e": avg_e2e,
         "avg_overhead": avg_overhead,
+        "achieved_rps": achieved_rps,
+        "achieved_success_rps": achieved_success_rps,
     }
 
 def print_summary(results_by_name):
     print("\n======================================================================")
-    print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'Overhead':<8}")
+    print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'Overhead':<8} | {'AchRPS':<7}")
     print("----------------------------------------------------------------------")
     for name, results in results_by_name.items():
         m = _calc_metrics(results)
-        print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['avg_overhead']:<8.2f}")
+        print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
     print("======================================================================\n")
 
 def parse_args():
@@ -749,8 +760,8 @@ if __name__ == "__main__":
 
     if len(rps_list) > 1 and str(args.mode).lower() != "pareto":
         print("\n==================== FINAL SUMMARY (ALL RPS) ====================")
-        print(f"{'RPS':<6} | {'Strategy':<16} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'Overhead':<8}")
+        print(f"{'RPS':<6} | {'Strategy':<16} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'Overhead':<8} | {'AchRPS':<7}")
         print("-----------------------------------------------------------------")
         for row in sweep_rows:
-            print(f"{row['rps']:<6.0f} | {row['strategy']:<16} | {row['e2e_vio']:<10.2f} | {row['srv_vio']:<10.2f} | {row['avg_alloc']:<6.2f} | {row['density']:<6.2f} | {row['p90_e2e']:<10.2f} | {row['avg_srv']:<8.2f} | {row['avg_e2e']:<8.2f} | {row['avg_overhead']:<8.2f}")
+            print(f"{row['rps']:<6.0f} | {row['strategy']:<16} | {row['e2e_vio']:<10.2f} | {row['srv_vio']:<10.2f} | {row['avg_alloc']:<6.2f} | {row['density']:<6.2f} | {row['p90_e2e']:<10.2f} | {row['avg_srv']:<8.2f} | {row['avg_e2e']:<8.2f} | {row['avg_overhead']:<8.2f} | {row['achieved_success_rps']:<7.2f}")
         print("=================================================================\n")
