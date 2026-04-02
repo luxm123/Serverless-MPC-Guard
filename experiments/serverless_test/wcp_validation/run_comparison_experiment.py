@@ -88,6 +88,20 @@ def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=15, sample_re
         "qos_srv_ms": qos_srv
     }
 
+def get_lambda_account_concurrency(region):
+    try:
+        lam = boto3.client('lambda', region_name=region)
+        resp = lam.get_account_settings()
+        limits = resp.get('AccountLimit', {}) or {}
+        usage = resp.get('AccountUsage', {}) or {}
+        return {
+            "concurrent_limit": float(limits.get('ConcurrentExecutions', 0.0) or 0.0),
+            "unreserved_concurrent": float(limits.get('UnreservedConcurrentExecutions', 0.0) or 0.0),
+            "concurrent_in_use": float(usage.get('ConcurrentExecutions', 0.0) or 0.0),
+        }
+    except Exception:
+        return None
+
 def generate_fixed_rps_arrivals(rps, duration_min):
     """Generates arrival timestamps for a fixed RPS (Exp 1 style)."""
     num_requests = int(rps * duration_min * 60)
@@ -290,7 +304,7 @@ def run_single_request(idx, strategy, start_time, inflight=1):
         }
     return res
 
-def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, num_requests=100, arrival_rate=5.0):
+def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, num_requests=100, arrival_rate=5.0, max_inflight=0):
     if warm_up:
         print(f"\n>>> Warming up WCP state ({strategy_name})...")
     else:
@@ -303,11 +317,14 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
     phase_start = time.time()
     inflight_lock = threading.Lock()
     inflight_count = 0
+    inflight_sem = threading.Semaphore(int(max_inflight)) if int(max_inflight) > 0 else None
     
     def process_result(future):
         nonlocal inflight_count
         with inflight_lock:
             inflight_count = max(0, inflight_count - 1)
+        if inflight_sem is not None:
+            inflight_sem.release()
         try:
             res = future.result()
             results.append(res)
@@ -342,6 +359,8 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
             if wait > 0:
                 time.sleep(wait)
             
+            if inflight_sem is not None:
+                inflight_sem.acquire()
             with inflight_lock:
                 inflight_count += 1
                 inflight_snapshot = inflight_count
@@ -602,6 +621,7 @@ def parse_args():
     parser.add_argument("--task", type=str, default="linpack") # linpack or gzip
     parser.add_argument("--region", type=str, default=os.environ.get("AWS_REGION","us-east-1"))
     parser.add_argument("--workers", type=int, default=200)
+    parser.add_argument("--max_inflight", type=int, default=0)
     parser.add_argument("--baselines", type=str, default="hpa,aws_tt,static")
     parser.add_argument("--static_allocs", type=str, default="0.6,0.8,1.0")
     parser.add_argument("--mode", type=str, default="fixed")
@@ -654,6 +674,16 @@ if __name__ == "__main__":
     if not rps_list:
         rps_list = [float(args.rps)]
 
+    acct = get_lambda_account_concurrency(args.region)
+    if acct is not None:
+        print(f">>> Lambda Account Concurrency: limit={int(acct['concurrent_limit'])}, unreserved={int(acct['unreserved_concurrent'])}, in_use={int(acct['concurrent_in_use'])}")
+
+    max_inflight = int(args.max_inflight)
+    if max_inflight <= 0 and acct is not None and acct["concurrent_limit"] > 0:
+        max_inflight = max(1, int(acct["concurrent_limit"]) - 1)
+    if max_inflight > 0:
+        print(f">>> Client inflight cap: {max_inflight} (prevents Lambda throttling dominating E2E)")
+
     sweep_rows = []
     for rps in rps_list:
         BASE_RPS = float(rps)
@@ -673,16 +703,16 @@ if __name__ == "__main__":
                 name = f"mpc(min={mi:.2f})"
                 print(f"\n--- Running {name} ---")
                 invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
-                run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50)
-                res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
+                run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50, max_inflight=max_inflight)
+                res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                 results_by_name[name] = res
         else:
             with _MPC_MIN_ALLOC_LOCK:
                 _MPC_MIN_ALLOC = 0.0
             print(f"\n--- Running MPC-Guard (Ours) ---")
             invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
-            run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50)
-            mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times)
+            run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50, max_inflight=max_inflight)
+            mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
             results_by_name["mpc_integrated"] = mpc_results
 
         if str(args.mode).lower() != "pareto":
@@ -690,21 +720,21 @@ if __name__ == "__main__":
                 if b == "hpa":
                     print(f"\n--- Running HPA Baseline ---")
                     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
-                    run_phase('baseline', warm_up=True, max_workers=10, num_requests=50)
-                    res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times)
+                    run_phase('baseline', warm_up=True, max_workers=10, num_requests=50, max_inflight=max_inflight)
+                    res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                     results_by_name["hpa_baseline"] = res
                 elif b == "aws_tt":
                     print(f"\n--- Running AWS Target Tracking ---")
                     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='aws_tt', reset_state=True)
-                    run_phase('aws_tt', warm_up=True, max_workers=10, num_requests=50)
-                    res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times)
+                    run_phase('aws_tt', warm_up=True, max_workers=10, num_requests=50, max_inflight=max_inflight)
+                    res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                     results_by_name["aws_tt"] = res
                 elif b == "static":
                     for u in static_allocs:
                         name = f"static_{u:.2f}"
                         print(f"\n--- Running {name} ---")
-                        run_phase(f"static_{u}", warm_up=True, max_workers=10, num_requests=50)
-                        res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times)
+                        run_phase(f"static_{u}", warm_up=True, max_workers=10, num_requests=50, max_inflight=max_inflight)
+                        res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                         results_by_name[name] = res
 
         print_summary(results_by_name)
