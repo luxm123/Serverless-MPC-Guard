@@ -45,64 +45,28 @@ def _pctl(values, p):
     except Exception:
         return 0.0
 
-def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=15, sample_requests=80):
-    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
-    server_lats = []
-    e2e_lats = []
+def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=30, sample_requests=150, budget=10):
+    budget = int(budget) if int(budget) > 0 else 10
 
-    metrics = {
-        "p90": 0.0,
-        "backlog": 1,
-        "concurrency": 1.0,
-        "cpu_util": 0.5,
-        "error_rate": 0.0,
-        "rps": 0.0,
-        "e2e_overhead_ms": float(_E2E_OVERHEAD_EMA)
-    }
+    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='static_1.0', reset_state=True)
 
-    for i in range(max(0, int(warmup_requests))):
-        invoke_worker_lambda(
-            decision={},
-            task={"id": f"cal-warm-{i}", "priority": "standard", "risk": {}, "task_type": task_name},
-            mode='auto',
-            strategy='baseline',
-            task_type=task_name,
-            resource_alloc=1.0,
-            metrics=metrics
-        )
+    warm_arrivals = generate_poisson_arrivals(rate=max(1.0, float(budget) * 20.0), num=max(1, int(warmup_requests)))
+    run_phase('static_1.0', warm_up=True, max_workers=budget, arrival_times=warm_arrivals, max_inflight=budget)
 
-    for i in range(max(1, int(sample_requests))):
-        res = invoke_worker_lambda(
-            decision={},
-            task={"id": f"cal-{i}", "priority": "standard", "risk": {}, "task_type": task_name},
-            mode='auto',
-            strategy='baseline',
-            task_type=task_name,
-            resource_alloc=1.0,
-            metrics=metrics
-        )
-        if not res:
-            continue
-        try:
-            e2e_lats.append(float(res.get('client_duration', 0.0)))
-        except Exception:
-            pass
-        try:
-            body = res.get('response', {}) or {}
-            server_lats.append(float(body.get('latency_ms', 0.0) or 0.0))
-        except Exception:
-            pass
+    sample_arrivals = generate_poisson_arrivals(rate=max(1.0, float(budget) * 20.0), num=max(1, int(sample_requests)))
+    results, _ = run_phase('static_1.0', warm_up=True, max_workers=budget, arrival_times=sample_arrivals, max_inflight=budget)
 
-    base_p90_e2e = _p90([v for v in e2e_lats if v and v > 0.0])
-    base_p90_srv = _p90([v for v in server_lats if v and v > 0.0])
+    success = [r for r in results if r.get('success', False)]
+    base_p90_e2e = _p90([r.get('e2e_latency', 0.0) for r in success])
+    base_p90_srv = _p90([r.get('server_latency', 0.0) for r in success])
 
     qos_e2e = float(max(1.0, base_p90_e2e * float(factor)))
     qos_srv = float(max(1.0, base_p90_srv * float(factor)))
     return {
-        "base_p90_e2e_ms": base_p90_e2e,
-        "base_p90_srv_ms": base_p90_srv,
-        "qos_e2e_ms": qos_e2e,
-        "qos_srv_ms": qos_srv
+        "base_p90_e2e_ms": float(base_p90_e2e),
+        "base_p90_srv_ms": float(base_p90_srv),
+        "qos_e2e_ms": float(qos_e2e),
+        "qos_srv_ms": float(qos_srv)
     }
 
 def get_lambda_account_concurrency(region):
@@ -710,7 +674,7 @@ def parse_args():
     parser.add_argument("--task", type=str, default="linpack")
     parser.add_argument("--region", type=str, default=os.environ.get("AWS_REGION","us-east-1"))
     parser.add_argument("--budget", type=int, default=10)
-    parser.add_argument("--workers", type=int, default=20)
+    parser.add_argument("--workers", type=int, default=10)
     parser.add_argument("--max_inflight", type=int, default=0)
     parser.add_argument("--baselines", type=str, default="hpa,aws_tt,static")
     parser.add_argument("--static_allocs", type=str, default="0.6,0.8,1.0")
@@ -722,7 +686,7 @@ def parse_args():
     parser.add_argument("--qos_factor", type=float, default=1.2)
     parser.add_argument("--server_slo_ms", type=float, default=0.0)
     parser.add_argument("--e2e_slo_ms", type=float, default=0.0)
-    parser.add_argument("--print_efficiency", type=int, default=1)
+    parser.add_argument("--print_efficiency", type=int, default=0)
     parser.add_argument("--max_alloc", type=float, default=1.0)
     return parser.parse_args()
 
@@ -756,7 +720,7 @@ if __name__ == "__main__":
         E2E_SLO_MS = float(fixed_e2e)
         print(f">>> QoS Thresholds (fixed): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms")
     else:
-        cal = calibrate_qos_threshold(args.task, factor=float(args.qos_factor), warmup_requests=15, sample_requests=80)
+        cal = calibrate_qos_threshold(args.task, factor=float(args.qos_factor), warmup_requests=30, sample_requests=150, budget=_BUDGET)
         SERVER_SLO_MS = float(cal["qos_srv_ms"])
         E2E_SLO_MS = float(cal["qos_e2e_ms"])
         print(f">>> QoS Thresholds (auto): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
