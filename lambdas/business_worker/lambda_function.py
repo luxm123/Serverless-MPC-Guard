@@ -59,6 +59,14 @@ def lambda_handler(event, context):
 
     task_type = event.get('task_type', 'image_processing')
     strategy = event.get('strategy', 'default')
+    metrics_in = event.get('metrics', {}) or {}
+    try:
+        max_alloc = float(metrics_in.get('max_alloc', 1.0) or 1.0)
+    except Exception:
+        max_alloc = 1.0
+    if max_alloc <= 0.0:
+        max_alloc = 1.0
+    max_alloc = float(max(0.4, min(4.0, max_alloc)))
     
     # 默认配置
     cpu_limit = float(event.get('cpu_limit', 1.0))
@@ -73,6 +81,7 @@ def lambda_handler(event, context):
         decision, debug = _MIDDLEWARE.decide(event)
         should_shed = decision.get('shouldShed', False)
         cpu_limit = float(decision.get('resource_alloc', 1.0))
+        cpu_limit = float(max(0.40, min(max_alloc, cpu_limit)))
         debug_info = debug or {}
         debug_info['resource_alloc'] = cpu_limit
         debug_info['strategy'] = strategy
@@ -129,7 +138,7 @@ def lambda_handler(event, context):
         else:
             cpu_limit = current_alloc
 
-        cpu_limit = float(max(0.40, min(1.0, cpu_limit)))
+        cpu_limit = float(max(0.40, min(max_alloc, cpu_limit)))
         
         # 保存 Baseline 状态
         state['last_alloc'] = cpu_limit
@@ -185,7 +194,7 @@ def lambda_handler(event, context):
         current_alloc = float(state.get('last_alloc', 1.0))
         decision = _AWS_TT.get_decision(metrics, current_alloc)
         cpu_limit = float(decision.get('cpu_cores', current_alloc))
-        cpu_limit = float(max(0.40, min(1.0, cpu_limit)))
+        cpu_limit = float(max(0.40, min(max_alloc, cpu_limit)))
 
         state['last_alloc'] = cpu_limit
         baseline_mw._sync_save_state(state, version)
@@ -212,7 +221,7 @@ def lambda_handler(event, context):
                 static_u = float(event.get('resource_alloc', event.get('cpu_limit', 1.0)) or 1.0)
             except Exception:
                 static_u = 1.0
-        cpu_limit = float(max(0.40, min(1.0, static_u)))
+        cpu_limit = float(max(0.40, min(max_alloc, static_u)))
         debug_info = {
             'resource_alloc': cpu_limit,
             'prev_alloc': cpu_limit,

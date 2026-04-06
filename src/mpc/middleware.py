@@ -146,6 +146,12 @@ class MPCMiddleware:
         min_alloc = float(max(0.0, min(1.0, min_alloc)))
         state['min_alloc'] = min_alloc
 
+        max_alloc = self._finite_float(metrics.get('max_alloc', state.get('max_alloc', 1.0)), 1.0)
+        if not math.isfinite(float(max_alloc)):
+            max_alloc = 1.0
+        max_alloc = float(max(0.4, min(4.0, max_alloc)))
+        state['max_alloc'] = max_alloc
+
         # v64.0: Ensure belief is REAL
         current_p90 = self._clamp_ms(state.get('p90_belief', 110.0), 1.0, 500.0, 110.0)
         if current_p90 < 1.0:
@@ -169,6 +175,7 @@ class MPCMiddleware:
             'backlog': backlog,
             'slo_limit': slo_limit,
             'min_alloc': min_alloc,
+            'max_alloc': max_alloc,
         }
 
         result = self.controller.decide(task, {}, system_state)

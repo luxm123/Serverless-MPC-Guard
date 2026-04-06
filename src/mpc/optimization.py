@@ -62,7 +62,17 @@ class Optimizer:
             min_alloc = 0.0
         if not math.isfinite(min_alloc):
             min_alloc = 0.0
-        min_alloc = float(max(0.0, min(1.0, min_alloc)))
+
+        max_alloc = 1.0
+        try:
+            max_alloc = float(state.get('max_alloc', 1.0) or 1.0)
+        except Exception:
+            max_alloc = 1.0
+        if not math.isfinite(max_alloc):
+            max_alloc = 1.0
+        max_alloc = float(max(0.4, min(4.0, max_alloc)))
+
+        min_alloc = float(max(0.0, min(max_alloc, min_alloc)))
 
         safe_streak = int(state.get('safe_streak', 0))
         if pred_total <= (safety_target - 35.0) and obs_total <= (safety_target - 35.0) and uncertainty <= 15.0:
@@ -90,23 +100,23 @@ class Optimizer:
         if safe_streak >= 60:
             alloc_floor = min(alloc_floor, 0.45)
         
-        # Aggressive LR for QoS recovery, smoother for efficiency gains
-        lr = 0.6 if (error > 0 and concurrency >= 60.0) else (0.5 if error > 0 else 0.3)
-        if concurrency < 30.0:
-            lr = 0.4 if error > 0 else 0.25
-        
-        if error > 0:
-            # Risk detected -> Increase allocation
-            # The higher the risk, the more we increase
-            urgency = 1.0
-            if pred_total > slo_limit: urgency = 10.0
-            grad = -1.0 * (error / (10.0 / urgency))
+        server_pred_prev = server_pred
+        if safety_target > 1.0:
+            u_req = prev_u * (server_pred_prev / safety_target)
         else:
-            # Safe zone -> Decrease allocation to improve density
-            # We use a smaller gradient to avoid jitter
-            grad = 0.6 if abs(error) > 30.0 else 0.2
+            u_req = prev_u
+        if not math.isfinite(u_req):
+            u_req = prev_u
 
-        new_alloc = prev_u - lr * grad
+        if error > 0.0:
+            target_alloc = max(prev_u, u_req)
+            lr = 0.65 if concurrency >= 60.0 else 0.55
+        else:
+            target_alloc = min(prev_u, u_req)
+            lr = 0.35 if concurrency >= 30.0 else 0.28
+
+        target_alloc = float(max(alloc_floor, min_alloc, min(max_alloc, target_alloc)))
+        new_alloc = float(prev_u + lr * (target_alloc - prev_u))
 
         if server_pred >= (safety_target - 10.0) and new_alloc < prev_u:
             new_alloc = prev_u
@@ -114,7 +124,7 @@ class Optimizer:
         # Safety Clamps & Adaptive Bounds
         emergency_margin = max(20.0, 0.3 * float(slo_limit))
         if server_pred > float(slo_limit) + emergency_margin:
-            new_alloc = 1.0 # Emergency jump
+            new_alloc = max_alloc # Emergency jump
         elif new_alloc < prev_u:
             # Efficiency gain: allow down-scaling
             if concurrency < 30.0:
@@ -127,7 +137,7 @@ class Optimizer:
             max_inc = 0.60 if concurrency >= 120.0 else (0.20 if concurrency < 30.0 else 0.40)
             new_alloc = min(new_alloc, prev_u + max_inc)
 
-        final_alloc = max(alloc_floor, min_alloc, min(1.0, new_alloc))
+        final_alloc = max(alloc_floor, min_alloc, min(max_alloc, new_alloc))
         
         state['opt_debug'] = {
             "pred_upper": pred_upper,
@@ -135,6 +145,8 @@ class Optimizer:
             "obs_total": obs_total,
             "e2e_overhead_ms": overhead_ms,
             "alloc_floor": alloc_floor,
+            "min_alloc": min_alloc,
+            "max_alloc": max_alloc,
             "uncertainty": uncertainty,
             "concurrency": concurrency,
             "backlog": backlog,
@@ -142,7 +154,7 @@ class Optimizer:
             "e2e_pred": e2e_pred,
             "safe_streak": safe_streak,
             "error": error,
-            "grad": grad,
+            "u_req": u_req,
             "final_alloc": final_alloc,
             "overhead_ms": (time.time() - start_t) * 1000.0
         }

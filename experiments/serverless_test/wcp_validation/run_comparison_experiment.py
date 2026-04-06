@@ -20,6 +20,7 @@ _E2E_OVERHEAD_EMA = 50.0
 _OVERHEAD_LOCK = threading.Lock()
 _MPC_MIN_ALLOC_LOCK = threading.Lock()
 _MPC_MIN_ALLOC = 0.0
+_MAX_ALLOC = 1.0
 
 def _p90(values):
     if not values:
@@ -184,7 +185,8 @@ def run_single_request(idx, strategy, start_time, inflight=1):
         "error_rate": 0.0,
         "rps": float(BASE_RPS),
         "e2e_overhead_ms": float(_E2E_OVERHEAD_EMA),
-        "slo_limit": float(SERVER_SLO_MS)
+        "slo_limit": float(SERVER_SLO_MS),
+        "max_alloc": float(_MAX_ALLOC)
     }
     if strategy == 'mpc_integrated':
         with _MPC_MIN_ALLOC_LOCK:
@@ -717,6 +719,7 @@ def parse_args():
     parser.add_argument("--server_slo_ms", type=float, default=0.0)
     parser.add_argument("--e2e_slo_ms", type=float, default=0.0)
     parser.add_argument("--print_efficiency", type=int, default=1)
+    parser.add_argument("--max_alloc", type=float, default=1.0)
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -724,9 +727,14 @@ if __name__ == "__main__":
     BASE_RPS = float(args.rps)
     os.environ["AWS_REGION"] = args.region
     CURRENT_TASK = args.task
+    _MAX_ALLOC = float(args.max_alloc)
+    if _MAX_ALLOC <= 0.0:
+        _MAX_ALLOC = 1.0
+    _MAX_ALLOC = float(max(0.4, min(4.0, _MAX_ALLOC)))
     print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs Baselines")
     print(f">>> Task: {args.task}, Base RPS: {args.rps}, Duration: {args.minutes}m")
     print(f">>> Mode: Real Azure Bursty Trace (Jiagu-Style stress test)")
+    print(f">>> Max Alloc: {_MAX_ALLOC:.2f}")
 
     fixed_srv = float(args.server_slo_ms or 0.0)
     fixed_e2e = float(args.e2e_slo_ms or 0.0)
