@@ -3,6 +3,7 @@ import random
 import numpy as np
 import concurrent.futures
 import statistics
+import math
 import os
 import threading
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,20 @@ def _p90(values):
     if arr.size == 0:
         return 0.0
     return float(np.percentile(arr, 90))
+
+def _pctl(values, p):
+    if not values:
+        return 0.0
+    try:
+        arr = np.array([float(v) for v in values if v is not None], dtype=float)
+    except Exception:
+        return 0.0
+    if arr.size == 0:
+        return 0.0
+    try:
+        return float(np.percentile(arr, float(p)))
+    except Exception:
+        return 0.0
 
 def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=15, sample_requests=80):
     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
@@ -579,6 +594,12 @@ def _calc_metrics(results):
             "avg_overhead": 0.0,
             "achieved_rps": 0.0,
             "achieved_success_rps": 0.0,
+            "util_pct": 0.0,
+            "cpu_ms_per_success": 0.0,
+            "alloc_p50": 0.0,
+            "alloc_p90": 0.0,
+            "alloc_std": 0.0,
+            "alloc_churn": 0.0,
         }
     total = len(results)
     e2e_violations = sum(1 for r in results if r.get('e2e_latency', 0) > E2E_SLO_MS)
@@ -602,6 +623,42 @@ def _calc_metrics(results):
     latencies = sorted([r.get('e2e_latency', 0) for r in success])
     p90 = latencies[int(len(latencies) * 0.9)] if latencies else 0.0
     density = 1.0 / (avg_alloc + 0.001)
+
+    allocs = [float(r.get('alloc', 1.0) or 1.0) for r in results]
+    alloc_p50 = _pctl(allocs, 50)
+    alloc_p90 = _pctl(allocs, 90)
+    try:
+        alloc_std = float(np.std(np.array(allocs, dtype=float))) if allocs else 0.0
+    except Exception:
+        alloc_std = 0.0
+
+    churn_vals = []
+    for r in results:
+        try:
+            prev_a = float(r.get('prev_alloc'))
+            new_a = float(r.get('new_alloc'))
+            if math.isfinite(prev_a) and math.isfinite(new_a):
+                churn_vals.append(abs(new_a - prev_a))
+        except Exception:
+            continue
+    alloc_churn = float(sum(churn_vals) / max(1, len(churn_vals))) if churn_vals else 0.0
+
+    util_pct = 0.0
+    if avg_alloc > 0.0 and SERVER_SLO_MS > 0.0:
+        util_pct = float((avg_srv / (avg_alloc * SERVER_SLO_MS)) * 100.0)
+        util_pct = float(max(0.0, min(100.0, util_pct)))
+
+    cpu_ms = 0.0
+    for r in success:
+        try:
+            a = float(r.get('alloc', 1.0) or 1.0)
+            s = float(r.get('server_latency', 0.0) or 0.0)
+            if math.isfinite(a) and math.isfinite(s) and a > 0.0 and s > 0.0:
+                cpu_ms += a * s
+        except Exception:
+            continue
+    cpu_ms_per_success = float(cpu_ms / max(1, len(success)))
+
     return {
         "e2e_vio": e2e_viol_rate,
         "srv_vio": server_viol_rate,
@@ -613,6 +670,12 @@ def _calc_metrics(results):
         "avg_overhead": avg_overhead,
         "achieved_rps": achieved_rps,
         "achieved_success_rps": achieved_success_rps,
+        "util_pct": util_pct,
+        "cpu_ms_per_success": cpu_ms_per_success,
+        "alloc_p50": alloc_p50,
+        "alloc_p90": alloc_p90,
+        "alloc_std": alloc_std,
+        "alloc_churn": alloc_churn,
     }
 
 def print_summary(results_by_name):
@@ -623,6 +686,18 @@ def print_summary(results_by_name):
         m = _calc_metrics(results)
         print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
     print("======================================================================\n")
+
+def print_efficiency_summary(results_by_name):
+    print("\n==================== EFFICIENCY / STABILITY SUMMARY ====================")
+    print(f"{'Strategy':<22} | {'Util%':<6} | {'CPU-ms/succ':<11} | {'AllocP50':<8} | {'AllocP90':<8} | {'AllocStd':<8} | {'Churn':<7}")
+    print("-------------------------------------------------------------------------")
+    for name, results in results_by_name.items():
+        m = _calc_metrics(results)
+        print(
+            f"{name:<22} | {m['util_pct']:<6.1f} | {m['cpu_ms_per_success']:<11.1f} | "
+            f"{m['alloc_p50']:<8.2f} | {m['alloc_p90']:<8.2f} | {m['alloc_std']:<8.3f} | {m['alloc_churn']:<7.3f}"
+        )
+    print("=========================================================================\n")
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -637,6 +712,11 @@ def parse_args():
     parser.add_argument("--static_allocs", type=str, default="0.6,0.8,1.0")
     parser.add_argument("--mode", type=str, default="fixed")
     parser.add_argument("--pareto_min_allocs", type=str, default="0.4,0.5,0.6,0.7,0.8,0.9")
+    parser.add_argument("--include_baselines_in_pareto", type=int, default=1)
+    parser.add_argument("--qos_factor", type=float, default=1.2)
+    parser.add_argument("--server_slo_ms", type=float, default=0.0)
+    parser.add_argument("--e2e_slo_ms", type=float, default=0.0)
+    parser.add_argument("--print_efficiency", type=int, default=1)
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -648,10 +728,21 @@ if __name__ == "__main__":
     print(f">>> Task: {args.task}, Base RPS: {args.rps}, Duration: {args.minutes}m")
     print(f">>> Mode: Real Azure Bursty Trace (Jiagu-Style stress test)")
 
-    cal = calibrate_qos_threshold(args.task, factor=1.2, warmup_requests=15, sample_requests=80)
-    SERVER_SLO_MS = float(cal["qos_srv_ms"])
-    E2E_SLO_MS = float(cal["qos_e2e_ms"])
-    print(f">>> QoS Thresholds (auto): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
+    fixed_srv = float(args.server_slo_ms or 0.0)
+    fixed_e2e = float(args.e2e_slo_ms or 0.0)
+    if fixed_srv > 0.0 or fixed_e2e > 0.0:
+        if fixed_srv <= 0.0:
+            fixed_srv = fixed_e2e
+        if fixed_e2e <= 0.0:
+            fixed_e2e = fixed_srv
+        SERVER_SLO_MS = float(fixed_srv)
+        E2E_SLO_MS = float(fixed_e2e)
+        print(f">>> QoS Thresholds (fixed): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms")
+    else:
+        cal = calibrate_qos_threshold(args.task, factor=float(args.qos_factor), warmup_requests=15, sample_requests=80)
+        SERVER_SLO_MS = float(cal["qos_srv_ms"])
+        E2E_SLO_MS = float(cal["qos_e2e_ms"])
+        print(f">>> QoS Thresholds (auto): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
     
     baselines = [x.strip() for x in str(args.baselines).split(',') if x.strip()]
     static_allocs = []
@@ -726,7 +817,7 @@ if __name__ == "__main__":
             mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
             results_by_name["mpc_integrated"] = mpc_results
 
-        if str(args.mode).lower() != "pareto":
+        if str(args.mode).lower() != "pareto" or int(args.include_baselines_in_pareto) == 1:
             for b in baselines:
                 if b == "hpa":
                     print(f"\n--- Running HPA Baseline ---")
@@ -749,6 +840,8 @@ if __name__ == "__main__":
                         results_by_name[name] = res
 
         print_summary(results_by_name)
+        if int(args.print_efficiency) == 1:
+            print_efficiency_summary(results_by_name)
 
         for name, results in results_by_name.items():
             m = _calc_metrics(results)
