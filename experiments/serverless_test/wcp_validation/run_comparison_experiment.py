@@ -21,6 +21,7 @@ _OVERHEAD_LOCK = threading.Lock()
 _MPC_MIN_ALLOC_LOCK = threading.Lock()
 _MPC_MIN_ALLOC = 0.0
 _MAX_ALLOC = 1.0
+_BUDGET = 10
 
 def _p90(values):
     if not values:
@@ -703,16 +704,19 @@ def print_efficiency_summary(results_by_name):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--rps", type=float, default=10.0) # Saturated RPS for Exp 1
+    parser.add_argument("--rps", type=float, default=10.0)
     parser.add_argument("--rps_list", type=str, default="")
     parser.add_argument("--minutes", type=float, default=30.0)
-    parser.add_argument("--task", type=str, default="linpack") # linpack or gzip
+    parser.add_argument("--task", type=str, default="linpack")
     parser.add_argument("--region", type=str, default=os.environ.get("AWS_REGION","us-east-1"))
-    parser.add_argument("--workers", type=int, default=200)
+    parser.add_argument("--budget", type=int, default=10)
+    parser.add_argument("--workers", type=int, default=20)
     parser.add_argument("--max_inflight", type=int, default=0)
     parser.add_argument("--baselines", type=str, default="hpa,aws_tt,static")
     parser.add_argument("--static_allocs", type=str, default="0.6,0.8,1.0")
-    parser.add_argument("--mode", type=str, default="fixed")
+    parser.add_argument("--workload", type=str, default="fixed")
+    parser.add_argument("--mode", type=str, default="compare")
+    parser.add_argument("--min_alloc", type=float, default=0.0)
     parser.add_argument("--pareto_min_allocs", type=str, default="0.4,0.5,0.6,0.7,0.8,0.9")
     parser.add_argument("--include_baselines_in_pareto", type=int, default=1)
     parser.add_argument("--qos_factor", type=float, default=1.2)
@@ -731,10 +735,15 @@ if __name__ == "__main__":
     if _MAX_ALLOC <= 0.0:
         _MAX_ALLOC = 1.0
     _MAX_ALLOC = float(max(0.4, min(4.0, _MAX_ALLOC)))
+    _BUDGET = int(args.budget)
+    if _BUDGET <= 0:
+        _BUDGET = 10
     print(f">>> Starting Experiment 1: MPC-Guard (Ours) vs Baselines")
     print(f">>> Task: {args.task}, Base RPS: {args.rps}, Duration: {args.minutes}m")
-    print(f">>> Mode: Real Azure Bursty Trace (Jiagu-Style stress test)")
+    print(f">>> Workload: {str(args.workload)}")
+    print(f">>> Mode: {str(args.mode)}")
     print(f">>> Max Alloc: {_MAX_ALLOC:.2f}")
+    print(f">>> Concurrency Budget: {_BUDGET}")
 
     fixed_srv = float(args.server_slo_ms or 0.0)
     fixed_e2e = float(args.e2e_slo_ms or 0.0)
@@ -789,22 +798,37 @@ if __name__ == "__main__":
         print(f">>> Lambda Account Concurrency: limit={int(acct['concurrent_limit'])}, unreserved={int(acct['unreserved_concurrent'])}, in_use={int(acct['concurrent_in_use'])}")
 
     max_inflight = int(args.max_inflight)
-    if max_inflight <= 0 and acct is not None and acct["concurrent_limit"] > 0:
-        max_inflight = max(1, int(acct["concurrent_limit"]) - 1)
+    if max_inflight <= 0:
+        max_inflight = int(_BUDGET)
     if max_inflight > 0:
-        print(f">>> Client inflight cap: {max_inflight} (prevents Lambda throttling dominating E2E)")
+        print(f">>> Client inflight cap: {max_inflight} (prevents throttling dominating E2E)")
+
+    with _MPC_MIN_ALLOC_LOCK:
+        _MPC_MIN_ALLOC = float(args.min_alloc or 0.0)
+        if not math.isfinite(_MPC_MIN_ALLOC):
+            _MPC_MIN_ALLOC = 0.0
+        _MPC_MIN_ALLOC = float(max(0.0, min(_MAX_ALLOC, _MPC_MIN_ALLOC)))
+    print(f">>> MPC min_alloc (fixed): {_MPC_MIN_ALLOC:.2f}")
 
     sweep_rows = []
     for rps in rps_list:
         BASE_RPS = float(rps)
         print(f"\n>>> Running RPS={rps:.2f} <<<")
 
-        second_rates = load_azure_trace(duration_min=int(args.minutes))
-        arrival_times = generate_trace_arrivals(second_rates, base_rps=rps)
-        num_requests = len(arrival_times)
-        print(f"Generated {num_requests} requests with dynamic bursts.")
+        workload = str(args.workload).lower().strip()
+        if workload in ["trace", "azure", "bursty"]:
+            second_rates = load_azure_trace(duration_min=int(args.minutes))
+            arrival_times = generate_trace_arrivals(second_rates, base_rps=rps)
+            num_requests = len(arrival_times)
+            print(f"Generated {num_requests} requests with dynamic bursts.")
+        else:
+            arrival_times = generate_fixed_rps_arrivals(rps, args.minutes)
+            num_requests = len(arrival_times)
+            print(f"Generated {num_requests} requests with fixed rate.")
 
         results_by_name = {}
+
+        warm_workers = max(1, min(10, int(args.workers)))
 
         if str(args.mode).lower() == "pareto":
             for mi in pareto_mins:
@@ -813,37 +837,35 @@ if __name__ == "__main__":
                 name = f"mpc(min={mi:.2f})"
                 print(f"\n--- Running {name} ---")
                 invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
-                run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50, max_inflight=max_inflight)
+                run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=50, max_inflight=max_inflight)
                 res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                 results_by_name[name] = res
         else:
-            with _MPC_MIN_ALLOC_LOCK:
-                _MPC_MIN_ALLOC = 0.0
             print(f"\n--- Running MPC-Guard (Ours) ---")
             invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
-            run_phase('mpc_integrated', warm_up=True, max_workers=10, num_requests=50, max_inflight=max_inflight)
+            run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=50, max_inflight=max_inflight)
             mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
-            results_by_name["mpc_integrated"] = mpc_results
+            results_by_name["mpc"] = mpc_results
 
         if str(args.mode).lower() != "pareto" or int(args.include_baselines_in_pareto) == 1:
             for b in baselines:
                 if b == "hpa":
                     print(f"\n--- Running HPA Baseline ---")
                     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
-                    run_phase('baseline', warm_up=True, max_workers=10, num_requests=50, max_inflight=max_inflight)
+                    run_phase('baseline', warm_up=True, max_workers=warm_workers, num_requests=50, max_inflight=max_inflight)
                     res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                     results_by_name["hpa_baseline"] = res
                 elif b == "aws_tt":
                     print(f"\n--- Running AWS Target Tracking ---")
                     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='aws_tt', reset_state=True)
-                    run_phase('aws_tt', warm_up=True, max_workers=10, num_requests=50, max_inflight=max_inflight)
+                    run_phase('aws_tt', warm_up=True, max_workers=warm_workers, num_requests=50, max_inflight=max_inflight)
                     res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                     results_by_name["aws_tt"] = res
                 elif b == "static":
                     for u in static_allocs:
                         name = f"static_{u:.2f}"
                         print(f"\n--- Running {name} ---")
-                        run_phase(f"static_{u}", warm_up=True, max_workers=10, num_requests=50, max_inflight=max_inflight)
+                        run_phase(f"static_{u}", warm_up=True, max_workers=warm_workers, num_requests=50, max_inflight=max_inflight)
                         res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                         results_by_name[name] = res
 
