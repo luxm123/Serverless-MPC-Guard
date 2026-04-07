@@ -888,6 +888,8 @@ def parse_args():
     parser.add_argument("--server_slo_ms", type=float, default=0.0)
     parser.add_argument("--e2e_slo_ms", type=float, default=0.0)
     parser.add_argument("--print_efficiency", type=int, default=0)
+    parser.add_argument("--enable_phase_warmup", type=int, default=1)
+    parser.add_argument("--phase_warmup_requests", type=int, default=50)
     parser.add_argument("--max_alloc", type=float, default=1.0)
     parser.add_argument("--unc_scale", type=float, default=1.0)
     parser.add_argument("--tight_slo_ms", type=float, default=80.0)
@@ -1034,6 +1036,8 @@ if __name__ == "__main__":
         results_by_name = {}
 
         warm_workers = max(1, min(10, int(args.workers)))
+        do_phase_warmup = bool(int(args.enable_phase_warmup) == 1 and int(args.phase_warmup_requests) > 0)
+        phase_warmup_n = int(args.phase_warmup_requests) if int(args.phase_warmup_requests) > 0 else 0
 
         if str(args.mode).lower() == "pareto":
             for mi in pareto_mins:
@@ -1042,13 +1046,15 @@ if __name__ == "__main__":
                 name = f"mpc(min={mi:.2f})"
                 print(f"\n--- Running {name} ---")
                 invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
-                run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=50, max_inflight=max_inflight)
+                if do_phase_warmup:
+                    run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
                 res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                 results_by_name[name] = res
         else:
             print(f"\n--- Running MPC-Guard (Ours) ---")
             invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
-            run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=50, max_inflight=max_inflight)
+            if do_phase_warmup:
+                run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
             mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
             results_by_name["mpc"] = mpc_results
 
@@ -1057,20 +1063,23 @@ if __name__ == "__main__":
                 if b == "hpa":
                     print(f"\n--- Running HPA Baseline ---")
                     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
-                    run_phase('baseline', warm_up=True, max_workers=warm_workers, num_requests=50, max_inflight=max_inflight)
+                    if do_phase_warmup:
+                        run_phase('baseline', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
                     res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                     results_by_name["hpa_baseline"] = res
                 elif b == "aws_tt":
                     print(f"\n--- Running AWS Target Tracking ---")
                     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='aws_tt', reset_state=True)
-                    run_phase('aws_tt', warm_up=True, max_workers=warm_workers, num_requests=50, max_inflight=max_inflight)
+                    if do_phase_warmup:
+                        run_phase('aws_tt', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
                     res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                     results_by_name["aws_tt"] = res
                 elif b == "static":
                     for u in static_allocs:
                         name = f"static_{u:.2f}"
                         print(f"\n--- Running {name} ---")
-                        run_phase(f"static_{u}", warm_up=True, max_workers=warm_workers, num_requests=50, max_inflight=max_inflight)
+                        if do_phase_warmup:
+                            run_phase(f"static_{u}", warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
                         res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
                         results_by_name[name] = res
 
