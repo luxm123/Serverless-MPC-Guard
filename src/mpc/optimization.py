@@ -53,8 +53,19 @@ class Optimizer:
         unc_scale = float(max(1.0, min(3.0, unc_scale)))
         pred_total = max(float(pred_upper), float(last_y) + float(unc_scale) * float(uncertainty))
         obs_total = last_y
-        margin_ms = min(10.0, 0.10 * float(slo_limit))
-        safety_target = max(1.0, float(slo_limit) - margin_ms)
+        try:
+            tight_slo_ms = float(state.get('tight_slo_ms', 80.0) or 80.0)
+        except Exception:
+            tight_slo_ms = 80.0
+        if not math.isfinite(tight_slo_ms) or tight_slo_ms <= 0.0:
+            tight_slo_ms = 80.0
+        tight_slo_ms = float(max(20.0, min(200.0, tight_slo_ms)))
+
+        if float(slo_limit) <= tight_slo_ms:
+            margin_ms = min(4.0, 0.03 * float(slo_limit))
+        else:
+            margin_ms = min(10.0, 0.10 * float(slo_limit))
+        safety_target = max(1.0, float(slo_limit) - float(margin_ms))
         servers = max(1.0, concurrency)
         service_est = max(40.0, last_y)
         queue_depth_per_server = max(0.0, (backlog - servers) / servers)
@@ -95,13 +106,6 @@ class Optimizer:
         else:
             alloc_floor = 0.40 + 0.20 * ((pred_total - (safety_target - 30.0)) / 30.0)
 
-        try:
-            tight_slo_ms = float(state.get('tight_slo_ms', 80.0) or 80.0)
-        except Exception:
-            tight_slo_ms = 80.0
-        if not math.isfinite(tight_slo_ms) or tight_slo_ms <= 0.0:
-            tight_slo_ms = 80.0
-        tight_slo_ms = float(max(20.0, min(200.0, tight_slo_ms)))
         if float(slo_limit) <= tight_slo_ms:
             alloc_floor = max(alloc_floor, 0.75 if error <= 0.0 else 0.85)
 
