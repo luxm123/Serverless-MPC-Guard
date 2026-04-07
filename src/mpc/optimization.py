@@ -45,11 +45,11 @@ class Optimizer:
         concurrency = float(state.get('concurrency', state.get('backlog', 0.0)))
         backlog = float(state.get('backlog', concurrency))
         try:
-            unc_scale = float(state.get('unc_scale', 1.5) or 1.5)
+            unc_scale = float(state.get('unc_scale', 1.0) or 1.0)
         except Exception:
-            unc_scale = 1.5
+            unc_scale = 1.0
         if not math.isfinite(unc_scale) or unc_scale <= 0.0:
-            unc_scale = 1.5
+            unc_scale = 1.0
         unc_scale = float(max(1.0, min(3.0, unc_scale)))
         pred_total = max(float(pred_upper), float(last_y) + float(unc_scale) * float(uncertainty))
         obs_total = last_y

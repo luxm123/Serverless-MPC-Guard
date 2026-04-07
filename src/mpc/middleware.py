@@ -152,6 +152,18 @@ class MPCMiddleware:
         max_alloc = float(max(0.4, min(4.0, max_alloc)))
         state['max_alloc'] = max_alloc
 
+        unc_scale = self._finite_float(metrics.get('unc_scale', state.get('unc_scale', 1.0)), 1.0)
+        if not math.isfinite(float(unc_scale)) or float(unc_scale) <= 0.0:
+            unc_scale = 1.0
+        unc_scale = float(max(1.0, min(3.0, unc_scale)))
+        state['unc_scale'] = unc_scale
+
+        tight_slo_ms = self._finite_float(metrics.get('tight_slo_ms', state.get('tight_slo_ms', 80.0)), 80.0)
+        if not math.isfinite(float(tight_slo_ms)) or float(tight_slo_ms) <= 0.0:
+            tight_slo_ms = 80.0
+        tight_slo_ms = float(max(20.0, min(200.0, tight_slo_ms)))
+        state['tight_slo_ms'] = tight_slo_ms
+
         # v64.0: Ensure belief is REAL
         current_p90 = self._clamp_ms(state.get('p90_belief', 110.0), 1.0, 500.0, 110.0)
         if current_p90 < 1.0:
@@ -176,6 +188,8 @@ class MPCMiddleware:
             'slo_limit': slo_limit,
             'min_alloc': min_alloc,
             'max_alloc': max_alloc,
+            'unc_scale': unc_scale,
+            'tight_slo_ms': tight_slo_ms,
         }
 
         result = self.controller.decide(task, {}, system_state)
@@ -196,12 +210,16 @@ class MPCMiddleware:
             'code_version': current_logic_ver,
             'state_id': self.state_id,
             'p90_belief': current_p90, # THIS IS THE ONE THE SCRIPT READS
+            'uncertainty': float(state.get('uncertainty', 0.0)),
+            'unc_scale': unc_scale,
+            'tight_slo_ms': tight_slo_ms,
             'prev_alloc': last_alloc,
             'new_alloc': new_alloc
         }
         
         # Ensure result['decision'] also has these for legacy scripts
         result['decision']['p90_belief'] = current_p90
+        result['decision']['uncertainty'] = float(state.get('uncertainty', 0.0))
         result['decision']['version'] = debug_info['version']
         result['decision']['prev_alloc'] = last_alloc
         result['decision']['new_alloc'] = new_alloc

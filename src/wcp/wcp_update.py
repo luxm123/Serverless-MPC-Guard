@@ -251,15 +251,15 @@ def wcp_update(state, p90_latency, concurrency, cpu, backlog, service_time_ms, t
     q_index = 0
     sorted_scores_len = 0
     if len(scores) < 10:
-        # 降低冷启动安全边界，从 250ms 降至 30ms，避免初始阶段 Alloc 锁死在 1.0
-        uncertainty = 30.0
+        base = max(8.0, 0.25 * float(y_k))
+        uncertainty = min(20.0, base)
     else:
         sorted_scores = sorted(scores, reverse=True)
         q_index = math.ceil((len(scores) + 1) * (1 - alpha)) - 1
         q_index = max(0, min(len(scores) - 1, q_index))
         uncertainty = sorted_scores[q_index]
         sorted_scores_len = len(sorted_scores)
-    uncertainty = _clamp_ms(uncertainty, 0.0, 60.0, 30.0)
+    uncertainty = _clamp_ms(uncertainty, 0.0, 60.0, 15.0)
 
     debug_info = {
         'score_k': score_k,

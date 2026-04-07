@@ -22,6 +22,8 @@ _MPC_MIN_ALLOC_LOCK = threading.Lock()
 _MPC_MIN_ALLOC = 0.0
 _MAX_ALLOC = 1.0
 _BUDGET = 10
+_UNC_SCALE = 1.0
+_TIGHT_SLO_MS = 80.0
 
 def _p90(values):
     if not values:
@@ -151,7 +153,9 @@ def run_single_request(idx, strategy, start_time, inflight=1):
         "rps": float(BASE_RPS),
         "e2e_overhead_ms": float(_E2E_OVERHEAD_EMA),
         "slo_limit": float(SERVER_SLO_MS),
-        "max_alloc": float(_MAX_ALLOC)
+        "max_alloc": float(_MAX_ALLOC),
+        "unc_scale": float(_UNC_SCALE),
+        "tight_slo_ms": float(_TIGHT_SLO_MS),
     }
     if strategy == 'mpc_integrated':
         with _MPC_MIN_ALLOC_LOCK:
@@ -327,7 +331,7 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
                     prev_str = f"{float(prev_a):.3f}" if isinstance(prev_a, (int, float)) or (isinstance(prev_a, str) and prev_a.replace('.','',1).isdigit()) else str(prev_a)
                     new_str = f"{float(new_a):.3f}" if isinstance(new_a, (int, float)) or (isinstance(new_a, str) and new_a.replace('.','',1).isdigit()) else str(new_a)
                     
-                    print(f"[{strategy_name}] Req {res['id']:2d}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Srv={res.get('server_latency', 0.0):.1f}ms, Ver={res['version']}, PrevA={prev_str}, NewA={new_str}, P90_B={res.get('p90_belief', 0.0):.1f}, Price={res.get('shadow_price', 0.0):.1f}")
+                    print(f"[{strategy_name}] Req {res['id']:2d}: Alloc={res['alloc']:.2f}, E2E={res['e2e_latency']:.1f}ms, Srv={res.get('server_latency', 0.0):.1f}ms, Ver={res['version']}, PrevA={prev_str}, NewA={new_str}, P90_B={res.get('p90_belief', 0.0):.1f}, Unc={res.get('uncertainty', 0.0):.1f}, Price={res.get('shadow_price', 0.0):.1f}")
                 except Exception as fmt_e:
                     # Fallback print if formatting fails
                     print(f"[{strategy_name}] Req {res['id']:2d}: Alloc={res['alloc']}, E2E={res['e2e_latency']:.1f}ms (Fmt Error: {fmt_e})")
@@ -688,6 +692,8 @@ def parse_args():
     parser.add_argument("--e2e_slo_ms", type=float, default=0.0)
     parser.add_argument("--print_efficiency", type=int, default=0)
     parser.add_argument("--max_alloc", type=float, default=1.0)
+    parser.add_argument("--unc_scale", type=float, default=1.0)
+    parser.add_argument("--tight_slo_ms", type=float, default=80.0)
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -699,6 +705,16 @@ if __name__ == "__main__":
     if _MAX_ALLOC <= 0.0:
         _MAX_ALLOC = 1.0
     _MAX_ALLOC = float(max(0.4, min(4.0, _MAX_ALLOC)))
+
+    _UNC_SCALE = float(args.unc_scale)
+    if not math.isfinite(_UNC_SCALE) or _UNC_SCALE <= 0.0:
+        _UNC_SCALE = 1.0
+    _UNC_SCALE = float(max(1.0, min(3.0, _UNC_SCALE)))
+
+    _TIGHT_SLO_MS = float(args.tight_slo_ms)
+    if not math.isfinite(_TIGHT_SLO_MS) or _TIGHT_SLO_MS <= 0.0:
+        _TIGHT_SLO_MS = 80.0
+    _TIGHT_SLO_MS = float(max(20.0, min(200.0, _TIGHT_SLO_MS)))
     _BUDGET = int(args.budget)
     if _BUDGET <= 0:
         _BUDGET = 10
@@ -708,6 +724,8 @@ if __name__ == "__main__":
     print(f">>> Mode: {str(args.mode)}")
     print(f">>> Max Alloc: {_MAX_ALLOC:.2f}")
     print(f">>> Concurrency Budget: {_BUDGET}")
+    print(f">>> MPC Unc Scale: {_UNC_SCALE:.2f}")
+    print(f">>> MPC Tight SLO (ms): {_TIGHT_SLO_MS:.1f}")
 
     fixed_srv = float(args.server_slo_ms or 0.0)
     fixed_e2e = float(args.e2e_slo_ms or 0.0)
