@@ -25,6 +25,7 @@ _MAX_ALLOC = 1.0
 _BUDGET = 10
 _UNC_SCALE = 1.0
 _TIGHT_SLO_MS = 80.0
+_LAST_AZURE_TRACE_META = None
 
 def _p90(values):
     if not values:
@@ -121,7 +122,8 @@ def load_azure_trace_sample(duration_min=30):
     
     return second_rates
 
-def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False):
+def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False, auto_shift_empty_window=False):
+    global _LAST_AZURE_TRACE_META
     if not trace_file:
         return None
     trace_path = trace_file
@@ -237,7 +239,7 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
         dur = len(window)
 
     shifted = False
-    if window:
+    if bool(auto_shift_empty_window) and window:
         numeric_series = []
         for v in series:
             try:
@@ -291,9 +293,20 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
         shift_note = ", auto_shifted_start=1" if shifted else ""
         req_note = f", requested_start_min={requested_start_idx}"
         print(f"Loading Azure trace from CSV: file={trace_path}{req_note}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
+    _LAST_AZURE_TRACE_META = {
+        "trace_file": trace_path,
+        "app": picked[0] if picked else None,
+        "func": picked[1] if picked else None,
+        "requested_start_min": int(requested_start_idx),
+        "start_min": int(start_idx),
+        "duration_min": int(len(window)),
+        "scale": float(scale),
+        "auto_shifted": bool(shifted),
+        "auto_shift_enabled": bool(auto_shift_empty_window),
+    }
     return second_rps
 
-def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False):
+def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False, auto_shift_empty_window=False):
     second_rps = load_azure_trace_from_csv(
         trace_file=trace_file,
         duration_min=duration_min,
@@ -302,6 +315,7 @@ def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None,
         func_id=func_id,
         scale=scale,
         pick_most_bursty=pick_most_bursty,
+        auto_shift_empty_window=auto_shift_empty_window,
     )
     if second_rps is not None:
         return second_rps, True
@@ -943,6 +957,7 @@ def parse_args():
     parser.add_argument("--azure_skip_empty_windows", type=int, default=1)
     parser.add_argument("--azure_scale", type=float, default=1.0)
     parser.add_argument("--azure_pick_most_bursty", type=int, default=0)
+    parser.add_argument("--azure_auto_shift_empty_window", type=int, default=0)
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -1083,6 +1098,7 @@ if __name__ == "__main__":
 
         per_window_metrics = {}
         windows_run = 0
+        window_meta = []
 
         for w_i, start_min in enumerate(start_mins):
             if workload in ["trace", "azure", "bursty"]:
@@ -1095,11 +1111,14 @@ if __name__ == "__main__":
                     func_id=str(args.azure_func) if str(args.azure_func).strip() else None,
                     scale=float(args.azure_scale),
                     pick_most_bursty=bool(int(args.azure_pick_most_bursty) == 1),
+                    auto_shift_empty_window=bool(int(args.azure_auto_shift_empty_window) == 1),
                 )
                 arrival_times = generate_trace_arrivals(second_rates, base_rps=1.0)
                 num_requests = len(arrival_times)
                 src = "azure_csv" if is_real else "hardcoded_sample"
                 print(f"Generated {num_requests} requests with dynamic bursts ({src}).")
+                if _LAST_AZURE_TRACE_META:
+                    window_meta.append(dict(_LAST_AZURE_TRACE_META))
                 if num_requests <= 0:
                     if int(args.azure_skip_empty_windows) == 1:
                         print("[WARN] Window produced 0 requests; skipping this window.")
@@ -1175,6 +1194,16 @@ if __name__ == "__main__":
 
         if workload in ["trace", "azure", "bursty"] and len(start_mins) > 1 and windows_run > 0:
             print_aggregate_summary(per_window_metrics)
+            if window_meta:
+                print("\n==================== WINDOWS USED ====================")
+                for i, m in enumerate(window_meta, start=1):
+                    print(
+                        f"{i:02d}. file={m.get('trace_file')} app={m.get('app')} func={m.get('func')} "
+                        f"requested_start_min={m.get('requested_start_min')} start_min={m.get('start_min')} "
+                        f"duration_min={m.get('duration_min')} scale={m.get('scale'):.3f} "
+                        f"auto_shift_enabled={int(bool(m.get('auto_shift_enabled')))} auto_shifted={int(bool(m.get('auto_shifted')))}"
+                    )
+                print("======================================================")
 
     if len(rps_list) > 1 and str(args.mode).lower() != "pareto":
         print("\n==================== FINAL SUMMARY (ALL RPS) ====================")
