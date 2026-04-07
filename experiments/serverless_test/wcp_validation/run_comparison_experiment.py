@@ -121,7 +121,7 @@ def load_azure_trace_sample(duration_min=30):
     
     return second_rates
 
-def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=None, func_id=None, scale=1.0):
+def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False):
     if not trace_file:
         return None
     trace_path = trace_file
@@ -161,18 +161,60 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
         numeric_start_idx = 3
         series = None
         picked = None
+
+        want_app = str(app_id).strip() if app_id is not None else ""
+        want_func = str(func_id).strip() if func_id is not None else ""
+        pick_most_bursty = bool(pick_most_bursty) and (not want_app) and (not want_func)
+
+        best_score = -1.0
+        best_row = None
+        best_pick = None
+
         for row in reader:
             if not row or len(row) <= numeric_start_idx:
                 continue
             app = str(row[0]).strip()
             func = str(row[1]).strip()
-            if app_id and app != str(app_id):
+
+            if not pick_most_bursty:
+                if want_app and app != want_app:
+                    continue
+                if want_func and func != want_func:
+                    continue
+                picked = (app, func)
+                series = row[numeric_start_idx:]
+                break
+
+            values = row[numeric_start_idx:]
+            start_idx = int(start_min)
+            end_idx = min(len(values), start_idx + int(duration_min))
+            if start_idx >= len(values):
                 continue
-            if func_id and func != str(func_id):
+            window = values[start_idx:end_idx]
+            if not window:
                 continue
-            picked = (app, func)
-            series = row[numeric_start_idx:]
-            break
+            nums = []
+            for v in window:
+                try:
+                    x = float(v)
+                except Exception:
+                    x = 0.0
+                if not math.isfinite(x) or x < 0.0:
+                    x = 0.0
+                nums.append(x)
+            if not nums:
+                continue
+            peak = max(nums)
+            mean = float(sum(nums) / max(1, len(nums)))
+            score = float(peak / (mean + 1e-9))
+            if score > best_score:
+                best_score = score
+                best_row = values
+                best_pick = (app, func)
+
+        if pick_most_bursty and best_row is not None:
+            series = best_row
+            picked = best_pick
 
     if series is None:
         print(f"[WARN] Azure trace row not found for app={app_id} func={func_id} in {trace_path}")
@@ -203,7 +245,7 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
         print(f"Loading Azure trace from CSV: file={trace_path}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}")
     return second_rps
 
-def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None, func_id=None, scale=1.0):
+def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False):
     second_rps = load_azure_trace_from_csv(
         trace_file=trace_file,
         duration_min=duration_min,
@@ -211,6 +253,7 @@ def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None,
         app_id=app_id,
         func_id=func_id,
         scale=scale,
+        pick_most_bursty=pick_most_bursty,
     )
     if second_rps is not None:
         return second_rps, True
@@ -759,11 +802,11 @@ def _calc_metrics(results):
 
 def print_summary(results_by_name):
     print("\n======================================================================")
-    print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'Overhead':<8} | {'AchRPS':<7}")
+    print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'CPUms':<7} | {'Overhead':<8} | {'AchRPS':<7}")
     print("----------------------------------------------------------------------")
     for name, results in results_by_name.items():
         m = _calc_metrics(results)
-        print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
+        print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['cpu_ms_per_success']:<7.1f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
     print("======================================================================\n")
 
 def print_efficiency_summary(results_by_name):
@@ -808,6 +851,7 @@ def parse_args():
     parser.add_argument("--azure_func", type=str, default="func_bursty")
     parser.add_argument("--azure_start_min", type=int, default=0)
     parser.add_argument("--azure_scale", type=float, default=1.0)
+    parser.add_argument("--azure_pick_most_bursty", type=int, default=0)
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -929,6 +973,7 @@ if __name__ == "__main__":
                 app_id=str(args.azure_app) if str(args.azure_app).strip() else None,
                 func_id=str(args.azure_func) if str(args.azure_func).strip() else None,
                 scale=float(args.azure_scale),
+                pick_most_bursty=bool(int(args.azure_pick_most_bursty) == 1),
             )
             arrival_times = generate_trace_arrivals(second_rates, base_rps=1.0)
             num_requests = len(arrival_times)
