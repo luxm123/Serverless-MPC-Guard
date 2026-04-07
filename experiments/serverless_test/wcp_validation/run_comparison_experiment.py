@@ -47,7 +47,7 @@ def _pctl(values, p):
     except Exception:
         return 0.0
 
-def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=30, sample_requests=150, budget=10):
+def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=30, sample_requests=150, budget=10, include_cold_start=True):
     budget = int(budget) if int(budget) > 0 else 10
 
     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='static_1.0', reset_state=True)
@@ -59,11 +59,14 @@ def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=30, sample_re
     results, _ = run_phase('static_1.0', warm_up=True, max_workers=budget, arrival_times=sample_arrivals, max_inflight=budget)
 
     success = [r for r in results if r.get('success', False)]
-    warm_success = [r for r in success if not bool(r.get('is_cold_start', False))]
-    if not warm_success:
-        warm_success = success
-    base_p90_e2e = _p90([r.get('e2e_latency', 0.0) for r in warm_success])
-    base_p90_srv = _p90([r.get('server_latency', 0.0) for r in warm_success])
+    if include_cold_start:
+        cal_success = success
+    else:
+        cal_success = [r for r in success if not bool(r.get('is_cold_start', False))]
+        if not cal_success:
+            cal_success = success
+    base_p90_e2e = _p90([r.get('e2e_latency', 0.0) for r in cal_success])
+    base_p90_srv = _p90([r.get('server_latency', 0.0) for r in cal_success])
 
     qos_e2e = float(max(1.0, base_p90_e2e * float(factor)))
     qos_srv = float(max(1.0, base_p90_srv * float(factor)))
@@ -697,6 +700,7 @@ def parse_args():
     parser.add_argument("--pareto_min_allocs", type=str, default="0.4,0.5,0.6,0.7,0.8,0.9")
     parser.add_argument("--include_baselines_in_pareto", type=int, default=1)
     parser.add_argument("--qos_factor", type=float, default=1.2)
+    parser.add_argument("--calibration_include_cold_start", type=int, default=1)
     parser.add_argument("--server_slo_ms", type=float, default=0.0)
     parser.add_argument("--e2e_slo_ms", type=float, default=0.0)
     parser.add_argument("--print_efficiency", type=int, default=0)
@@ -747,10 +751,19 @@ if __name__ == "__main__":
         E2E_SLO_MS = float(fixed_e2e)
         print(f">>> QoS Thresholds (fixed): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms")
     else:
-        cal = calibrate_qos_threshold(args.task, factor=float(args.qos_factor), warmup_requests=30, sample_requests=150, budget=_BUDGET)
+        include_cold = bool(int(args.calibration_include_cold_start) == 1)
+        cal = calibrate_qos_threshold(
+            args.task,
+            factor=float(args.qos_factor),
+            warmup_requests=30,
+            sample_requests=150,
+            budget=_BUDGET,
+            include_cold_start=include_cold,
+        )
         SERVER_SLO_MS = float(cal["qos_srv_ms"])
         E2E_SLO_MS = float(cal["qos_e2e_ms"])
-        print(f">>> QoS Thresholds (auto): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
+        cal_tag = "with_cold" if include_cold else "warm_only"
+        print(f">>> QoS Thresholds (auto/{cal_tag}): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
     
     baselines = [x.strip() for x in str(args.baselines).split(',') if x.strip()]
     static_allocs = []
