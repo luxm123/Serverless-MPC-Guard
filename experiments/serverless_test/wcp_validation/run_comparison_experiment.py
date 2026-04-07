@@ -59,8 +59,11 @@ def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=30, sample_re
     results, _ = run_phase('static_1.0', warm_up=True, max_workers=budget, arrival_times=sample_arrivals, max_inflight=budget)
 
     success = [r for r in results if r.get('success', False)]
-    base_p90_e2e = _p90([r.get('e2e_latency', 0.0) for r in success])
-    base_p90_srv = _p90([r.get('server_latency', 0.0) for r in success])
+    warm_success = [r for r in success if not bool(r.get('is_cold_start', False))]
+    if not warm_success:
+        warm_success = success
+    base_p90_e2e = _p90([r.get('e2e_latency', 0.0) for r in warm_success])
+    base_p90_srv = _p90([r.get('server_latency', 0.0) for r in warm_success])
 
     qos_e2e = float(max(1.0, base_p90_e2e * float(factor)))
     qos_srv = float(max(1.0, base_p90_srv * float(factor)))
@@ -254,6 +257,10 @@ def run_single_request(idx, strategy, start_time, inflight=1):
     e2e_latency = (time.time() - t0) * 1000.0
     
     if worker_result:
+        try:
+            is_cold_start = bool((worker_result.get('response') or {}).get('is_cold_start', False))
+        except Exception:
+            is_cold_start = False
         server_latency = worker_result['response'].get('latency_ms', 0) if 'response' in worker_result else 0
         res = {
             'id': idx,
@@ -276,6 +283,7 @@ def run_single_request(idx, strategy, start_time, inflight=1):
             'violation_srv': (server_latency > SERVER_SLO_MS),
             'violation': (e2e_latency > E2E_SLO_MS),
             'success': True,
+            'is_cold_start': is_cold_start,
             'timestamp': time.time()
         }
     else:
@@ -286,6 +294,7 @@ def run_single_request(idx, strategy, start_time, inflight=1):
             'e2e_latency': e2e_latency,
             'violation': True,
             'success': False,
+            'is_cold_start': False,
             'timestamp': time.time()
         }
     return res
