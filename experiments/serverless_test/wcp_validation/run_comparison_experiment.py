@@ -221,6 +221,7 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
         return None
 
     start_idx = int(start_min)
+    requested_start_idx = int(start_idx)
     end_idx = start_idx + int(duration_min)
     if start_idx >= len(series):
         start_idx = max(0, len(series) - int(duration_min))
@@ -284,10 +285,12 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
 
     if picked:
         shift_note = ", auto_shifted_start=1" if shifted else ""
-        print(f"Loading Azure trace from CSV: file={trace_path}, app={picked[0]}, func={picked[1]}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
+        req_note = f", requested_start_min={requested_start_idx}"
+        print(f"Loading Azure trace from CSV: file={trace_path}, app={picked[0]}, func={picked[1]}{req_note}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
     else:
         shift_note = ", auto_shifted_start=1" if shifted else ""
-        print(f"Loading Azure trace from CSV: file={trace_path}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
+        req_note = f", requested_start_min={requested_start_idx}"
+        print(f"Loading Azure trace from CSV: file={trace_path}{req_note}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
     return second_rps
 
 def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False):
@@ -972,6 +975,7 @@ if __name__ == "__main__":
     print(f">>> Concurrency Budget: {_BUDGET}")
     print(f">>> MPC Unc Scale: {_UNC_SCALE:.2f}")
     print(f">>> MPC Tight SLO (ms): {_TIGHT_SLO_MS:.1f}")
+    print(f">>> Phase Warmup: {int(args.enable_phase_warmup)} (requests={int(args.phase_warmup_requests)})")
 
     fixed_srv = float(args.server_slo_ms or 0.0)
     fixed_e2e = float(args.e2e_slo_ms or 0.0)
