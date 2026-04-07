@@ -854,6 +854,43 @@ def print_summary(results_by_name):
         print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['cpu_ms_per_success']:<7.1f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
     print("======================================================================\n")
 
+def print_aggregate_summary(metrics_by_strategy):
+    def _mean_std(vals):
+        xs = [float(v) for v in vals if v is not None]
+        if not xs:
+            return 0.0, 0.0
+        if len(xs) == 1:
+            return float(xs[0]), 0.0
+        arr = np.array(xs, dtype=float)
+        return float(np.mean(arr)), float(np.std(arr))
+
+    cols = [
+        ("E2E Viol %", "e2e_vio"),
+        ("Srv Viol %", "srv_vio"),
+        ("AvgU", "avg_alloc"),
+        ("Dens", "density"),
+        ("P90 E2E", "p90_e2e"),
+        ("AvgSrv", "avg_srv"),
+        ("AvgE2E", "avg_e2e"),
+        ("CPUms", "cpu_ms_per_success"),
+        ("Overhead", "avg_overhead"),
+        ("AchRPS", "achieved_success_rps"),
+    ]
+
+    print("\n==================== AGGREGATE SUMMARY (MEAN±STD) ====================")
+    header = f"{'Strategy':<22}"
+    for label, _k in cols:
+        header += f" | {label:<12}"
+    print(header)
+    print("-" * len(header))
+    for name in sorted(metrics_by_strategy.keys()):
+        row = f"{name:<22}"
+        for _label, k in cols:
+            mean, std = _mean_std([m.get(k) for m in metrics_by_strategy[name]])
+            row += f" | {mean:>6.2f}±{std:<5.2f}"
+        print(row)
+    print("=" * len(header))
+
 def print_efficiency_summary(results_by_name):
     print("\n==================== EFFICIENCY / STABILITY SUMMARY ====================")
     print(f"{'Strategy':<22} | {'Util%':<6} | {'CPU-ms/succ':<11} | {'AllocP50':<8} | {'AllocP90':<8} | {'AllocStd':<8} | {'Churn':<7}")
@@ -897,6 +934,10 @@ def parse_args():
     parser.add_argument("--azure_app", type=str, default="app_1")
     parser.add_argument("--azure_func", type=str, default="func_bursty")
     parser.add_argument("--azure_start_min", type=int, default=0)
+    parser.add_argument("--azure_start_mins", type=str, default="")
+    parser.add_argument("--azure_num_windows", type=int, default=1)
+    parser.add_argument("--azure_stride_min", type=int, default=30)
+    parser.add_argument("--azure_skip_empty_windows", type=int, default=1)
     parser.add_argument("--azure_scale", type=float, default=1.0)
     parser.add_argument("--azure_pick_most_bursty", type=int, default=0)
     return parser.parse_args()
@@ -1012,88 +1053,124 @@ if __name__ == "__main__":
         print(f"\n>>> Running RPS={rps:.2f} <<<")
 
         workload = str(args.workload).lower().strip()
-        if workload in ["trace", "azure", "bursty"]:
-            second_rates, is_real = load_azure_trace(
-                duration_min=int(args.minutes),
-                trace_file=str(args.azure_trace_file),
-                start_min=int(args.azure_start_min),
-                app_id=str(args.azure_app) if str(args.azure_app).strip() else None,
-                func_id=str(args.azure_func) if str(args.azure_func).strip() else None,
-                scale=float(args.azure_scale),
-                pick_most_bursty=bool(int(args.azure_pick_most_bursty) == 1),
-            )
-            arrival_times = generate_trace_arrivals(second_rates, base_rps=1.0)
-            num_requests = len(arrival_times)
-            src = "azure_csv" if is_real else "hardcoded_sample"
-            print(f"Generated {num_requests} requests with dynamic bursts ({src}).")
-            if num_requests <= 0:
-                raise RuntimeError("Azure trace produced 0 requests. Try a different --azure_start_min or enable --azure_pick_most_bursty 1.")
-        else:
-            arrival_times = generate_fixed_rps_arrivals(rps, args.minutes)
-            num_requests = len(arrival_times)
-            print(f"Generated {num_requests} requests with fixed rate.")
-
-        results_by_name = {}
-
         warm_workers = max(1, min(10, int(args.workers)))
         do_phase_warmup = bool(int(args.enable_phase_warmup) == 1 and int(args.phase_warmup_requests) > 0)
         phase_warmup_n = int(args.phase_warmup_requests) if int(args.phase_warmup_requests) > 0 else 0
 
-        if str(args.mode).lower() == "pareto":
-            for mi in pareto_mins:
-                with _MPC_MIN_ALLOC_LOCK:
-                    _MPC_MIN_ALLOC = float(mi)
-                name = f"mpc(min={mi:.2f})"
-                print(f"\n--- Running {name} ---")
+        start_mins = []
+        if workload in ["trace", "azure", "bursty"]:
+            raw = str(args.azure_start_mins).strip()
+            if raw:
+                for seg in raw.split(","):
+                    seg = seg.strip()
+                    if not seg:
+                        continue
+                    try:
+                        start_mins.append(int(seg))
+                    except Exception:
+                        continue
+            if not start_mins:
+                nwin = int(args.azure_num_windows) if int(args.azure_num_windows) > 0 else 1
+                stride = int(args.azure_stride_min) if int(args.azure_stride_min) > 0 else int(args.minutes)
+                base = int(args.azure_start_min)
+                start_mins = [base + i * stride for i in range(nwin)]
+        else:
+            start_mins = [0]
+
+        per_window_metrics = {}
+        windows_run = 0
+
+        for w_i, start_min in enumerate(start_mins):
+            if workload in ["trace", "azure", "bursty"]:
+                print(f"\n>>> Window {w_i+1}/{len(start_mins)}: azure_start_min={int(start_min)} <<<")
+                second_rates, is_real = load_azure_trace(
+                    duration_min=int(args.minutes),
+                    trace_file=str(args.azure_trace_file),
+                    start_min=int(start_min),
+                    app_id=str(args.azure_app) if str(args.azure_app).strip() else None,
+                    func_id=str(args.azure_func) if str(args.azure_func).strip() else None,
+                    scale=float(args.azure_scale),
+                    pick_most_bursty=bool(int(args.azure_pick_most_bursty) == 1),
+                )
+                arrival_times = generate_trace_arrivals(second_rates, base_rps=1.0)
+                num_requests = len(arrival_times)
+                src = "azure_csv" if is_real else "hardcoded_sample"
+                print(f"Generated {num_requests} requests with dynamic bursts ({src}).")
+                if num_requests <= 0:
+                    if int(args.azure_skip_empty_windows) == 1:
+                        print("[WARN] Window produced 0 requests; skipping this window.")
+                        continue
+                    raise RuntimeError("Azure trace produced 0 requests.")
+            else:
+                arrival_times = generate_fixed_rps_arrivals(rps, args.minutes)
+                num_requests = len(arrival_times)
+                print(f"Generated {num_requests} requests with fixed rate.")
+
+            results_by_name = {}
+
+            if str(args.mode).lower() == "pareto":
+                for mi in pareto_mins:
+                    with _MPC_MIN_ALLOC_LOCK:
+                        _MPC_MIN_ALLOC = float(mi)
+                    name = f"mpc(min={mi:.2f})"
+                    print(f"\n--- Running {name} ---")
+                    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
+                    if do_phase_warmup:
+                        run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
+                    res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
+                    results_by_name[name] = res
+            else:
+                print(f"\n--- Running MPC-Guard (Ours) ---")
                 invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
                 if do_phase_warmup:
                     run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
-                res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
-                results_by_name[name] = res
-        else:
-            print(f"\n--- Running MPC-Guard (Ours) ---")
-            invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
-            if do_phase_warmup:
-                run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
-            mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
-            results_by_name["mpc"] = mpc_results
+                mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
+                results_by_name["mpc"] = mpc_results
 
-        if str(args.mode).lower() != "pareto" or int(args.include_baselines_in_pareto) == 1:
-            for b in baselines:
-                if b == "hpa":
-                    print(f"\n--- Running HPA Baseline ---")
-                    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
-                    if do_phase_warmup:
-                        run_phase('baseline', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
-                    res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
-                    results_by_name["hpa_baseline"] = res
-                elif b == "aws_tt":
-                    print(f"\n--- Running AWS Target Tracking ---")
-                    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='aws_tt', reset_state=True)
-                    if do_phase_warmup:
-                        run_phase('aws_tt', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
-                    res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
-                    results_by_name["aws_tt"] = res
-                elif b == "static":
-                    for u in static_allocs:
-                        name = f"static_{u:.2f}"
-                        print(f"\n--- Running {name} ---")
+            if str(args.mode).lower() != "pareto" or int(args.include_baselines_in_pareto) == 1:
+                for b in baselines:
+                    if b == "hpa":
+                        print(f"\n--- Running HPA Baseline ---")
+                        invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
                         if do_phase_warmup:
-                            run_phase(f"static_{u}", warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
-                        res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
-                        results_by_name[name] = res
+                            run_phase('baseline', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
+                        res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
+                        results_by_name["hpa_baseline"] = res
+                    elif b == "aws_tt":
+                        print(f"\n--- Running AWS Target Tracking ---")
+                        invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='aws_tt', reset_state=True)
+                        if do_phase_warmup:
+                            run_phase('aws_tt', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
+                        res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
+                        results_by_name["aws_tt"] = res
+                    elif b == "static":
+                        for u in static_allocs:
+                            name = f"static_{u:.2f}"
+                            print(f"\n--- Running {name} ---")
+                            if do_phase_warmup:
+                                run_phase(f"static_{u}", warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
+                            res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
+                            results_by_name[name] = res
 
-        print_summary(results_by_name)
-        if int(args.print_efficiency) == 1:
-            print_efficiency_summary(results_by_name)
+            windows_run += 1
+            print_summary(results_by_name)
+            if int(args.print_efficiency) == 1:
+                print_efficiency_summary(results_by_name)
 
-        for name, results in results_by_name.items():
-            m = _calc_metrics(results)
-            sweep_rows.append({
-                "rps": float(rps),
-                "strategy": name,
-                **m
-            })
+            for name, results in results_by_name.items():
+                m = _calc_metrics(results)
+                sweep_rows.append({
+                    "rps": float(rps),
+                    "strategy": name,
+                    **m
+                })
+                per_window_metrics.setdefault(name, []).append(m)
+
+        if workload in ["trace", "azure", "bursty"] and windows_run <= 0:
+            raise RuntimeError("All Azure windows produced 0 requests; nothing to evaluate.")
+
+        if workload in ["trace", "azure", "bursty"] and len(start_mins) > 1 and windows_run > 0:
+            print_aggregate_summary(per_window_metrics)
 
     if len(rps_list) > 1 and str(args.mode).lower() != "pareto":
         print("\n==================== FINAL SUMMARY (ALL RPS) ====================")
