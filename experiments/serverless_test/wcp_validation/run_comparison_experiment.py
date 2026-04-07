@@ -5,6 +5,7 @@ import concurrent.futures
 import statistics
 import math
 import os
+import csv
 import threading
 from datetime import datetime, timedelta, timezone
 import boto3
@@ -98,7 +99,7 @@ def generate_fixed_rps_arrivals(rps, duration_min):
     arrival_times = np.cumsum(intervals)
     return arrival_times
 
-def load_azure_trace(duration_min=30):
+def load_azure_trace_sample(duration_min=30):
     """
     Returns a 30-minute request rate sequence (req/s) sampled from 
     Azure Functions 2019 dataset (Bursty Function ID: app_14, func_3).
@@ -119,6 +120,101 @@ def load_azure_trace(duration_min=30):
         second_rates.extend([rate] * 60)
     
     return second_rates
+
+def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=None, func_id=None, scale=1.0):
+    if not trace_file:
+        return None
+    trace_path = trace_file
+    if not os.path.isabs(trace_path):
+        trace_path = os.path.join(os.getcwd(), trace_path)
+    if not os.path.exists(trace_path):
+        print(f"[WARN] Azure trace file not found: {trace_path}")
+        return None
+
+    try:
+        start_min = int(start_min)
+    except Exception:
+        start_min = 0
+    if start_min < 0:
+        start_min = 0
+    try:
+        duration_min = int(duration_min)
+    except Exception:
+        duration_min = 30
+    if duration_min <= 0:
+        duration_min = 30
+
+    try:
+        scale = float(scale)
+    except Exception:
+        scale = 1.0
+    if not math.isfinite(scale) or scale <= 0.0:
+        scale = 1.0
+
+    with open(trace_path, "r", newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        if not header or len(header) < 5:
+            print(f"[WARN] Azure trace header invalid: {trace_path}")
+            return None
+
+        numeric_start_idx = 3
+        series = None
+        picked = None
+        for row in reader:
+            if not row or len(row) <= numeric_start_idx:
+                continue
+            app = str(row[0]).strip()
+            func = str(row[1]).strip()
+            if app_id and app != str(app_id):
+                continue
+            if func_id and func != str(func_id):
+                continue
+            picked = (app, func)
+            series = row[numeric_start_idx:]
+            break
+
+    if series is None:
+        print(f"[WARN] Azure trace row not found for app={app_id} func={func_id} in {trace_path}")
+        return None
+
+    start_idx = int(start_min)
+    end_idx = start_idx + int(duration_min)
+    if start_idx >= len(series):
+        start_idx = max(0, len(series) - int(duration_min))
+        end_idx = len(series)
+    end_idx = min(len(series), end_idx)
+    window = series[start_idx:end_idx]
+
+    second_rps = []
+    for v in window:
+        try:
+            per_min = float(v)
+        except Exception:
+            per_min = 0.0
+        if not math.isfinite(per_min) or per_min < 0.0:
+            per_min = 0.0
+        rps = (per_min / 60.0) * float(scale)
+        second_rps.extend([rps] * 60)
+
+    if picked:
+        print(f"Loading Azure trace from CSV: file={trace_path}, app={picked[0]}, func={picked[1]}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}")
+    else:
+        print(f"Loading Azure trace from CSV: file={trace_path}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}")
+    return second_rps
+
+def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None, func_id=None, scale=1.0):
+    second_rps = load_azure_trace_from_csv(
+        trace_file=trace_file,
+        duration_min=duration_min,
+        start_min=start_min,
+        app_id=app_id,
+        func_id=func_id,
+        scale=scale,
+    )
+    if second_rps is not None:
+        return second_rps, True
+    return load_azure_trace_sample(duration_min=duration_min), False
 
 def generate_trace_arrivals(second_rates, base_rps):
     """Generates arrival timestamps based on the rate sequence."""
@@ -707,6 +803,11 @@ def parse_args():
     parser.add_argument("--max_alloc", type=float, default=1.0)
     parser.add_argument("--unc_scale", type=float, default=1.0)
     parser.add_argument("--tight_slo_ms", type=float, default=80.0)
+    parser.add_argument("--azure_trace_file", type=str, default="azure_traces/invocations_per_function_sample.csv")
+    parser.add_argument("--azure_app", type=str, default="app_1")
+    parser.add_argument("--azure_func", type=str, default="func_bursty")
+    parser.add_argument("--azure_start_min", type=int, default=0)
+    parser.add_argument("--azure_scale", type=float, default=1.0)
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -821,10 +922,18 @@ if __name__ == "__main__":
 
         workload = str(args.workload).lower().strip()
         if workload in ["trace", "azure", "bursty"]:
-            second_rates = load_azure_trace(duration_min=int(args.minutes))
-            arrival_times = generate_trace_arrivals(second_rates, base_rps=rps)
+            second_rates, is_real = load_azure_trace(
+                duration_min=int(args.minutes),
+                trace_file=str(args.azure_trace_file),
+                start_min=int(args.azure_start_min),
+                app_id=str(args.azure_app) if str(args.azure_app).strip() else None,
+                func_id=str(args.azure_func) if str(args.azure_func).strip() else None,
+                scale=float(args.azure_scale),
+            )
+            arrival_times = generate_trace_arrivals(second_rates, base_rps=1.0)
             num_requests = len(arrival_times)
-            print(f"Generated {num_requests} requests with dynamic bursts.")
+            src = "azure_csv" if is_real else "hardcoded_sample"
+            print(f"Generated {num_requests} requests with dynamic bursts ({src}).")
         else:
             arrival_times = generate_fixed_rps_arrivals(rps, args.minutes)
             num_requests = len(arrival_times)
