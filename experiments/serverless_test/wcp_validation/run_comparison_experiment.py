@@ -228,6 +228,49 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
     end_idx = min(len(series), end_idx)
     window = series[start_idx:end_idx]
 
+    try:
+        dur = int(duration_min)
+    except Exception:
+        dur = len(window)
+    if dur <= 0:
+        dur = len(window)
+
+    shifted = False
+    if window:
+        numeric_series = []
+        for v in series:
+            try:
+                x = float(v)
+            except Exception:
+                x = 0.0
+            if not math.isfinite(x) or x < 0.0:
+                x = 0.0
+            numeric_series.append(x)
+
+        wsum = float(sum(numeric_series[start_idx:end_idx]))
+        if wsum <= 0.0 and len(numeric_series) >= dur:
+            prefix = [0.0]
+            acc = 0.0
+            for x in numeric_series:
+                acc += float(x)
+                prefix.append(acc)
+
+            best_sum = -1.0
+            best_start = 0
+            max_start = max(0, len(numeric_series) - dur)
+            for s in range(0, max_start + 1):
+                e = s + dur
+                seg_sum = float(prefix[e] - prefix[s])
+                if seg_sum > best_sum:
+                    best_sum = seg_sum
+                    best_start = s
+
+            if best_sum > 0.0:
+                start_idx = int(best_start)
+                end_idx = min(len(series), start_idx + dur)
+                window = series[start_idx:end_idx]
+                shifted = True
+
     second_rps = []
     for v in window:
         try:
@@ -240,9 +283,11 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
         second_rps.extend([rps] * 60)
 
     if picked:
-        print(f"Loading Azure trace from CSV: file={trace_path}, app={picked[0]}, func={picked[1]}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}")
+        shift_note = ", auto_shifted_start=1" if shifted else ""
+        print(f"Loading Azure trace from CSV: file={trace_path}, app={picked[0]}, func={picked[1]}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
     else:
-        print(f"Loading Azure trace from CSV: file={trace_path}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}")
+        shift_note = ", auto_shifted_start=1" if shifted else ""
+        print(f"Loading Azure trace from CSV: file={trace_path}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
     return second_rps
 
 def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False):
@@ -979,6 +1024,8 @@ if __name__ == "__main__":
             num_requests = len(arrival_times)
             src = "azure_csv" if is_real else "hardcoded_sample"
             print(f"Generated {num_requests} requests with dynamic bursts ({src}).")
+            if num_requests <= 0:
+                raise RuntimeError("Azure trace produced 0 requests. Try a different --azure_start_min or enable --azure_pick_most_bursty 1.")
         else:
             arrival_times = generate_fixed_rps_arrivals(rps, args.minutes)
             num_requests = len(arrival_times)
