@@ -44,7 +44,14 @@ class Optimizer:
         uncertainty = float(state.get('uncertainty', 0.0))
         concurrency = float(state.get('concurrency', state.get('backlog', 0.0)))
         backlog = float(state.get('backlog', concurrency))
-        pred_total = max(float(pred_upper), float(last_y) + float(uncertainty))
+        try:
+            unc_scale = float(state.get('unc_scale', 1.5) or 1.5)
+        except Exception:
+            unc_scale = 1.5
+        if not math.isfinite(unc_scale) or unc_scale <= 0.0:
+            unc_scale = 1.5
+        unc_scale = float(max(1.0, min(3.0, unc_scale)))
+        pred_total = max(float(pred_upper), float(last_y) + float(unc_scale) * float(uncertainty))
         obs_total = last_y
         margin_ms = min(10.0, 0.10 * float(slo_limit))
         safety_target = max(1.0, float(slo_limit) - margin_ms)
@@ -87,6 +94,16 @@ class Optimizer:
             alloc_floor = 0.60
         else:
             alloc_floor = 0.40 + 0.20 * ((pred_total - (safety_target - 30.0)) / 30.0)
+
+        try:
+            tight_slo_ms = float(state.get('tight_slo_ms', 80.0) or 80.0)
+        except Exception:
+            tight_slo_ms = 80.0
+        if not math.isfinite(tight_slo_ms) or tight_slo_ms <= 0.0:
+            tight_slo_ms = 80.0
+        tight_slo_ms = float(max(20.0, min(200.0, tight_slo_ms)))
+        if float(slo_limit) <= tight_slo_ms:
+            alloc_floor = max(alloc_floor, 0.75 if error <= 0.0 else 0.85)
 
         if concurrency >= 180.0:
             alloc_floor = max(alloc_floor, 0.90)
