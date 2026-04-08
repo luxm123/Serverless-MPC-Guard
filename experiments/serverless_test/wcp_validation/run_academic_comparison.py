@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import threading
 import random
+import os
 from concurrent.futures import ThreadPoolExecutor
 from serverless_utils import invoke_worker_lambda
 
@@ -11,7 +12,7 @@ from serverless_utils import invoke_worker_lambda
 # 6 types of functions as per benchmark availability
 FUNCTIONS = ['linpack', 'gzip', 'image_processing', 'video_processing', 'chameleon', 'matmul']
 STRATEGIES = ['mpc_integrated', 'gsight', 'owl']
-TRACE_FILE = 'azure_traces/invocations_per_function_sample.csv'
+TRACE_FILE = os.environ.get("AZURE_TRACE_FILE", "")
 DURATION_MINUTES = 60
 RPS_SCALE = 0.2 # 1:5 scale
 NOISE_LEVEL = 0.1 # +/- 10%
@@ -23,6 +24,8 @@ class AcademicExperiment:
         self.metrics_summary = {}
 
     def load_trace(self):
+        if not TRACE_FILE or not os.path.exists(TRACE_FILE):
+            raise RuntimeError("AZURE_TRACE_FILE is not set or file does not exist.")
         df = pd.read_csv(TRACE_FILE)
         # Select 6 unique functions from trace
         trace_funcs = df['HashFunction'].unique()[:6]

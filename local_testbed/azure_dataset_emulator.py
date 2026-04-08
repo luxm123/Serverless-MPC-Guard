@@ -34,7 +34,7 @@ def generate_azure_format_sample():
     columns = ["HashApp", "HashFunction", "Trigger"] + [str(i+1) for i in range(minutes)]
     df = pd.DataFrame(data, columns=columns)
     
-    output_file = "azure_traces/invocations_per_function_sample.csv"
+    output_file = os.path.join(os.path.dirname(__file__), "azure_dataset_emulator_sample.csv")
     df.to_csv(output_file, index=False)
     print(f"Generated Azure-style dataset sample: {output_file}")
 

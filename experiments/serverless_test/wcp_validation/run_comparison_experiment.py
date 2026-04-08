@@ -102,26 +102,7 @@ def generate_fixed_rps_arrivals(rps, duration_min):
     return arrival_times
 
 def load_azure_trace_sample(duration_min=30):
-    """
-    Returns a 30-minute request rate sequence (req/s) sampled from 
-    Azure Functions 2019 dataset (Bursty Function ID: app_14, func_3).
-    """
-    print(f"Loading real Azure Functions 2019 trace slice ({duration_min} mins)...")
-    
-    # 这是一个从 Azure 2019 数据集中提取的真实 30 分钟归一化轨迹 (Rate Multiplier)
-    # 包含了静默、平稳爬升、以及剧烈的突发峰值
-    azure_sample_trace = [
-        0.2, 0.2, 0.2, 0.3, 0.5, 0.8, 1.0, 1.2, 1.0, 0.8, # 0-10 min: Normal
-        2.5, 5.0, 8.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.9, 0.8, # 10-20 min: BIG BURST (Jiagu Style)
-        0.7, 0.6, 0.5, 0.5, 0.4, 0.4, 0.3, 0.3, 0.2, 0.2  # 20-30 min: Decay
-    ]
-    
-    # 将分钟级轨迹扩展为秒级，并平滑处理
-    second_rates = []
-    for rate in azure_sample_trace:
-        second_rates.extend([rate] * 60)
-    
-    return second_rates
+    raise RuntimeError("Hardcoded Azure trace sample has been removed. Provide --azure_trace_file/--azure_app/--azure_func instead.")
 
 def _resolve_trace_path(trace_file):
     if not trace_file:
@@ -130,6 +111,87 @@ def _resolve_trace_path(trace_file):
     if not os.path.isabs(trace_path):
         trace_path = os.path.join(os.getcwd(), trace_path)
     return trace_path
+
+def _is_feather_trace_file(trace_path):
+    try:
+        p = str(trace_path).lower().strip()
+    except Exception:
+        return False
+    return p.endswith(".feather")
+
+def _iter_feather_record_batches(trace_path):
+    import pyarrow as pa
+    import pyarrow.ipc as ipc
+
+    source = pa.memory_map(trace_path, "r")
+    reader = ipc.open_file(source)
+    for i in range(reader.num_record_batches):
+        yield reader.get_batch(i)
+
+def _read_azure_minute_series_from_feather(trace_file, app_id, func_id, day=0):
+    trace_path = _resolve_trace_path(trace_file)
+    if not trace_path or not os.path.exists(trace_path):
+        return None, trace_path, None
+
+    want_app = str(app_id).strip() if app_id is not None else ""
+    want_func = str(func_id).strip() if func_id is not None else ""
+    if not want_app or not want_func:
+        return None, trace_path, None
+
+    try:
+        import pyarrow.compute as pc
+    except Exception as e:
+        raise RuntimeError("Reading .feather Azure trace requires pyarrow.") from e
+
+    try:
+        day_int = int(day)
+    except Exception:
+        day_int = 0
+    if day_int < 0:
+        day_int = 0
+
+    minute_cols = [str(i) for i in range(1, 1441)]
+    need_cols = ["HashApp", "HashFunction", "day"] + minute_cols
+
+    for batch in _iter_feather_record_batches(trace_path):
+        names = list(batch.schema.names)
+        missing = [c for c in need_cols if c not in names]
+        if missing:
+            raise RuntimeError(f"Feather schema missing columns: {missing[:10]}")
+
+        b = batch.select(need_cols)
+        mask = pc.and_(pc.equal(b.column("HashApp"), want_app), pc.equal(b.column("HashFunction"), want_func))
+        if day_int > 0:
+            mask = pc.and_(mask, pc.equal(b.column("day"), day_int))
+
+        mask_np = mask.to_numpy(zero_copy_only=False)
+        idx = np.nonzero(mask_np)[0]
+        if idx.size <= 0:
+            continue
+
+        r = int(idx[0])
+        row = b.slice(r, 1).to_pydict()
+        picked_day = int(row["day"][0]) if row.get("day") else None
+        series = []
+        for c in minute_cols:
+            v = row.get(c, [0.0])[0]
+            try:
+                x = float(v)
+            except Exception:
+                x = 0.0
+            if not math.isfinite(x) or x < 0.0:
+                x = 0.0
+            series.append(x)
+        return series, trace_path, picked_day
+
+    return None, trace_path, None
+
+def _read_azure_minute_series(trace_file, app_id, func_id, day=0):
+    trace_path = _resolve_trace_path(trace_file)
+    if _is_feather_trace_file(trace_path):
+        return _read_azure_minute_series_from_feather(trace_file, app_id, func_id, day=day)
+    series, tp = _read_azure_minute_series_from_csv(trace_file, app_id, func_id)
+    return series, tp, None
 
 def _read_azure_minute_series_from_csv(trace_file, app_id, func_id):
     trace_path = _resolve_trace_path(trace_file)
@@ -249,8 +311,8 @@ def _window_avg_rps_from_minute_series(series, start_min, duration_min, scale):
     avg_rps = float(total_inv) / float(60.0 * len(window))
     return avg_rps, total_inv, int(len(window))
 
-def select_azure_windows_by_avg_rps(trace_file, app_id, func_id, duration_min, stride_min, scale, target_rps_min, target_rps_max, max_windows):
-    series, trace_path = _read_azure_minute_series_from_csv(trace_file, app_id, func_id)
+def select_azure_windows_by_avg_rps(trace_file, app_id, func_id, day, duration_min, stride_min, scale, target_rps_min, target_rps_max, max_windows):
+    series, trace_path, picked_day = _read_azure_minute_series(trace_file, app_id, func_id, day=day)
     if not series:
         return [], trace_path
 
@@ -311,6 +373,8 @@ def select_azure_windows_by_avg_rps(trace_file, app_id, func_id, duration_min, s
             continue
         seen.add(s)
         dedup.append(s)
+    if picked_day is not None:
+        print(f">>> Azure trace day used: {picked_day}")
     return dedup, trace_path
 
 def scan_azure_windows_any_function_wide_csv(trace_file, duration_min, stride_min, scale, target_rps_min, target_rps_max, top_funcs):
@@ -409,13 +473,102 @@ def scan_azure_windows_any_function_wide_csv(trace_file, duration_min, stride_mi
         top_funcs = 10
     return results[:top_funcs], trace_path
 
-def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False, auto_shift_empty_window=False):
+def scan_azure_windows_any_function_wide_feather(trace_file, duration_min, stride_min, scale, target_rps_min, target_rps_max, top_funcs):
+    trace_path = _resolve_trace_path(trace_file)
+    if not trace_path or not os.path.exists(trace_path):
+        return [], trace_path
+
+    try:
+        duration_min = int(duration_min)
+    except Exception:
+        duration_min = 30
+    if duration_min <= 0:
+        duration_min = 30
+    try:
+        stride_min = int(stride_min)
+    except Exception:
+        stride_min = duration_min
+    if stride_min <= 0:
+        stride_min = duration_min
+    try:
+        scale = float(scale)
+    except Exception:
+        scale = 1.0
+    if not math.isfinite(scale) or scale <= 0.0:
+        scale = 1.0
+    try:
+        target_rps_min = float(target_rps_min)
+    except Exception:
+        target_rps_min = 0.0
+    try:
+        target_rps_max = float(target_rps_max)
+    except Exception:
+        target_rps_max = float("inf")
+    if not math.isfinite(target_rps_min):
+        target_rps_min = 0.0
+    if not math.isfinite(target_rps_max) or target_rps_max <= 0.0:
+        target_rps_max = float("inf")
+    if target_rps_max < target_rps_min:
+        target_rps_min, target_rps_max = target_rps_max, target_rps_min
+
+    try:
+        top_funcs = int(top_funcs)
+    except Exception:
+        top_funcs = 10
+    if top_funcs <= 0:
+        top_funcs = 10
+
+    dur = int(duration_min)
+    starts = list(range(0, max(0, 1440 - dur) + 1, int(stride_min)))
+    if not starts:
+        starts = [0]
+    starts_arr = np.array(starts, dtype=np.int32)
+
+    minute_cols = [str(i) for i in range(1, 1441)]
+    need_cols = ["HashApp", "HashFunction", "day"] + minute_cols
+
+    import heapq
+    heap = []
+
+    for batch in _iter_feather_record_batches(trace_path):
+        names = list(batch.schema.names)
+        missing = [c for c in need_cols if c not in names]
+        if missing:
+            raise RuntimeError(f"Feather schema missing columns: {missing[:10]}")
+
+        b = batch.select(need_cols)
+        df = b.to_pandas()
+        if df.empty:
+            continue
+
+        mat = df[minute_cols].to_numpy(dtype=np.float32, copy=False)
+        mat = np.where(np.isfinite(mat) & (mat > 0.0), mat, 0.0).astype(np.float32, copy=False)
+        prefix = np.concatenate([np.zeros((mat.shape[0], 1), dtype=np.float32), np.cumsum(mat, axis=1, dtype=np.float32)], axis=1)
+
+        seg = prefix[:, starts_arr + dur] - prefix[:, starts_arr]
+        avg = (seg * float(scale)) / float(60.0 * dur)
+        mask = (seg > 0.0) & (avg >= float(target_rps_min)) & (avg <= float(target_rps_max))
+        hits = mask.sum(axis=1).astype(int)
+
+        rows = np.nonzero(hits > 0)[0]
+        for r in rows:
+            w = int(np.argmax(mask[r]))
+            ex = (int(starts_arr[w]), float(avg[r, w]), float(seg[r, w] * float(scale)))
+            item = (int(hits[r]), str(df.loc[int(r), "HashApp"]), str(df.loc[int(r), "HashFunction"]), int(df.loc[int(r), "day"]), ex)
+            if len(heap) < top_funcs:
+                heapq.heappush(heap, item)
+            else:
+                if item > heap[0]:
+                    heapq.heapreplace(heap, item)
+
+    heap.sort(reverse=True)
+    return heap, trace_path
+
+def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=None, func_id=None, day=0, scale=1.0, pick_most_bursty=False, auto_shift_empty_window=False):
     global _LAST_AZURE_TRACE_META
     if not trace_file:
         return None
-    trace_path = trace_file
-    if not os.path.isabs(trace_path):
-        trace_path = os.path.join(os.getcwd(), trace_path)
+    trace_path = _resolve_trace_path(trace_file)
     if not os.path.exists(trace_path):
         print(f"[WARN] Azure trace file not found: {trace_path}")
         return None
@@ -440,74 +593,85 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
     if not math.isfinite(scale) or scale <= 0.0:
         scale = 1.0
 
-    with open(trace_path, "r", newline="") as f:
-        reader = csv.reader(f)
-        header = next(reader, None)
-        if not header or len(header) < 5:
-            print(f"[WARN] Azure trace header invalid: {trace_path}")
+    series = None
+    picked = None
+    picked_day = None
+
+    if _is_feather_trace_file(trace_path):
+        if bool(pick_most_bursty):
+            raise RuntimeError("--azure_pick_most_bursty is not supported for .feather traces.")
+        series, _tp, picked_day = _read_azure_minute_series_from_feather(trace_file, app_id, func_id, day=day)
+        if series is None:
+            print(f"[WARN] Azure trace row not found for app={app_id} func={func_id} day={day} in {trace_path}")
             return None
+        picked = (str(app_id).strip(), str(func_id).strip())
+    else:
+        with open(trace_path, "r", newline="") as f:
+            reader = csv.reader(f)
+            header = next(reader, None)
+            if not header or len(header) < 5:
+                print(f"[WARN] Azure trace header invalid: {trace_path}")
+                return None
 
-        numeric_start_idx = 3
-        series = None
-        picked = None
+            numeric_start_idx = 3
 
-        want_app = str(app_id).strip() if app_id is not None else ""
-        want_func = str(func_id).strip() if func_id is not None else ""
-        pick_most_bursty = bool(pick_most_bursty) and (not want_app) and (not want_func)
+            want_app = str(app_id).strip() if app_id is not None else ""
+            want_func = str(func_id).strip() if func_id is not None else ""
+            pick_most_bursty = bool(pick_most_bursty) and (not want_app) and (not want_func)
 
-        best_score = -1.0
-        best_row = None
-        best_pick = None
+            best_score = -1.0
+            best_row = None
+            best_pick = None
 
-        for row in reader:
-            if not row or len(row) <= numeric_start_idx:
-                continue
-            app = str(row[0]).strip()
-            func = str(row[1]).strip()
-
-            if not pick_most_bursty:
-                if want_app and app != want_app:
+            for row in reader:
+                if not row or len(row) <= numeric_start_idx:
                     continue
-                if want_func and func != want_func:
+                app = str(row[0]).strip()
+                func = str(row[1]).strip()
+
+                if not pick_most_bursty:
+                    if want_app and app != want_app:
+                        continue
+                    if want_func and func != want_func:
+                        continue
+                    picked = (app, func)
+                    series = row[numeric_start_idx:]
+                    break
+
+                values = row[numeric_start_idx:]
+                start_idx = int(start_min)
+                end_idx = min(len(values), start_idx + int(duration_min))
+                if start_idx >= len(values):
                     continue
-                picked = (app, func)
-                series = row[numeric_start_idx:]
-                break
+                window = values[start_idx:end_idx]
+                if not window:
+                    continue
+                nums = []
+                for v in window:
+                    try:
+                        x = float(v)
+                    except Exception:
+                        x = 0.0
+                    if not math.isfinite(x) or x < 0.0:
+                        x = 0.0
+                    nums.append(x)
+                if not nums:
+                    continue
+                peak = max(nums)
+                mean = float(sum(nums) / max(1, len(nums)))
+                score = float(peak / (mean + 1e-9))
+                if score > best_score:
+                    best_score = score
+                    best_row = values
+                    best_pick = (app, func)
 
-            values = row[numeric_start_idx:]
-            start_idx = int(start_min)
-            end_idx = min(len(values), start_idx + int(duration_min))
-            if start_idx >= len(values):
-                continue
-            window = values[start_idx:end_idx]
-            if not window:
-                continue
-            nums = []
-            for v in window:
-                try:
-                    x = float(v)
-                except Exception:
-                    x = 0.0
-                if not math.isfinite(x) or x < 0.0:
-                    x = 0.0
-                nums.append(x)
-            if not nums:
-                continue
-            peak = max(nums)
-            mean = float(sum(nums) / max(1, len(nums)))
-            score = float(peak / (mean + 1e-9))
-            if score > best_score:
-                best_score = score
-                best_row = values
-                best_pick = (app, func)
+            if pick_most_bursty and best_row is not None:
+                series = best_row
+                picked = best_pick
 
-        if pick_most_bursty and best_row is not None:
-            series = best_row
-            picked = best_pick
-
-    if series is None:
-        print(f"[WARN] Azure trace row not found for app={app_id} func={func_id} in {trace_path}")
-        return None
+        if series is None:
+            print(f"[WARN] Azure trace row not found for app={app_id} func={func_id} in {trace_path}")
+            return None
 
     start_idx = int(start_min)
     requested_start_idx = int(start_idx)
@@ -576,18 +740,19 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
     total_inv = float(total_inv) * float(scale)
     avg_rps = float(total_inv) / float(60.0 * max(1, len(window)))
 
+    src = "Feather" if _is_feather_trace_file(trace_path) else "CSV"
+    shift_note = ", auto_shifted_start=1" if shifted else ""
+    req_note = f", requested_start_min={requested_start_idx}"
+    day_note = f", day={picked_day}" if picked_day is not None else ""
     if picked:
-        shift_note = ", auto_shifted_start=1" if shifted else ""
-        req_note = f", requested_start_min={requested_start_idx}"
-        print(f"Loading Azure trace from CSV: file={trace_path}, app={picked[0]}, func={picked[1]}{req_note}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
+        print(f"Loading Azure trace from {src}: file={trace_path}, app={picked[0]}, func={picked[1]}{day_note}{req_note}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
     else:
-        shift_note = ", auto_shifted_start=1" if shifted else ""
-        req_note = f", requested_start_min={requested_start_idx}"
-        print(f"Loading Azure trace from CSV: file={trace_path}{req_note}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
+        print(f"Loading Azure trace from {src}: file={trace_path}{day_note}{req_note}, start_min={start_idx}, duration_min={len(window)}, scale={scale:.3f}{shift_note}")
     _LAST_AZURE_TRACE_META = {
         "trace_file": trace_path,
         "app": picked[0] if picked else None,
         "func": picked[1] if picked else None,
+        "day": int(picked_day) if picked_day is not None else None,
         "requested_start_min": int(requested_start_idx),
         "start_min": int(start_idx),
         "duration_min": int(len(window)),
@@ -599,20 +764,21 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
     }
     return second_rps
 
-def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False, auto_shift_empty_window=False):
+def load_azure_trace(duration_min=30, trace_file=None, start_min=0, app_id=None, func_id=None, day=0, scale=1.0, pick_most_bursty=False, auto_shift_empty_window=False):
     second_rps = load_azure_trace_from_csv(
         trace_file=trace_file,
         duration_min=duration_min,
         start_min=start_min,
         app_id=app_id,
         func_id=func_id,
+        day=day,
         scale=scale,
         pick_most_bursty=pick_most_bursty,
         auto_shift_empty_window=auto_shift_empty_window,
     )
     if second_rps is not None:
         return second_rps, True
-    return load_azure_trace_sample(duration_min=duration_min), False
+    raise RuntimeError("Failed to load Azure trace from file. Provide a valid --azure_trace_file and matching --azure_app/--azure_func.")
 
 def generate_trace_arrivals(second_rates, base_rps):
     """Generates arrival timestamps based on the rate sequence."""
@@ -1240,9 +1406,10 @@ def parse_args():
     parser.add_argument("--max_alloc", type=float, default=1.0)
     parser.add_argument("--unc_scale", type=float, default=1.0)
     parser.add_argument("--tight_slo_ms", type=float, default=80.0)
-    parser.add_argument("--azure_trace_file", type=str, default="azure_traces/invocations_per_function_sample.csv")
-    parser.add_argument("--azure_app", type=str, default="app_1")
-    parser.add_argument("--azure_func", type=str, default="func_bursty")
+    parser.add_argument("--azure_trace_file", type=str, default="")
+    parser.add_argument("--azure_app", type=str, default="")
+    parser.add_argument("--azure_func", type=str, default="")
+    parser.add_argument("--azure_day", type=int, default=0)
     parser.add_argument("--azure_start_min", type=int, default=0)
     parser.add_argument("--azure_start_mins", type=str, default="")
     parser.add_argument("--azure_num_windows", type=int, default=1)
@@ -1300,21 +1467,44 @@ if __name__ == "__main__":
     else:
         print(f">>> Azure Window Filter: disabled")
 
+    workload = str(args.workload).lower().strip()
+    if workload in ["trace", "azure", "bursty"]:
+        trace_path = _resolve_trace_path(str(args.azure_trace_file))
+        if not trace_path:
+            raise RuntimeError("Azure workload selected but --azure_trace_file is empty.")
+        if not os.path.exists(trace_path):
+            raise RuntimeError(f"Azure trace file not found: {trace_path}")
+        if int(args.azure_scan_only) != 1 or int(args.azure_scan_find_any_function) != 1:
+            if not str(args.azure_app).strip() or not str(args.azure_func).strip():
+                raise RuntimeError("Azure workload selected but --azure_app/--azure_func not set.")
+
     if int(args.azure_scan_only) == 1:
         if int(args.azure_scan_find_any_function) == 1:
             lo = float(args.azure_target_avg_rps_min or 0.0)
             hi = float(args.azure_target_avg_rps_max or 0.0)
             if hi <= 0.0:
                 hi = float("inf")
-            res, trace_path = scan_azure_windows_any_function_wide_csv(
-                trace_file=str(args.azure_trace_file),
-                duration_min=int(args.minutes),
-                stride_min=int(args.azure_stride_min),
-                scale=float(args.azure_scale),
-                target_rps_min=lo,
-                target_rps_max=hi,
-                top_funcs=int(args.azure_scan_top_functions),
-            )
+            tp = _resolve_trace_path(str(args.azure_trace_file))
+            if _is_feather_trace_file(tp):
+                res, trace_path = scan_azure_windows_any_function_wide_feather(
+                    trace_file=str(args.azure_trace_file),
+                    duration_min=int(args.minutes),
+                    stride_min=int(args.azure_stride_min),
+                    scale=float(args.azure_scale),
+                    target_rps_min=lo,
+                    target_rps_max=hi,
+                    top_funcs=int(args.azure_scan_top_functions),
+                )
+            else:
+                res, trace_path = scan_azure_windows_any_function_wide_csv(
+                    trace_file=str(args.azure_trace_file),
+                    duration_min=int(args.minutes),
+                    stride_min=int(args.azure_stride_min),
+                    scale=float(args.azure_scale),
+                    target_rps_min=lo,
+                    target_rps_max=hi,
+                    top_funcs=int(args.azure_scan_top_functions),
+                )
             print("\n==================== AZURE WINDOW SCAN (ANY FUNCTION) ====================")
             print(f"file={trace_path}")
             print(f"duration_min={int(args.minutes)} stride_min={int(args.azure_stride_min)} scale={float(args.azure_scale):.3f}")
@@ -1324,18 +1514,29 @@ if __name__ == "__main__":
                 print("=========================================================================")
                 sys.exit(0)
             print(f"found_functions={len(res)} (showing top)")
-            for i, (hits, app, func, ex) in enumerate(res, start=1):
+            for i, item in enumerate(res, start=1):
+                if len(item) == 4:
+                    hits, app, func, ex = item
+                    day = None
+                else:
+                    hits, app, func, day, ex = item
                 if ex:
                     s, avg_rps, total_inv = ex
-                    print(f"{i:02d}. app={app} func={func} windows_in_range={hits} example_start_min={int(s)} avg_rps={avg_rps:.2f} total_inv={total_inv:.1f}")
+                    if day is None:
+                        print(f"{i:02d}. app={app} func={func} windows_in_range={hits} example_start_min={int(s)} avg_rps={avg_rps:.2f} total_inv={total_inv:.1f}")
+                    else:
+                        print(f"{i:02d}. app={app} func={func} day={int(day)} windows_in_range={hits} example_start_min={int(s)} avg_rps={avg_rps:.2f} total_inv={total_inv:.1f}")
                 else:
-                    print(f"{i:02d}. app={app} func={func} windows_in_range={hits}")
+                    if day is None:
+                        print(f"{i:02d}. app={app} func={func} windows_in_range={hits}")
+                    else:
+                        print(f"{i:02d}. app={app} func={func} day={int(day)} windows_in_range={hits}")
             print("=========================================================================")
             sys.exit(0)
 
-        series, trace_path = _read_azure_minute_series_from_csv(str(args.azure_trace_file), args.azure_app, args.azure_func)
+        series, trace_path, picked_day = _read_azure_minute_series(str(args.azure_trace_file), args.azure_app, args.azure_func, day=int(args.azure_day))
         if not series:
-            print(f"[ERROR] Unable to load minute series for app={args.azure_app} func={args.azure_func} from {trace_path}")
+            print(f"[ERROR] Unable to load minute series for app={args.azure_app} func={args.azure_func} day={int(args.azure_day)} from {trace_path}")
             sys.exit(2)
 
         try:
@@ -1513,6 +1714,7 @@ if __name__ == "__main__":
                         trace_file=str(args.azure_trace_file),
                         app_id=str(args.azure_app) if str(args.azure_app).strip() else None,
                         func_id=str(args.azure_func) if str(args.azure_func).strip() else None,
+                        day=int(args.azure_day),
                         duration_min=int(args.minutes),
                         stride_min=stride,
                         scale=float(args.azure_scale),
@@ -1541,6 +1743,7 @@ if __name__ == "__main__":
                     start_min=int(start_min),
                     app_id=str(args.azure_app) if str(args.azure_app).strip() else None,
                     func_id=str(args.azure_func) if str(args.azure_func).strip() else None,
+                    day=int(args.azure_day),
                     scale=float(args.azure_scale),
                     pick_most_bursty=bool(int(args.azure_pick_most_bursty) == 1),
                     auto_shift_empty_window=bool(int(args.azure_auto_shift_empty_window) == 1),
@@ -1559,7 +1762,7 @@ if __name__ == "__main__":
                             continue
                 arrival_times = generate_trace_arrivals(second_rates, base_rps=1.0)
                 num_requests = len(arrival_times)
-                src = "azure_csv" if is_real else "hardcoded_sample"
+                src = "azure_trace_file"
                 print(f"Generated {num_requests} requests with dynamic bursts ({src}).")
                 if _LAST_AZURE_TRACE_META:
                     window_meta.append(dict(_LAST_AZURE_TRACE_META))

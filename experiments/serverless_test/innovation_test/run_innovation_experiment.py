@@ -16,7 +16,7 @@ from experiments.serverless_test.wcp_validation.serverless_utils import invoke_w
 # 6 types of functions same as Experiment 2
 FUNCTIONS = ['linpack', 'gzip', 'image_processing', 'video_processing', 'chameleon', 'matmul']
 STRATEGIES = ['mpc_integrated', 'ours_basic', 'passive_prewarm']
-TRACE_FILE = 'azure_traces/invocations_per_function_sample.csv'
+TRACE_FILE = os.environ.get("AZURE_TRACE_FILE", "")
 # 40 minutes per group as per requirement (we'll scale down for validation if needed)
 DURATION_MINUTES = 40 
 RPS_SCALE = 0.5 
@@ -29,6 +29,8 @@ class InnovationExperiment:
         self.prewarm_count = {s: 0 for s in STRATEGIES}
 
     def load_trace(self):
+        if not TRACE_FILE or not os.path.exists(TRACE_FILE):
+            raise RuntimeError("AZURE_TRACE_FILE is not set or file does not exist.")
         df = pd.read_csv(TRACE_FILE)
         trace_funcs = df['HashFunction'].unique()[:6]
         mapping = {trace_funcs[i]: FUNCTIONS[i] for i in range(len(trace_funcs))}
