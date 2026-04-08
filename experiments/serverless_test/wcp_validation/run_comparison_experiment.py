@@ -6,6 +6,7 @@ import statistics
 import math
 import os
 import csv
+import sys
 import threading
 from datetime import datetime, timedelta, timezone
 import boto3
@@ -121,6 +122,143 @@ def load_azure_trace_sample(duration_min=30):
         second_rates.extend([rate] * 60)
     
     return second_rates
+
+def _resolve_trace_path(trace_file):
+    if not trace_file:
+        return ""
+    trace_path = str(trace_file)
+    if not os.path.isabs(trace_path):
+        trace_path = os.path.join(os.getcwd(), trace_path)
+    return trace_path
+
+def _read_azure_minute_series_from_csv(trace_file, app_id, func_id):
+    trace_path = _resolve_trace_path(trace_file)
+    if not trace_path or not os.path.exists(trace_path):
+        return None, trace_path
+
+    want_app = str(app_id).strip() if app_id is not None else ""
+    want_func = str(func_id).strip() if func_id is not None else ""
+    if not want_app or not want_func:
+        return None, trace_path
+
+    with open(trace_path, "r", newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        if not header or len(header) < 5:
+            return None, trace_path
+        numeric_start_idx = 3
+        for row in reader:
+            if not row or len(row) <= numeric_start_idx:
+                continue
+            app = str(row[0]).strip()
+            func = str(row[1]).strip()
+            if app != want_app or func != want_func:
+                continue
+            series = []
+            for v in row[numeric_start_idx:]:
+                try:
+                    x = float(v)
+                except Exception:
+                    x = 0.0
+                if not math.isfinite(x) or x < 0.0:
+                    x = 0.0
+                series.append(x)
+            return series, trace_path
+    return None, trace_path
+
+def _window_avg_rps_from_minute_series(series, start_min, duration_min, scale):
+    if not series:
+        return 0.0, 0.0, 0
+    try:
+        start_min = int(start_min)
+    except Exception:
+        start_min = 0
+    if start_min < 0:
+        start_min = 0
+    try:
+        duration_min = int(duration_min)
+    except Exception:
+        duration_min = 30
+    if duration_min <= 0:
+        duration_min = 30
+    try:
+        scale = float(scale)
+    except Exception:
+        scale = 1.0
+    if not math.isfinite(scale) or scale <= 0.0:
+        scale = 1.0
+
+    end = min(len(series), start_min + duration_min)
+    window = series[start_min:end]
+    if not window:
+        return 0.0, 0.0, 0
+    total_inv = float(sum(window)) * float(scale)
+    avg_rps = float(total_inv) / float(60.0 * len(window))
+    return avg_rps, total_inv, int(len(window))
+
+def select_azure_windows_by_avg_rps(trace_file, app_id, func_id, duration_min, stride_min, scale, target_rps_min, target_rps_max, max_windows):
+    series, trace_path = _read_azure_minute_series_from_csv(trace_file, app_id, func_id)
+    if not series:
+        return [], trace_path
+
+    try:
+        duration_min = int(duration_min)
+    except Exception:
+        duration_min = 30
+    if duration_min <= 0:
+        duration_min = 30
+    try:
+        stride_min = int(stride_min)
+    except Exception:
+        stride_min = duration_min
+    if stride_min <= 0:
+        stride_min = duration_min
+
+    try:
+        target_rps_min = float(target_rps_min)
+    except Exception:
+        target_rps_min = 0.0
+    try:
+        target_rps_max = float(target_rps_max)
+    except Exception:
+        target_rps_max = float("inf")
+    if not math.isfinite(target_rps_min):
+        target_rps_min = 0.0
+    if not math.isfinite(target_rps_max):
+        target_rps_max = float("inf")
+    if target_rps_max < target_rps_min:
+        target_rps_min, target_rps_max = target_rps_max, target_rps_min
+
+    candidates = []
+    max_start = max(0, len(series) - duration_min)
+    for s in range(0, max_start + 1, stride_min):
+        avg_rps, total_inv, used_min = _window_avg_rps_from_minute_series(series, s, duration_min, scale)
+        if used_min <= 0 or total_inv <= 0.0:
+            continue
+        if avg_rps < target_rps_min or avg_rps > target_rps_max:
+            continue
+        candidates.append(s)
+
+    if not candidates:
+        return [], trace_path
+
+    try:
+        max_windows = int(max_windows)
+    except Exception:
+        max_windows = len(candidates)
+    if max_windows <= 0 or max_windows >= len(candidates):
+        return candidates, trace_path
+
+    idxs = np.linspace(0, len(candidates) - 1, num=max_windows)
+    picked = [candidates[int(round(i))] for i in idxs]
+    dedup = []
+    seen = set()
+    for s in picked:
+        if s in seen:
+            continue
+        seen.add(s)
+        dedup.append(s)
+    return dedup, trace_path
 
 def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False, auto_shift_empty_window=False):
     global _LAST_AZURE_TRACE_META
@@ -275,6 +413,7 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
                 shifted = True
 
     second_rps = []
+    total_inv = 0.0
     for v in window:
         try:
             per_min = float(v)
@@ -282,8 +421,11 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
             per_min = 0.0
         if not math.isfinite(per_min) or per_min < 0.0:
             per_min = 0.0
+        total_inv += float(per_min)
         rps = (per_min / 60.0) * float(scale)
         second_rps.extend([rps] * 60)
+    total_inv = float(total_inv) * float(scale)
+    avg_rps = float(total_inv) / float(60.0 * max(1, len(window)))
 
     if picked:
         shift_note = ", auto_shifted_start=1" if shifted else ""
@@ -301,6 +443,8 @@ def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=N
         "start_min": int(start_idx),
         "duration_min": int(len(window)),
         "scale": float(scale),
+        "window_total_invocations": float(total_inv),
+        "window_avg_rps": float(avg_rps),
         "auto_shifted": bool(shifted),
         "auto_shift_enabled": bool(auto_shift_empty_window),
     }
@@ -958,6 +1102,11 @@ def parse_args():
     parser.add_argument("--azure_scale", type=float, default=1.0)
     parser.add_argument("--azure_pick_most_bursty", type=int, default=0)
     parser.add_argument("--azure_auto_shift_empty_window", type=int, default=0)
+    parser.add_argument("--azure_filter_windows_by_avg_rps", type=int, default=0)
+    parser.add_argument("--azure_target_avg_rps_min", type=float, default=0.0)
+    parser.add_argument("--azure_target_avg_rps_max", type=float, default=0.0)
+    parser.add_argument("--azure_scan_only", type=int, default=0)
+    parser.add_argument("--azure_scan_top", type=int, default=20)
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -991,6 +1140,87 @@ if __name__ == "__main__":
     print(f">>> MPC Unc Scale: {_UNC_SCALE:.2f}")
     print(f">>> MPC Tight SLO (ms): {_TIGHT_SLO_MS:.1f}")
     print(f">>> Phase Warmup: {int(args.enable_phase_warmup)} (requests={int(args.phase_warmup_requests)})")
+    if int(args.azure_filter_windows_by_avg_rps) == 1:
+        lo = float(args.azure_target_avg_rps_min or 0.0)
+        hi = float(args.azure_target_avg_rps_max or 0.0)
+        if hi <= 0.0:
+            hi = float("inf")
+        print(f">>> Azure Window Filter: enabled (avg_rps in [{lo:.2f}, {hi if math.isfinite(hi) else float('inf'):.2f}])")
+    else:
+        print(f">>> Azure Window Filter: disabled")
+
+    if int(args.azure_scan_only) == 1:
+        series, trace_path = _read_azure_minute_series_from_csv(str(args.azure_trace_file), args.azure_app, args.azure_func)
+        if not series:
+            print(f"[ERROR] Unable to load minute series for app={args.azure_app} func={args.azure_func} from {trace_path}")
+            sys.exit(2)
+
+        try:
+            duration_min = int(args.minutes)
+        except Exception:
+            duration_min = 30
+        if duration_min <= 0:
+            duration_min = 30
+        try:
+            stride_min = int(args.azure_stride_min)
+        except Exception:
+            stride_min = duration_min
+        if stride_min <= 0:
+            stride_min = duration_min
+
+        try:
+            lo = float(args.azure_target_avg_rps_min or 0.0)
+        except Exception:
+            lo = 0.0
+        try:
+            hi = float(args.azure_target_avg_rps_max or 0.0)
+        except Exception:
+            hi = 0.0
+        if hi <= 0.0:
+            hi = float("inf")
+
+        max_windows = max(1, int(args.azure_num_windows) if int(args.azure_num_windows) > 0 else 1)
+        top_n = max(1, int(args.azure_scan_top) if int(args.azure_scan_top) > 0 else 20)
+
+        max_start = max(0, len(series) - duration_min)
+        scanned = 0
+        nonempty = 0
+        inrange = []
+        avg_rps_nonempty = []
+        for s in range(0, max_start + 1, stride_min):
+            scanned += 1
+            avg_rps, total_inv, used_min = _window_avg_rps_from_minute_series(series, s, duration_min, float(args.azure_scale))
+            if used_min <= 0 or total_inv <= 0.0:
+                continue
+            nonempty += 1
+            avg_rps_nonempty.append(avg_rps)
+            if avg_rps >= lo and avg_rps <= hi:
+                inrange.append((abs(avg_rps - (0.5 * (lo + hi) if math.isfinite(hi) else lo)), avg_rps, total_inv, s))
+
+        print("\n==================== AZURE WINDOW SCAN ====================")
+        print(f"file={trace_path}")
+        print(f"app={str(args.azure_app).strip()} func={str(args.azure_func).strip()}")
+        print(f"duration_min={duration_min} stride_min={stride_min} scale={float(args.azure_scale):.3f}")
+        print(f"target_avg_rps=[{lo:.2f}, {hi if math.isfinite(hi) else float('inf'):.2f}]")
+        print(f"scanned_windows={scanned} nonempty_windows={nonempty}")
+        if avg_rps_nonempty:
+            arr = np.array(avg_rps_nonempty, dtype=float)
+            print(f"nonempty_avg_rps: min={float(np.min(arr)):.2f} p50={float(np.percentile(arr, 50)):.2f} p90={float(np.percentile(arr, 90)):.2f} max={float(np.max(arr)):.2f}")
+        else:
+            print("nonempty_avg_rps: (none)")
+
+        if not inrange:
+            print("windows_in_target_range=0")
+            print("==========================================================")
+            sys.exit(0)
+
+        inrange.sort(key=lambda x: x[0])
+        print(f"windows_in_target_range={len(inrange)}")
+        print(f"showing_top={min(top_n, len(inrange))} (closest to target band center)")
+        for i, (_dist, avg_rps, total_inv, start_min) in enumerate(inrange[:top_n], start=1):
+            print(f"{i:02d}. start_min={int(start_min)} avg_rps={float(avg_rps):.2f} total_inv={float(total_inv):.1f}")
+        print("==========================================================")
+        sys.exit(0)
 
     fixed_srv = float(args.server_slo_ms or 0.0)
     fixed_e2e = float(args.e2e_slo_ms or 0.0)
@@ -1091,8 +1321,27 @@ if __name__ == "__main__":
             if not start_mins:
                 nwin = int(args.azure_num_windows) if int(args.azure_num_windows) > 0 else 1
                 stride = int(args.azure_stride_min) if int(args.azure_stride_min) > 0 else int(args.minutes)
-                base = int(args.azure_start_min)
-                start_mins = [base + i * stride for i in range(nwin)]
+                if int(args.azure_filter_windows_by_avg_rps) == 1:
+                    lo = float(args.azure_target_avg_rps_min or 0.0)
+                    hi = float(args.azure_target_avg_rps_max or 0.0)
+                    if hi <= 0.0:
+                        hi = float("inf")
+                    start_mins, _tp = select_azure_windows_by_avg_rps(
+                        trace_file=str(args.azure_trace_file),
+                        app_id=str(args.azure_app) if str(args.azure_app).strip() else None,
+                        func_id=str(args.azure_func) if str(args.azure_func).strip() else None,
+                        duration_min=int(args.minutes),
+                        stride_min=stride,
+                        scale=float(args.azure_scale),
+                        target_rps_min=lo,
+                        target_rps_max=hi,
+                        max_windows=nwin,
+                    )
+                    if start_mins:
+                        print(f">>> Selected {len(start_mins)} windows by avg_rps filter.")
+                if not start_mins:
+                    base = int(args.azure_start_min)
+                    start_mins = [base + i * stride for i in range(nwin)]
         else:
             start_mins = [0]
 
@@ -1113,6 +1362,18 @@ if __name__ == "__main__":
                     pick_most_bursty=bool(int(args.azure_pick_most_bursty) == 1),
                     auto_shift_empty_window=bool(int(args.azure_auto_shift_empty_window) == 1),
                 )
+                if _LAST_AZURE_TRACE_META:
+                    avg_rps = float(_LAST_AZURE_TRACE_META.get("window_avg_rps", 0.0) or 0.0)
+                    if not math.isfinite(avg_rps):
+                        avg_rps = 0.0
+                    if int(args.azure_filter_windows_by_avg_rps) == 1:
+                        lo = float(args.azure_target_avg_rps_min or 0.0)
+                        hi = float(args.azure_target_avg_rps_max or 0.0)
+                        if hi <= 0.0:
+                            hi = float("inf")
+                        if avg_rps < lo or avg_rps > hi:
+                            print(f"[WARN] Window avg_rps={avg_rps:.2f} outside target range; skipping this window.")
+                            continue
                 arrival_times = generate_trace_arrivals(second_rates, base_rps=1.0)
                 num_requests = len(arrival_times)
                 src = "azure_csv" if is_real else "hardcoded_sample"
@@ -1201,6 +1462,7 @@ if __name__ == "__main__":
                         f"{i:02d}. file={m.get('trace_file')} app={m.get('app')} func={m.get('func')} "
                         f"requested_start_min={m.get('requested_start_min')} start_min={m.get('start_min')} "
                         f"duration_min={m.get('duration_min')} scale={m.get('scale'):.3f} "
+                        f"avg_rps={float(m.get('window_avg_rps', 0.0) or 0.0):.2f} total_inv={float(m.get('window_total_invocations', 0.0) or 0.0):.1f} "
                         f"auto_shift_enabled={int(bool(m.get('auto_shift_enabled')))} auto_shifted={int(bool(m.get('auto_shifted')))}"
                     )
                 print("======================================================")
