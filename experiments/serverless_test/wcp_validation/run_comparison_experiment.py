@@ -144,26 +144,79 @@ def _read_azure_minute_series_from_csv(trace_file, app_id, func_id):
     with open(trace_path, "r", newline="") as f:
         reader = csv.reader(f)
         header = next(reader, None)
-        if not header or len(header) < 5:
+        if not header:
             return None, trace_path
-        numeric_start_idx = 3
+
+        is_wide = False
+        if len(header) >= 6:
+            tail = header[3:8]
+            if all(str(x).strip().isdigit() for x in tail):
+                is_wide = True
+
+        if is_wide:
+            numeric_start_idx = 3
+            for row in reader:
+                if not row or len(row) <= numeric_start_idx:
+                    continue
+                app = str(row[0]).strip()
+                func = str(row[1]).strip()
+                if app != want_app or func != want_func:
+                    continue
+                series = []
+                for v in row[numeric_start_idx:]:
+                    try:
+                        x = float(v)
+                    except Exception:
+                        x = 0.0
+                    if not math.isfinite(x) or x < 0.0:
+                        x = 0.0
+                    series.append(x)
+                return series, trace_path
+
+        header_lower = [str(h).strip().lower() for h in header]
+        def _find_col(cands):
+            for c in cands:
+                if c in header_lower:
+                    return header_lower.index(c)
+            return -1
+
+        app_idx = _find_col(["hashapp", "app", "app_id", "application", "application_id"])
+        func_idx = _find_col(["hashfunction", "function", "func", "func_id", "function_id"])
+        minute_idx = _find_col(["minute", "min", "minute_index", "t", "time", "time_min"])
+        inv_idx = _find_col(["invocations", "invocation", "count", "value"])
+        if min(app_idx, func_idx, minute_idx, inv_idx) < 0:
+            return None, trace_path
+
+        minute_map = {}
+        max_min = -1
         for row in reader:
-            if not row or len(row) <= numeric_start_idx:
+            if not row or len(row) <= max(app_idx, func_idx, minute_idx, inv_idx):
                 continue
-            app = str(row[0]).strip()
-            func = str(row[1]).strip()
+            app = str(row[app_idx]).strip()
+            func = str(row[func_idx]).strip()
             if app != want_app or func != want_func:
                 continue
-            series = []
-            for v in row[numeric_start_idx:]:
-                try:
-                    x = float(v)
-                except Exception:
-                    x = 0.0
-                if not math.isfinite(x) or x < 0.0:
-                    x = 0.0
-                series.append(x)
-            return series, trace_path
+            try:
+                m = int(float(row[minute_idx]))
+            except Exception:
+                continue
+            try:
+                x = float(row[inv_idx])
+            except Exception:
+                x = 0.0
+            if not math.isfinite(x) or x < 0.0:
+                x = 0.0
+            minute_map[m] = minute_map.get(m, 0.0) + x
+            if m > max_min:
+                max_min = m
+
+        if max_min < 0:
+            return None, trace_path
+        series = [0.0] * (max_min + 1)
+        for m, x in minute_map.items():
+            if 0 <= m < len(series):
+                series[m] = float(x)
+        return series, trace_path
     return None, trace_path
 
 def _window_avg_rps_from_minute_series(series, start_min, duration_min, scale):
@@ -259,6 +312,102 @@ def select_azure_windows_by_avg_rps(trace_file, app_id, func_id, duration_min, s
         seen.add(s)
         dedup.append(s)
     return dedup, trace_path
+
+def scan_azure_windows_any_function_wide_csv(trace_file, duration_min, stride_min, scale, target_rps_min, target_rps_max, top_funcs):
+    trace_path = _resolve_trace_path(trace_file)
+    if not trace_path or not os.path.exists(trace_path):
+        return [], trace_path
+
+    try:
+        duration_min = int(duration_min)
+    except Exception:
+        duration_min = 30
+    if duration_min <= 0:
+        duration_min = 30
+    try:
+        stride_min = int(stride_min)
+    except Exception:
+        stride_min = duration_min
+    if stride_min <= 0:
+        stride_min = duration_min
+    try:
+        scale = float(scale)
+    except Exception:
+        scale = 1.0
+    if not math.isfinite(scale) or scale <= 0.0:
+        scale = 1.0
+    try:
+        target_rps_min = float(target_rps_min)
+    except Exception:
+        target_rps_min = 0.0
+    try:
+        target_rps_max = float(target_rps_max)
+    except Exception:
+        target_rps_max = float("inf")
+    if not math.isfinite(target_rps_min):
+        target_rps_min = 0.0
+    if not math.isfinite(target_rps_max):
+        target_rps_max = float("inf")
+    if target_rps_max < target_rps_min:
+        target_rps_min, target_rps_max = target_rps_max, target_rps_min
+
+    results = []
+    with open(trace_path, "r", newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        if not header or len(header) < 6:
+            return [], trace_path
+        tail = header[3:8]
+        if not all(str(x).strip().isdigit() for x in tail):
+            return [], trace_path
+
+        numeric_start_idx = 3
+        for row in reader:
+            if not row or len(row) <= numeric_start_idx:
+                continue
+            app = str(row[0]).strip()
+            func = str(row[1]).strip()
+            series = []
+            for v in row[numeric_start_idx:]:
+                try:
+                    x = float(v)
+                except Exception:
+                    x = 0.0
+                if not math.isfinite(x) or x < 0.0:
+                    x = 0.0
+                series.append(x)
+
+            if len(series) < duration_min:
+                continue
+            prefix = [0.0]
+            acc = 0.0
+            for x in series:
+                acc += float(x)
+                prefix.append(acc)
+            max_start = len(series) - duration_min
+            hits = 0
+            example = None
+            for s in range(0, max_start + 1, stride_min):
+                seg_sum = float(prefix[s + duration_min] - prefix[s])
+                if seg_sum <= 0.0:
+                    continue
+                avg_rps = (seg_sum * float(scale)) / float(60.0 * duration_min)
+                if avg_rps < target_rps_min or avg_rps > target_rps_max:
+                    continue
+                hits += 1
+                if example is None:
+                    example = (s, avg_rps, seg_sum * float(scale))
+            if hits > 0:
+                results.append((hits, app, func, example))
+
+    results.sort(key=lambda x: (-x[0], x[1], x[2]))
+    try:
+        top_funcs = int(top_funcs)
+    except Exception:
+        top_funcs = 10
+    if top_funcs <= 0:
+        top_funcs = 10
+    return results[:top_funcs], trace_path
 
 def load_azure_trace_from_csv(trace_file, duration_min=30, start_min=0, app_id=None, func_id=None, scale=1.0, pick_most_bursty=False, auto_shift_empty_window=False):
     global _LAST_AZURE_TRACE_META
@@ -1107,6 +1256,8 @@ def parse_args():
     parser.add_argument("--azure_target_avg_rps_max", type=float, default=0.0)
     parser.add_argument("--azure_scan_only", type=int, default=0)
     parser.add_argument("--azure_scan_top", type=int, default=20)
+    parser.add_argument("--azure_scan_find_any_function", type=int, default=0)
+    parser.add_argument("--azure_scan_top_functions", type=int, default=10)
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -1150,6 +1301,38 @@ if __name__ == "__main__":
         print(f">>> Azure Window Filter: disabled")
 
     if int(args.azure_scan_only) == 1:
+        if int(args.azure_scan_find_any_function) == 1:
+            lo = float(args.azure_target_avg_rps_min or 0.0)
+            hi = float(args.azure_target_avg_rps_max or 0.0)
+            if hi <= 0.0:
+                hi = float("inf")
+            res, trace_path = scan_azure_windows_any_function_wide_csv(
+                trace_file=str(args.azure_trace_file),
+                duration_min=int(args.minutes),
+                stride_min=int(args.azure_stride_min),
+                scale=float(args.azure_scale),
+                target_rps_min=lo,
+                target_rps_max=hi,
+                top_funcs=int(args.azure_scan_top_functions),
+            )
+            print("\n==================== AZURE WINDOW SCAN (ANY FUNCTION) ====================")
+            print(f"file={trace_path}")
+            print(f"duration_min={int(args.minutes)} stride_min={int(args.azure_stride_min)} scale={float(args.azure_scale):.3f}")
+            print(f"target_avg_rps=[{lo:.2f}, {hi if math.isfinite(hi) else float('inf'):.2f}]")
+            if not res:
+                print("found_functions=0 (file may be non-wide format or no functions match target range)")
+                print("=========================================================================")
+                sys.exit(0)
+            print(f"found_functions={len(res)} (showing top)")
+            for i, (hits, app, func, ex) in enumerate(res, start=1):
+                if ex:
+                    s, avg_rps, total_inv = ex
+                    print(f"{i:02d}. app={app} func={func} windows_in_range={hits} example_start_min={int(s)} avg_rps={avg_rps:.2f} total_inv={total_inv:.1f}")
+                else:
+                    print(f"{i:02d}. app={app} func={func} windows_in_range={hits}")
+            print("=========================================================================")
+            sys.exit(0)
+
         series, trace_path = _read_azure_minute_series_from_csv(str(args.azure_trace_file), args.azure_app, args.azure_func)
         if not series:
             print(f"[ERROR] Unable to load minute series for app={args.azure_app} func={args.azure_func} from {trace_path}")
