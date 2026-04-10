@@ -28,6 +28,8 @@ _BUDGET = 10
 _UNC_SCALE = 1.0
 _TIGHT_SLO_MS = 80.0
 _LAST_AZURE_TRACE_META = None
+LAMBDA_MEMORY_MB = 1024
+PRICE_PER_GB_S_USD = 0.00001667
 
 def _p90(values):
     if not values:
@@ -1239,7 +1241,8 @@ def _calc_metrics(results):
             "achieved_rps": 0.0,
             "achieved_success_rps": 0.0,
             "util_pct": 0.0,
-            "cpu_ms_per_success": 0.0,
+            "gb_s_per_success": 0.0,
+            "cost_per_success_usd": 0.0,
             "alloc_p50": 0.0,
             "alloc_p90": 0.0,
             "alloc_std": 0.0,
@@ -1292,16 +1295,17 @@ def _calc_metrics(results):
         util_pct = float((avg_srv / (avg_alloc * SERVER_SLO_MS)) * 100.0)
         util_pct = float(max(0.0, min(100.0, util_pct)))
 
-    cpu_ms = 0.0
+    mem_gb = float(LAMBDA_MEMORY_MB) / 1024.0
+    gb_s_acc = 0.0
     for r in success:
         try:
-            a = float(r.get('alloc', 1.0) or 1.0)
             s = float(r.get('server_latency', 0.0) or 0.0)
-            if math.isfinite(a) and math.isfinite(s) and a > 0.0 and s > 0.0:
-                cpu_ms += a * s
+            if math.isfinite(mem_gb) and mem_gb > 0.0 and math.isfinite(s) and s > 0.0:
+                gb_s_acc += mem_gb * (s / 1000.0)
         except Exception:
             continue
-    cpu_ms_per_success = float(cpu_ms / max(1, len(success)))
+    gb_s_per_success = float(gb_s_acc / max(1, len(success)))
+    cost_per_success_usd = float(gb_s_per_success * float(PRICE_PER_GB_S_USD))
 
     return {
         "e2e_vio": e2e_viol_rate,
@@ -1315,7 +1319,8 @@ def _calc_metrics(results):
         "achieved_rps": achieved_rps,
         "achieved_success_rps": achieved_success_rps,
         "util_pct": util_pct,
-        "cpu_ms_per_success": cpu_ms_per_success,
+        "gb_s_per_success": gb_s_per_success,
+        "cost_per_success_usd": cost_per_success_usd,
         "alloc_p50": alloc_p50,
         "alloc_p90": alloc_p90,
         "alloc_std": alloc_std,
@@ -1324,11 +1329,11 @@ def _calc_metrics(results):
 
 def print_summary(results_by_name):
     print("\n======================================================================")
-    print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'CPUms':<7} | {'GB-s':<7} | {'Cost($)':<8} | {'Overhead':<8} | {'AchRPS':<7}")
+    print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'GB-s':<7} | {'Cost($)':<8} | {'Overhead':<8} | {'AchRPS':<7}")
     print("----------------------------------------------------------------------")
     for name, results in results_by_name.items():
         m = _calc_metrics(results)
-        print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['cpu_ms_per_success']:<7.1f} | {m['gb_s_per_success']:<7.3f} | {m['cost_per_success_usd']:<8.5f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
+        print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['gb_s_per_success']:<7.3f} | {m['cost_per_success_usd']:<8.5f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
     print("======================================================================\n")
 
 def print_aggregate_summary(metrics_by_strategy):
@@ -1349,7 +1354,6 @@ def print_aggregate_summary(metrics_by_strategy):
         ("P90 E2E", "p90_e2e"),
         ("AvgSrv", "avg_srv"),
         ("AvgE2E", "avg_e2e"),
-        ("CPUms", "cpu_ms_per_success"),
         ("GB-s", "gb_s_per_success"),
         ("Cost($)", "cost_per_success_usd"),
         ("Overhead", "avg_overhead"),
@@ -1372,12 +1376,12 @@ def print_aggregate_summary(metrics_by_strategy):
 
 def print_efficiency_summary(results_by_name):
     print("\n==================== EFFICIENCY / STABILITY SUMMARY ====================")
-    print(f"{'Strategy':<22} | {'Util%':<6} | {'CPU-ms/succ':<11} | {'AllocP50':<8} | {'AllocP90':<8} | {'AllocStd':<8} | {'Churn':<7}")
+    print(f"{'Strategy':<22} | {'Util%':<6} | {'GB-s/succ':<10} | {'AllocP50':<8} | {'AllocP90':<8} | {'AllocStd':<8} | {'Churn':<7}")
     print("-------------------------------------------------------------------------")
     for name, results in results_by_name.items():
         m = _calc_metrics(results)
         print(
-            f"{name:<22} | {m['util_pct']:<6.1f} | {m['cpu_ms_per_success']:<11.1f} | "
+            f"{name:<22} | {m['util_pct']:<6.1f} | {m['gb_s_per_success']:<10.3f} | "
             f"{m['alloc_p50']:<8.2f} | {m['alloc_p90']:<8.2f} | {m['alloc_std']:<8.3f} | {m['alloc_churn']:<7.3f}"
         )
     print("=========================================================================\n")
