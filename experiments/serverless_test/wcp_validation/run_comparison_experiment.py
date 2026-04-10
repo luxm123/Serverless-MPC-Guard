@@ -1338,6 +1338,8 @@ def print_summary(results_by_name, paper_mode=True):
         print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'GB-s':<7} | {'Cost(µ$)':<10} | {'Overhead':<8} | {'AchRPS':<7}")
     print("----------------------------------------------------------------------")
     for name, results in results_by_name.items():
+        if paper_mode and name == "static_0.60":
+            continue
         m = _calc_metrics(results)
         if paper_mode:
             print(f"{name:<22} | {m['srv_vio']:<10.2f} | {m['cost_per_success_uusd']:<10.2f}")
@@ -1382,6 +1384,8 @@ def print_aggregate_summary(metrics_by_strategy, paper_mode=True):
     print(header)
     print("-" * len(header))
     for name in sorted(metrics_by_strategy.keys()):
+        if paper_mode and name == "static_0.60":
+            continue
         row = f"{name:<22}"
         for _label, k in cols:
             mean, std = _mean_std([m.get(k) for m in metrics_by_strategy[name]])
@@ -1481,7 +1485,7 @@ def _plot_from_reports(report_paths, out_dir):
             return 0.0, 0.0
 
     def _strategy_order(strategies):
-        pref = ["mpc", "static_0.80", "static_1.00", "aws_tt", "hpa_baseline", "static_0.60"]
+        pref = ["mpc", "static_0.80", "static_1.00", "aws_tt", "hpa_baseline"]
         out = []
         seen = set()
         for p in pref:
