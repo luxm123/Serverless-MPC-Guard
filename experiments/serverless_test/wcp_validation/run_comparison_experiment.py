@@ -1324,11 +1324,11 @@ def _calc_metrics(results):
 
 def print_summary(results_by_name):
     print("\n======================================================================")
-    print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'CPUms':<7} | {'Overhead':<8} | {'AchRPS':<7}")
+    print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'CPUms':<7} | {'GB-s':<7} | {'Cost($)':<8} | {'Overhead':<8} | {'AchRPS':<7}")
     print("----------------------------------------------------------------------")
     for name, results in results_by_name.items():
         m = _calc_metrics(results)
-        print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['cpu_ms_per_success']:<7.1f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
+        print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['cpu_ms_per_success']:<7.1f} | {m['gb_s_per_success']:<7.3f} | {m['cost_per_success_usd']:<8.5f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
     print("======================================================================\n")
 
 def print_aggregate_summary(metrics_by_strategy):
@@ -1350,6 +1350,8 @@ def print_aggregate_summary(metrics_by_strategy):
         ("AvgSrv", "avg_srv"),
         ("AvgE2E", "avg_e2e"),
         ("CPUms", "cpu_ms_per_success"),
+        ("GB-s", "gb_s_per_success"),
+        ("Cost($)", "cost_per_success_usd"),
         ("Overhead", "avg_overhead"),
         ("AchRPS", "achieved_success_rps"),
     ]
@@ -1509,7 +1511,7 @@ def _plot_from_reports(report_paths, out_dir):
         print(f">>> Saved figure: {out_path}")
 
     plot_grouped("srv_vio", "Srv QoS Violation (%)", "fig_srv_vio.png", accept_line=10.0)
-    plot_grouped("cpu_ms_per_success", "CPUms per Success (ms)", "fig_cpums.png", accept_line=None)
+    plot_grouped("cost_per_success_usd", "Cost per Success ($)", "fig_cost.png", accept_line=None)
 
     fig, axes = plt.subplots(1, len(reports), figsize=(6 * len(reports), 4.8), sharey=True)
     if len(reports) == 1:
@@ -1519,7 +1521,7 @@ def _plot_from_reports(report_paths, out_dir):
         ys = []
         for s in strategies:
             x0, _ = _pick_metric(rep, s, "srv_vio")
-            y0, _ = _pick_metric(rep, s, "cpu_ms_per_success")
+            y0, _ = _pick_metric(rep, s, "cost_per_success_usd")
             xs.append(x0)
             ys.append(y0)
         ax.scatter(xs, ys, s=60)
@@ -1529,7 +1531,7 @@ def _plot_from_reports(report_paths, out_dir):
         ax.set_xlabel("Srv QoS Violation (%)")
         ax.set_title(lab)
         ax.grid(True, alpha=0.2)
-    axes[0].set_ylabel("CPUms per Success (ms)")
+    axes[0].set_ylabel("Cost per Success ($)")
     fig.tight_layout()
     out_path = os.path.join(out_dir, "fig_tradeoff.png")
     fig.savefig(out_path, dpi=300)
@@ -1582,6 +1584,8 @@ def parse_args():
     parser.add_argument("--azure_scan_top", type=int, default=20)
     parser.add_argument("--azure_scan_find_any_function", type=int, default=0)
     parser.add_argument("--azure_scan_top_functions", type=int, default=10)
+    parser.add_argument("--lambda_memory_mb", type=int, default=1024)
+    parser.add_argument("--gb_s_price_usd", type=float, default=0.00001667)
     parser.add_argument("--report_dir", type=str, default="")
     parser.add_argument("--report_tag", type=str, default="")
     parser.add_argument("--plot_reports", type=str, default="")
@@ -1629,6 +1633,15 @@ if __name__ == "__main__":
     print(f">>> MPC Unc Scale: {_UNC_SCALE:.2f}")
     print(f">>> MPC Tight SLO (ms): {_TIGHT_SLO_MS:.1f}")
     print(f">>> Phase Warmup: {int(args.enable_phase_warmup)} (requests={int(args.phase_warmup_requests)})")
+    try:
+        LAMBDA_MEMORY_MB = int(args.lambda_memory_mb)
+    except Exception:
+        LAMBDA_MEMORY_MB = 1024
+    try:
+        PRICE_PER_GB_S_USD = float(args.gb_s_price_usd)
+    except Exception:
+        PRICE_PER_GB_S_USD = 0.00001667
+    print(f">>> Cost Model: memory={LAMBDA_MEMORY_MB}MB, price_per_GB-s=${PRICE_PER_GB_S_USD}")
     if int(args.azure_filter_windows_by_avg_rps) == 1:
         lo = float(args.azure_target_avg_rps_min or 0.0)
         hi = float(args.azure_target_avg_rps_max or 0.0)
