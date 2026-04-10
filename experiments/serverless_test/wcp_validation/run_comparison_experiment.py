@@ -1300,9 +1300,12 @@ def _calc_metrics(results):
     gb_s_acc = 0.0
     for r in success:
         try:
+            a = float(r.get("alloc", 1.0) or 1.0)
+            if not math.isfinite(a) or a <= 0.0:
+                a = 1.0
             s = float(r.get('server_latency', 0.0) or 0.0)
             if math.isfinite(mem_gb) and mem_gb > 0.0 and math.isfinite(s) and s > 0.0:
-                gb_s_acc += mem_gb * (s / 1000.0)
+                gb_s_acc += (mem_gb * a) * (s / 1000.0)
         except Exception:
             continue
     gb_s_per_success = float(gb_s_acc / max(1, len(success)))
@@ -1665,7 +1668,7 @@ if __name__ == "__main__":
         PRICE_PER_GB_S_USD = float(args.gb_s_price_usd)
     except Exception:
         PRICE_PER_GB_S_USD = 0.00001667
-    print(f">>> Cost Model: memory={LAMBDA_MEMORY_MB}MB, price_per_GB-s=${PRICE_PER_GB_S_USD}")
+    print(f">>> Cost Model: effective_memory_GB = alloc * ({LAMBDA_MEMORY_MB}/1024), price_per_GB-s=${PRICE_PER_GB_S_USD}")
     if int(args.azure_filter_windows_by_avg_rps) == 1:
         lo = float(args.azure_target_avg_rps_min or 0.0)
         hi = float(args.azure_target_avg_rps_max or 0.0)
