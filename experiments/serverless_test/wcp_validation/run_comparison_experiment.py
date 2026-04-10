@@ -1243,6 +1243,7 @@ def _calc_metrics(results):
             "util_pct": 0.0,
             "gb_s_per_success": 0.0,
             "cost_per_success_usd": 0.0,
+            "cost_per_success_uusd": 0.0,
             "alloc_p50": 0.0,
             "alloc_p90": 0.0,
             "alloc_std": 0.0,
@@ -1306,6 +1307,7 @@ def _calc_metrics(results):
             continue
     gb_s_per_success = float(gb_s_acc / max(1, len(success)))
     cost_per_success_usd = float(gb_s_per_success * float(PRICE_PER_GB_S_USD))
+    cost_per_success_uusd = float(cost_per_success_usd * 1_000_000.0)
 
     return {
         "e2e_vio": e2e_viol_rate,
@@ -1321,22 +1323,29 @@ def _calc_metrics(results):
         "util_pct": util_pct,
         "gb_s_per_success": gb_s_per_success,
         "cost_per_success_usd": cost_per_success_usd,
+        "cost_per_success_uusd": cost_per_success_uusd,
         "alloc_p50": alloc_p50,
         "alloc_p90": alloc_p90,
         "alloc_std": alloc_std,
         "alloc_churn": alloc_churn,
     }
 
-def print_summary(results_by_name):
+def print_summary(results_by_name, paper_mode=True):
     print("\n======================================================================")
-    print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'GB-s':<7} | {'Cost($)':<8} | {'Overhead':<8} | {'AchRPS':<7}")
+    if paper_mode:
+        print(f"{'Strategy':<22} | {'Srv Viol %':<10} | {'Cost(µ$)':<10}")
+    else:
+        print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'GB-s':<7} | {'Cost(µ$)':<10} | {'Overhead':<8} | {'AchRPS':<7}")
     print("----------------------------------------------------------------------")
     for name, results in results_by_name.items():
         m = _calc_metrics(results)
-        print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['gb_s_per_success']:<7.3f} | {m['cost_per_success_usd']:<8.5f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
+        if paper_mode:
+            print(f"{name:<22} | {m['srv_vio']:<10.2f} | {m['cost_per_success_uusd']:<10.2f}")
+        else:
+            print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['gb_s_per_success']:<7.3f} | {m['cost_per_success_uusd']:<10.2f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
     print("======================================================================\n")
 
-def print_aggregate_summary(metrics_by_strategy):
+def print_aggregate_summary(metrics_by_strategy, paper_mode=True):
     def _mean_std(vals):
         xs = [float(v) for v in vals if v is not None]
         if not xs:
@@ -1346,19 +1355,25 @@ def print_aggregate_summary(metrics_by_strategy):
         arr = np.array(xs, dtype=float)
         return float(np.mean(arr)), float(np.std(arr))
 
-    cols = [
-        ("E2E Viol %", "e2e_vio"),
-        ("Srv Viol %", "srv_vio"),
-        ("AvgU", "avg_alloc"),
-        ("Dens", "density"),
-        ("P90 E2E", "p90_e2e"),
-        ("AvgSrv", "avg_srv"),
-        ("AvgE2E", "avg_e2e"),
-        ("GB-s", "gb_s_per_success"),
-        ("Cost($)", "cost_per_success_usd"),
-        ("Overhead", "avg_overhead"),
-        ("AchRPS", "achieved_success_rps"),
-    ]
+    if paper_mode:
+        cols = [
+            ("Srv Viol %", "srv_vio"),
+            ("Cost(µ$)", "cost_per_success_uusd"),
+        ]
+    else:
+        cols = [
+            ("E2E Viol %", "e2e_vio"),
+            ("Srv Viol %", "srv_vio"),
+            ("AvgU", "avg_alloc"),
+            ("Dens", "density"),
+            ("P90 E2E", "p90_e2e"),
+            ("AvgSrv", "avg_srv"),
+            ("AvgE2E", "avg_e2e"),
+            ("GB-s", "gb_s_per_success"),
+            ("Cost(µ$)", "cost_per_success_uusd"),
+            ("Overhead", "avg_overhead"),
+            ("AchRPS", "achieved_success_rps"),
+        ]
 
     print("\n==================== AGGREGATE SUMMARY (MEAN±STD) ====================")
     header = f"{'Strategy':<22}"
@@ -1515,7 +1530,7 @@ def _plot_from_reports(report_paths, out_dir):
         print(f">>> Saved figure: {out_path}")
 
     plot_grouped("srv_vio", "Srv QoS Violation (%)", "fig_srv_vio.png", accept_line=10.0)
-    plot_grouped("cost_per_success_usd", "Cost per Success ($)", "fig_cost.png", accept_line=None)
+    plot_grouped("cost_per_success_uusd", "Cost per Success (µ$)", "fig_cost.png", accept_line=None)
 
     fig, axes = plt.subplots(1, len(reports), figsize=(6 * len(reports), 4.8), sharey=True)
     if len(reports) == 1:
@@ -1525,7 +1540,7 @@ def _plot_from_reports(report_paths, out_dir):
         ys = []
         for s in strategies:
             x0, _ = _pick_metric(rep, s, "srv_vio")
-            y0, _ = _pick_metric(rep, s, "cost_per_success_usd")
+            y0, _ = _pick_metric(rep, s, "cost_per_success_uusd")
             xs.append(x0)
             ys.append(y0)
         ax.scatter(xs, ys, s=60)
@@ -1535,7 +1550,7 @@ def _plot_from_reports(report_paths, out_dir):
         ax.set_xlabel("Srv QoS Violation (%)")
         ax.set_title(lab)
         ax.grid(True, alpha=0.2)
-    axes[0].set_ylabel("Cost per Success ($)")
+    axes[0].set_ylabel("Cost per Success (µ$)")
     fig.tight_layout()
     out_path = os.path.join(out_dir, "fig_tradeoff.png")
     fig.savefig(out_path, dpi=300)
@@ -1590,6 +1605,7 @@ def parse_args():
     parser.add_argument("--azure_scan_top_functions", type=int, default=10)
     parser.add_argument("--lambda_memory_mb", type=int, default=1024)
     parser.add_argument("--gb_s_price_usd", type=float, default=0.00001667)
+    parser.add_argument("--paper_mode", type=int, default=1)
     parser.add_argument("--report_dir", type=str, default="")
     parser.add_argument("--report_tag", type=str, default="")
     parser.add_argument("--plot_reports", type=str, default="")
@@ -2019,7 +2035,7 @@ if __name__ == "__main__":
                             results_by_name[name] = res
 
             windows_run += 1
-            print_summary(results_by_name)
+            print_summary(results_by_name, paper_mode=bool(int(args.paper_mode) == 1))
             if int(args.print_efficiency) == 1:
                 print_efficiency_summary(results_by_name)
 
@@ -2036,7 +2052,7 @@ if __name__ == "__main__":
             raise RuntimeError("All Azure windows produced 0 requests; nothing to evaluate.")
 
         if workload in ["trace", "azure", "bursty"] and len(start_mins) > 1 and windows_run > 0:
-            print_aggregate_summary(per_window_metrics)
+            print_aggregate_summary(per_window_metrics, paper_mode=bool(int(args.paper_mode) == 1))
             if window_meta:
                 print("\n==================== WINDOWS USED ====================")
                 for i, m in enumerate(window_meta, start=1):
