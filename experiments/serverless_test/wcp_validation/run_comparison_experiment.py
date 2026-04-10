@@ -7,6 +7,7 @@ import math
 import os
 import csv
 import sys
+import json
 import threading
 from datetime import datetime, timedelta, timezone
 import boto3
@@ -1379,6 +1380,162 @@ def print_efficiency_summary(results_by_name):
         )
     print("=========================================================================\n")
 
+def _ensure_dir(path):
+    if not path:
+        return
+    os.makedirs(path, exist_ok=True)
+
+def _safe_tag(s):
+    s = str(s or "").strip()
+    if not s:
+        return ""
+    out = []
+    for ch in s:
+        if ch.isalnum() or ch in ["-", "_", "."]:
+            out.append(ch)
+        else:
+            out.append("_")
+    return "".join(out)
+
+def _mean_std(vals):
+    xs = [float(v) for v in vals if v is not None and math.isfinite(float(v))]
+    if not xs:
+        return 0.0, 0.0
+    if len(xs) == 1:
+        return float(xs[0]), 0.0
+    arr = np.array(xs, dtype=float)
+    return float(np.mean(arr)), float(np.std(arr))
+
+def _aggregate_metrics(per_window_metrics):
+    agg = {}
+    for name, ms in (per_window_metrics or {}).items():
+        keys = set()
+        for m in ms:
+            if isinstance(m, dict):
+                keys.update(m.keys())
+        out = {}
+        for k in sorted(keys):
+            mean, std = _mean_std([m.get(k) for m in ms if isinstance(m, dict)])
+            out[k] = {"mean": float(mean), "std": float(std)}
+        agg[name] = out
+    return agg
+
+def _write_report(report_dir, report_tag, report):
+    report_dir = str(report_dir or "").strip()
+    if not report_dir:
+        return ""
+    _ensure_dir(report_dir)
+    tag = _safe_tag(report_tag) or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    path = os.path.join(report_dir, f"report_{tag}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
+    print(f">>> Saved report: {path}")
+    return path
+
+def _load_report(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def _plot_from_reports(report_paths, out_dir):
+    try:
+        import matplotlib.pyplot as plt
+    except Exception as e:
+        raise RuntimeError("matplotlib is required for plotting.") from e
+
+    reports = []
+    for p in report_paths:
+        p = str(p or "").strip()
+        if not p:
+            continue
+        reports.append(_load_report(p))
+    if not reports:
+        raise RuntimeError("No reports provided for plotting.")
+
+    _ensure_dir(out_dir)
+
+    def _pick_metric(rep, strategy, key):
+        try:
+            return float(rep["aggregate"][strategy][key]["mean"]), float(rep["aggregate"][strategy][key]["std"])
+        except Exception:
+            return 0.0, 0.0
+
+    def _strategy_order(strategies):
+        pref = ["mpc", "static_0.80", "static_1.00", "aws_tt", "hpa_baseline", "static_0.60"]
+        out = []
+        seen = set()
+        for p in pref:
+            if p in strategies and p not in seen:
+                out.append(p)
+                seen.add(p)
+        for s in sorted(strategies):
+            if s not in seen:
+                out.append(s)
+        return out
+
+    all_strats = set()
+    for rep in reports:
+        all_strats.update((rep.get("aggregate") or {}).keys())
+    strategies = _strategy_order(all_strats)
+
+    labels = []
+    for rep in reports:
+        labels.append(str(rep.get("tag") or rep.get("label") or "run"))
+
+    def plot_grouped(metric_key, ylabel, filename, accept_line=None):
+        x = np.arange(len(strategies), dtype=float)
+        w = 0.8 / max(1, len(reports))
+        fig, ax = plt.subplots(figsize=(12, 4.5))
+        for i, rep in enumerate(reports):
+            means = []
+            stds = []
+            for s in strategies:
+                m, sd = _pick_metric(rep, s, metric_key)
+                means.append(m)
+                stds.append(sd)
+            pos = x - 0.4 + (i + 0.5) * w
+            ax.bar(pos, means, width=w, yerr=stds, capsize=3, label=labels[i], alpha=0.9)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(strategies, rotation=0)
+        ax.set_ylabel(ylabel)
+        if accept_line is not None:
+            ax.axhline(float(accept_line), color="gray", linestyle="--", linewidth=1.5)
+        ax.legend(loc="upper right", frameon=True)
+        ax.grid(True, axis="y", alpha=0.2)
+        fig.tight_layout()
+        out_path = os.path.join(out_dir, filename)
+        fig.savefig(out_path, dpi=300)
+        plt.close(fig)
+        print(f">>> Saved figure: {out_path}")
+
+    plot_grouped("srv_vio", "Srv QoS Violation (%)", "fig_srv_vio.png", accept_line=10.0)
+    plot_grouped("cpu_ms_per_success", "CPUms per Success (ms)", "fig_cpums.png", accept_line=None)
+
+    fig, axes = plt.subplots(1, len(reports), figsize=(6 * len(reports), 4.8), sharey=True)
+    if len(reports) == 1:
+        axes = [axes]
+    for ax, rep, lab in zip(axes, reports, labels):
+        xs = []
+        ys = []
+        for s in strategies:
+            x0, _ = _pick_metric(rep, s, "srv_vio")
+            y0, _ = _pick_metric(rep, s, "cpu_ms_per_success")
+            xs.append(x0)
+            ys.append(y0)
+        ax.scatter(xs, ys, s=60)
+        for s, x0, y0 in zip(strategies, xs, ys):
+            ax.text(x0, y0, s, fontsize=9, ha="left", va="bottom")
+        ax.axvline(10.0, color="gray", linestyle="--", linewidth=1.5)
+        ax.set_xlabel("Srv QoS Violation (%)")
+        ax.set_title(lab)
+        ax.grid(True, alpha=0.2)
+    axes[0].set_ylabel("CPUms per Success (ms)")
+    fig.tight_layout()
+    out_path = os.path.join(out_dir, "fig_tradeoff.png")
+    fig.savefig(out_path, dpi=300)
+    plt.close(fig)
+    print(f">>> Saved figure: {out_path}")
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rps", type=float, default=10.0)
@@ -1425,10 +1582,24 @@ def parse_args():
     parser.add_argument("--azure_scan_top", type=int, default=20)
     parser.add_argument("--azure_scan_find_any_function", type=int, default=0)
     parser.add_argument("--azure_scan_top_functions", type=int, default=10)
+    parser.add_argument("--report_dir", type=str, default="")
+    parser.add_argument("--report_tag", type=str, default="")
+    parser.add_argument("--plot_reports", type=str, default="")
+    parser.add_argument("--plot_out_dir", type=str, default="")
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
+    if str(args.plot_reports).strip():
+        paths = [p.strip() for p in str(args.plot_reports).split(",") if p.strip()]
+        out_dir = str(args.plot_out_dir or "").strip()
+        if not out_dir:
+            if paths:
+                out_dir = os.path.dirname(paths[0]) or os.getcwd()
+            else:
+                out_dir = os.getcwd()
+        _plot_from_reports(paths, out_dir)
+        sys.exit(0)
     BASE_RPS = float(args.rps)
     os.environ["AWS_REGION"] = args.region
     CURRENT_TASK = args.task
@@ -1606,6 +1777,7 @@ if __name__ == "__main__":
         print("==========================================================")
         sys.exit(0)
 
+    cal_info = {}
     fixed_srv = float(args.server_slo_ms or 0.0)
     fixed_e2e = float(args.e2e_slo_ms or 0.0)
     if fixed_srv > 0.0 or fixed_e2e > 0.0:
@@ -1615,6 +1787,11 @@ if __name__ == "__main__":
             fixed_e2e = fixed_srv
         SERVER_SLO_MS = float(fixed_srv)
         E2E_SLO_MS = float(fixed_e2e)
+        cal_info = {
+            "mode": "fixed",
+            "server_slo_ms": float(SERVER_SLO_MS),
+            "e2e_slo_ms": float(E2E_SLO_MS),
+        }
         print(f">>> QoS Thresholds (fixed): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms")
     else:
         include_cold = bool(int(args.calibration_include_cold_start) == 1)
@@ -1628,6 +1805,8 @@ if __name__ == "__main__":
         )
         SERVER_SLO_MS = float(cal["qos_srv_ms"])
         E2E_SLO_MS = float(cal["qos_e2e_ms"])
+        cal_info = dict(cal)
+        cal_info["mode"] = "auto_with_cold" if include_cold else "auto_warm_only"
         cal_tag = "with_cold" if include_cold else "warm_only"
         print(f">>> QoS Thresholds (auto/{cal_tag}): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
     
@@ -1852,6 +2031,40 @@ if __name__ == "__main__":
                         f"auto_shift_enabled={int(bool(m.get('auto_shift_enabled')))} auto_shifted={int(bool(m.get('auto_shifted')))}"
                     )
                 print("======================================================")
+
+            report_dir = str(args.report_dir or "").strip()
+            if report_dir:
+                report_tag = str(args.report_tag or "").strip()
+                if not report_tag:
+                    report_tag = f"{workload}_{args.task}_{int(args.minutes)}m_rps{float(rps):.2f}"
+                report = {
+                    "tag": report_tag,
+                    "generated_utc": datetime.utcnow().isoformat() + "Z",
+                    "workload": str(workload),
+                    "task": str(args.task),
+                    "minutes": float(args.minutes),
+                    "base_rps": float(rps),
+                    "budget": int(_BUDGET),
+                    "workers": int(args.workers),
+                    "max_inflight": int(max_inflight),
+                    "qos": dict(cal_info or {}),
+                    "azure": {
+                        "trace_file": _resolve_trace_path(str(args.azure_trace_file)),
+                        "app": str(args.azure_app),
+                        "func": str(args.azure_func),
+                        "day": int(args.azure_day),
+                        "scale": float(args.azure_scale),
+                        "start_mins_requested": [int(x) for x in start_mins],
+                    },
+                    "windows_used": list(window_meta),
+                    "aggregate": _aggregate_metrics(per_window_metrics),
+                    "per_window_metrics": per_window_metrics,
+                }
+                saved = _write_report(report_dir, report_tag, report)
+                try:
+                    _plot_from_reports([saved], report_dir)
+                except Exception as e:
+                    print(f"[WARN] Plotting failed: {e}")
 
     if len(rps_list) > 1 and str(args.mode).lower() != "pareto":
         print("\n==================== FINAL SUMMARY (ALL RPS) ====================")
