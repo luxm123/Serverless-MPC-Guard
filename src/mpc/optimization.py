@@ -28,11 +28,17 @@ class Optimizer:
         if not math.isfinite(pred_upper):
             pred_upper = float(slo_limit)
 
-        # --- v58: Shield Protocol ---
         current_rps = float(state.get('current_rps', 0.0))
         prev_rps = float(state.get('prev_rps', 0.0))
         if current_rps > 1.5 * prev_rps and prev_rps > 5.0:
-            return 1.0
+            try:
+                jump_max = float(state.get('max_alloc', 1.0) or 1.0)
+            except Exception:
+                jump_max = 1.0
+            if not math.isfinite(jump_max):
+                jump_max = 1.0
+            jump_max = float(max(0.4, min(4.0, jump_max)))
+            return float(min(jump_max, max(prev_u, prev_u + 0.25)))
 
         # --- v66.0: Robust Prediction-Based Control ---
         # pred_upper is (WCP Prediction + Margin). 
@@ -50,7 +56,7 @@ class Optimizer:
             unc_scale = 1.0
         if not math.isfinite(unc_scale) or unc_scale <= 0.0:
             unc_scale = 1.0
-        unc_scale = float(max(1.0, min(3.0, unc_scale)))
+        unc_scale = float(max(0.5, min(3.0, unc_scale)))
         pred_total = max(float(pred_upper), float(last_y) + float(unc_scale) * float(uncertainty))
         obs_total = last_y
         try:

@@ -155,7 +155,7 @@ class MPCMiddleware:
         unc_scale = self._finite_float(metrics.get('unc_scale', state.get('unc_scale', 1.0)), 1.0)
         if not math.isfinite(float(unc_scale)) or float(unc_scale) <= 0.0:
             unc_scale = 1.0
-        unc_scale = float(max(1.0, min(3.0, unc_scale)))
+        unc_scale = float(max(0.5, min(3.0, unc_scale)))
         state['unc_scale'] = unc_scale
 
         tight_slo_ms = self._finite_float(metrics.get('tight_slo_ms', state.get('tight_slo_ms', 80.0)), 80.0)
