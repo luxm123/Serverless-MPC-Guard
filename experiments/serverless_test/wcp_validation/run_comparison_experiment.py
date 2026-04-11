@@ -1860,6 +1860,8 @@ if __name__ == "__main__":
             static_allocs.append(float(seg))
         except Exception:
             pass
+    if int(args.paper_mode) == 1:
+        static_allocs = [u for u in static_allocs if u >= 0.8]
     pareto_mins = []
     for seg in str(args.pareto_min_allocs).split(','):
         seg = seg.strip()
