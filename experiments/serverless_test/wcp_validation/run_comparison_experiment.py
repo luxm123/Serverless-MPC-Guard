@@ -947,6 +947,57 @@ def generate_poisson_arrivals(rate, num):
     arrival_times = np.cumsum(intervals)
     return arrival_times
 
+def _apply_burst_profile(second_rates, profile, total_seconds):
+    if not second_rates or not profile:
+        return second_rates
+    try:
+        total_seconds = int(total_seconds)
+    except Exception:
+        return second_rates
+    if total_seconds <= 0:
+        return second_rates
+    segs = []
+    for raw in str(profile).split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        if ":" in raw:
+            a, b = raw.split(":", 1)
+        elif "@" in raw:
+            a, b = raw.split("@", 1)
+        else:
+            continue
+        try:
+            mult = float(a.strip())
+        except Exception:
+            continue
+        try:
+            secs = int(float(b.strip()))
+        except Exception:
+            continue
+        if (not math.isfinite(mult)) or mult <= 0.0 or secs <= 0:
+            continue
+        segs.append((float(mult), int(secs)))
+    if not segs:
+        return second_rates
+    out = []
+    for mult, secs in segs:
+        out.extend([float(mult)] * int(secs))
+        if len(out) >= total_seconds:
+            break
+    if not out:
+        return second_rates
+    if len(out) < total_seconds:
+        out.extend([out[-1]] * int(total_seconds - len(out)))
+    elif len(out) > total_seconds:
+        out = out[:total_seconds]
+    base = list(second_rates)
+    if len(base) < total_seconds:
+        base = base + [0.0] * int(total_seconds - len(base))
+    elif len(base) > total_seconds:
+        base = base[:total_seconds]
+    return [float(r) * float(m) for r, m in zip(base, out)]
+
 def run_single_request(idx, strategy, start_time, inflight=1, queue_delay_ms=0.0, rps_hint=0.0, backlog_hint=None, budget_hint=None):
     # 1. Real Scenario: No injected metrics. System must learn.
     
@@ -1865,6 +1916,7 @@ def parse_args():
     parser.add_argument("--azure_stride_min", type=int, default=30)
     parser.add_argument("--azure_skip_empty_windows", type=int, default=1)
     parser.add_argument("--azure_scale", type=float, default=1.0)
+    parser.add_argument("--burst_profile", type=str, default="")
     parser.add_argument("--azure_pick_most_bursty", type=int, default=0)
     parser.add_argument("--azure_auto_shift_empty_window", type=int, default=0)
     parser.add_argument("--azure_filter_windows_by_avg_rps", type=int, default=0)
@@ -2292,6 +2344,9 @@ if __name__ == "__main__":
                     pick_most_bursty=bool(int(args.azure_pick_most_bursty) == 1),
                     auto_shift_empty_window=bool(int(args.azure_auto_shift_empty_window) == 1),
                 )
+                total_seconds = int(max(1, int(args.minutes)) * 60)
+                if str(args.burst_profile).strip():
+                    second_rates = _apply_burst_profile(second_rates, str(args.burst_profile), total_seconds)
                 if _LAST_AZURE_TRACE_META:
                     avg_rps = float(_LAST_AZURE_TRACE_META.get("window_avg_rps", 0.0) or 0.0)
                     if not math.isfinite(avg_rps):
