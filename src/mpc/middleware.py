@@ -135,6 +135,10 @@ class MPCMiddleware:
         state['prev_rps'] = current_rps
         concurrency = self._finite_float(metrics.get('concurrency', metrics.get('backlog', 0.0)), 0.0)
         backlog = self._finite_float(metrics.get('backlog', concurrency), concurrency)
+        budget = self._finite_float(metrics.get('budget', state.get('budget', 0.0)), 0.0)
+        if not math.isfinite(float(budget)) or float(budget) < 0.0:
+            budget = 0.0
+        state['budget'] = float(budget)
         slo_limit = self._finite_float(metrics.get('slo_limit', state.get('slo_limit', 180.0)), 180.0)
         if slo_limit <= 0.0 or not math.isfinite(float(slo_limit)):
             slo_limit = 180.0
@@ -185,6 +189,7 @@ class MPCMiddleware:
             'prev_rps': prev_rps,
             'concurrency': concurrency,
             'backlog': backlog,
+            'budget': float(budget),
             'slo_limit': slo_limit,
             'min_alloc': min_alloc,
             'max_alloc': max_alloc,

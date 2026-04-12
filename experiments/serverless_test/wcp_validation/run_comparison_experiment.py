@@ -21,6 +21,8 @@ CURRENT_TASK = "linpack" # Global to be updated by args
 BASE_RPS = 10.0
 _E2E_OVERHEAD_EMA = 50.0
 _OVERHEAD_LOCK = threading.Lock()
+_SRV_LAT_EMA_MS = {}
+_SRV_LAT_LOCK = threading.Lock()
 _MPC_MIN_ALLOC_LOCK = threading.Lock()
 _MPC_MIN_ALLOC = 0.0
 _MAX_ALLOC = 1.0
@@ -64,6 +66,70 @@ def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=30, sample_re
 
     sample_arrivals = generate_poisson_arrivals(rate=max(1.0, float(budget) * 20.0), num=max(1, int(sample_requests)))
     results, _ = run_phase('static_1.0', warm_up=True, max_workers=budget, arrival_times=sample_arrivals, max_inflight=budget)
+
+    success = [r for r in results if r.get('success', False)]
+    if include_cold_start:
+        cal_success = success
+    else:
+        cal_success = [r for r in success if not bool(r.get('is_cold_start', False))]
+        if not cal_success:
+            cal_success = success
+    base_p90_e2e = _p90([r.get('e2e_latency', 0.0) for r in cal_success])
+    base_p90_srv = _p90([r.get('server_latency', 0.0) for r in cal_success])
+
+    qos_e2e = float(max(1.0, base_p90_e2e * float(factor)))
+    qos_srv = float(max(1.0, base_p90_srv * float(factor)))
+    return {
+        "base_p90_e2e_ms": float(base_p90_e2e),
+        "base_p90_srv_ms": float(base_p90_srv),
+        "qos_e2e_ms": float(qos_e2e),
+        "qos_srv_ms": float(qos_srv)
+    }
+
+def _subsample_arrivals(arrival_times, n, offset=0):
+    try:
+        n = int(n)
+    except Exception:
+        n = 0
+    if n <= 0:
+        return []
+    if not arrival_times:
+        return []
+    m = len(arrival_times)
+    if offset < 0:
+        offset = 0
+    if offset >= m:
+        offset = 0
+    span = arrival_times[offset:]
+    if len(span) <= n:
+        return list(span)
+    idx = np.linspace(0, len(span) - 1, n).astype(int)
+    return [span[int(i)] for i in idx]
+
+def calibrate_qos_threshold_on_azure_trace(task_name, trace_file, app_id, func_id, day, start_min, duration_min, scale, factor=1.2, warmup_requests=30, sample_requests=150, budget=10, include_cold_start=True):
+    budget = int(budget) if int(budget) > 0 else 10
+    invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='static_1.0', reset_state=True)
+
+    second_rates, _is_real = load_azure_trace(
+        duration_min=int(duration_min),
+        trace_file=str(trace_file),
+        start_min=int(start_min),
+        app_id=str(app_id),
+        func_id=str(func_id),
+        day=int(day),
+        scale=float(scale),
+        pick_most_bursty=False,
+        auto_shift_empty_window=False,
+    )
+    arrival_times = generate_trace_arrivals(second_rates, base_rps=1.0)
+    if not arrival_times:
+        return calibrate_qos_threshold(task_name, factor=factor, warmup_requests=warmup_requests, sample_requests=sample_requests, budget=budget, include_cold_start=include_cold_start)
+
+    warm_arrivals = _subsample_arrivals(arrival_times, int(warmup_requests), offset=0)
+    sample_arrivals = _subsample_arrivals(arrival_times, int(sample_requests), offset=max(0, len(arrival_times) // 4))
+
+    run_phase('static_1.0', warm_up=True, max_workers=budget, arrival_times=warm_arrivals, max_inflight=budget, replay_speedup=1.0, second_rates=second_rates)
+    results, _ = run_phase('static_1.0', warm_up=True, max_workers=budget, arrival_times=sample_arrivals, max_inflight=budget, replay_speedup=1.0, second_rates=second_rates)
 
     success = [r for r in results if r.get('success', False)]
     if include_cold_start:
@@ -880,7 +946,7 @@ def generate_poisson_arrivals(rate, num):
     arrival_times = np.cumsum(intervals)
     return arrival_times
 
-def run_single_request(idx, strategy, start_time, inflight=1, queue_delay_ms=0.0):
+def run_single_request(idx, strategy, start_time, inflight=1, queue_delay_ms=0.0, rps_hint=0.0, backlog_hint=None, budget_hint=None):
     # 1. Real Scenario: No injected metrics. System must learn.
     
     # For a pure vertical scaling experiment, priority is not a variable.
@@ -893,13 +959,14 @@ def run_single_request(idx, strategy, start_time, inflight=1, queue_delay_ms=0.0
     risk = {}
     metrics = {
         "p90": 0.0,
-        "backlog": int(inflight),
-        "concurrency": float(inflight),
+        "backlog": int(backlog_hint) if backlog_hint is not None else int(inflight),
+        "concurrency": float(backlog_hint) if backlog_hint is not None else float(inflight),
         "cpu_util": 0.5,
         "error_rate": 0.0,
-        "rps": float(BASE_RPS),
+        "rps": float(rps_hint or 0.0),
         "e2e_overhead_ms": float(_E2E_OVERHEAD_EMA),
         "slo_limit": float(SERVER_SLO_MS),
+        "budget": float(budget_hint) if budget_hint is not None else float(_BUDGET),
         "max_alloc": float(_MAX_ALLOC),
         "unc_scale": float(_UNC_SCALE),
         "tight_slo_ms": float(_TIGHT_SLO_MS),
@@ -1064,7 +1131,7 @@ def run_single_request(idx, strategy, start_time, inflight=1, queue_delay_ms=0.0
         }
     return res
 
-def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, num_requests=100, arrival_rate=5.0, max_inflight=0, replay_speedup=1.0):
+def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, num_requests=100, arrival_rate=5.0, max_inflight=0, replay_speedup=1.0, second_rates=None):
     if warm_up:
         print(f"\n>>> Warming up WCP state ({strategy_name})...")
     else:
@@ -1095,6 +1162,14 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
                     global _E2E_OVERHEAD_EMA
                     with _OVERHEAD_LOCK:
                         _E2E_OVERHEAD_EMA = 0.95 * float(_E2E_OVERHEAD_EMA) + 0.05 * overhead
+                try:
+                    srv_ms = float(res.get("server_latency", 0.0) or 0.0)
+                except Exception:
+                    srv_ms = 0.0
+                if math.isfinite(srv_ms) and srv_ms > 0.0:
+                    with _SRV_LAT_LOCK:
+                        prev = float(_SRV_LAT_EMA_MS.get(strategy_name, 40.0) or 40.0)
+                        _SRV_LAT_EMA_MS[strategy_name] = 0.95 * prev + 0.05 * srv_ms
             if not warm_up:
                 # 实时打印每个请求的结果 (v29.2 - 修复 Baseline 格式化错误)
                 try:
@@ -1139,7 +1214,32 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
             with inflight_lock:
                 inflight_count += 1
                 inflight_snapshot = inflight_count
-            f = executor.submit(run_single_request, i, strategy_name, phase_start, inflight_snapshot, qd_ms)
+            if second_rates is not None:
+                sec_idx = int(float(delay)) if float(delay) >= 0.0 else 0
+                if sec_idx < 0:
+                    sec_idx = 0
+                if sec_idx >= len(second_rates):
+                    sec_idx = len(second_rates) - 1 if second_rates else 0
+                try:
+                    rps_hint = float(second_rates[sec_idx] or 0.0)
+                except Exception:
+                    rps_hint = 0.0
+            else:
+                rps_hint = float(arrival_rate or 0.0)
+
+            with _SRV_LAT_LOCK:
+                srv_ema = float(_SRV_LAT_EMA_MS.get(strategy_name, 40.0) or 40.0)
+            if (not math.isfinite(srv_ema)) or srv_ema <= 0.0:
+                srv_ema = 40.0
+            try:
+                qlen_est = int(float(qd_ms) / max(1.0, float(srv_ema)))
+            except Exception:
+                qlen_est = 0
+            if qlen_est < 0:
+                qlen_est = 0
+            backlog_hint = int(inflight_snapshot + qlen_est)
+
+            f = executor.submit(run_single_request, i, strategy_name, phase_start, inflight_snapshot, qd_ms, rps_hint, backlog_hint, _BUDGET)
             f.add_done_callback(process_result)
             
     # 等待本阶段所有请求完成
@@ -2022,18 +2122,47 @@ if __name__ == "__main__":
         print(f">>> QoS Thresholds (fixed): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms")
     else:
         include_cold = bool(int(args.calibration_include_cold_start) == 1)
-        cal = calibrate_qos_threshold(
-            args.task,
-            factor=float(args.qos_factor),
-            warmup_requests=30,
-            sample_requests=150,
-            budget=_BUDGET,
-            include_cold_start=include_cold,
-        )
+        workload = str(args.workload).lower().strip()
+        use_trace_cal = bool(workload in ["trace", "azure", "bursty"] and str(args.azure_trace_file).strip() and str(args.azure_app).strip() and str(args.azure_func).strip())
+        if use_trace_cal:
+            cal_start = int(args.azure_start_min)
+            raw = str(args.azure_start_mins).strip()
+            if raw:
+                try:
+                    cal_start = int(raw.split(",")[0].strip())
+                except Exception:
+                    cal_start = int(args.azure_start_min)
+            cal = calibrate_qos_threshold_on_azure_trace(
+                args.task,
+                trace_file=str(args.azure_trace_file),
+                app_id=str(args.azure_app).strip(),
+                func_id=str(args.azure_func).strip(),
+                day=int(args.azure_day),
+                start_min=int(cal_start),
+                duration_min=int(max(1, int(args.minutes))),
+                scale=float(args.azure_scale),
+                factor=float(args.qos_factor),
+                warmup_requests=30,
+                sample_requests=150,
+                budget=_BUDGET,
+                include_cold_start=include_cold,
+            )
+        else:
+            cal = calibrate_qos_threshold(
+                args.task,
+                factor=float(args.qos_factor),
+                warmup_requests=30,
+                sample_requests=150,
+                budget=_BUDGET,
+                include_cold_start=include_cold,
+            )
         SERVER_SLO_MS = float(cal["qos_srv_ms"])
         E2E_SLO_MS = float(cal["qos_e2e_ms"])
         cal_info = dict(cal)
-        cal_info["mode"] = "auto_with_cold" if include_cold else "auto_warm_only"
+        if use_trace_cal:
+            cal_info["mode"] = "auto_trace_with_cold" if include_cold else "auto_trace_warm_only"
+        else:
+            cal_info["mode"] = "auto_with_cold" if include_cold else "auto_warm_only"
         cal_tag = "with_cold" if include_cold else "warm_only"
         print(f">>> QoS Thresholds (auto/{cal_tag}): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
     
@@ -2143,6 +2272,7 @@ if __name__ == "__main__":
         window_meta = []
 
         for w_i, start_min in enumerate(start_mins):
+            second_rates = None
             if workload in ["trace", "azure", "bursty"]:
                 print(f"\n>>> Window {w_i+1}/{len(start_mins)}: azure_start_min={int(start_min)} <<<")
                 second_rates, is_real = load_azure_trace(
@@ -2195,14 +2325,14 @@ if __name__ == "__main__":
                     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
                     if do_phase_warmup:
                         run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
-                    res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
+                    res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, arrival_rate=float(rps), max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP, second_rates=second_rates)
                     results_by_name[name] = res
             else:
                 print(f"\n--- Running MPC-Guard (Ours) ---")
                 invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
                 if do_phase_warmup:
                     run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
-                mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
+                mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, arrival_rate=float(rps), max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP, second_rates=second_rates)
                 results_by_name["mpc"] = mpc_results
 
             if str(args.mode).lower() != "pareto" or int(args.include_baselines_in_pareto) == 1:
@@ -2212,14 +2342,14 @@ if __name__ == "__main__":
                         invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
                         if do_phase_warmup:
                             run_phase('baseline', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
-                        res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
+                        res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times, arrival_rate=float(rps), max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP, second_rates=second_rates)
                         results_by_name["hpa_baseline"] = res
                     elif b == "aws_tt":
                         print(f"\n--- Running AWS Target Tracking ---")
                         invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='aws_tt', reset_state=True)
                         if do_phase_warmup:
                             run_phase('aws_tt', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
-                        res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
+                        res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times, arrival_rate=float(rps), max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP, second_rates=second_rates)
                         results_by_name["aws_tt"] = res
                     elif b == "static":
                         for u in static_allocs:
@@ -2227,7 +2357,7 @@ if __name__ == "__main__":
                             print(f"\n--- Running {name} ---")
                             if do_phase_warmup:
                                 run_phase(f"static_{u}", warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
-                            res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
+                            res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times, arrival_rate=float(rps), max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP, second_rates=second_rates)
                             results_by_name[name] = res
 
             windows_run += 1

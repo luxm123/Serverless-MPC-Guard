@@ -115,12 +115,26 @@ class Optimizer:
         if float(slo_limit) <= tight_slo_ms:
             alloc_floor = max(alloc_floor, 0.85 if error <= 0.0 else 0.95)
 
-        if concurrency >= 180.0:
-            alloc_floor = max(alloc_floor, 0.90)
-        elif concurrency >= 120.0:
-            alloc_floor = max(alloc_floor, 0.75)
-        elif concurrency >= 60.0:
-            alloc_floor = max(alloc_floor, 0.60)
+        try:
+            budget = float(state.get("budget", 0.0) or 0.0)
+        except Exception:
+            budget = 0.0
+        if not math.isfinite(budget) or budget < 0.0:
+            budget = 0.0
+        if budget > 0.0:
+            if concurrency >= 1.8 * budget:
+                alloc_floor = max(alloc_floor, 0.90)
+            elif concurrency >= 1.2 * budget:
+                alloc_floor = max(alloc_floor, 0.75)
+            elif concurrency >= 0.6 * budget:
+                alloc_floor = max(alloc_floor, 0.60)
+        else:
+            if concurrency >= 180.0:
+                alloc_floor = max(alloc_floor, 0.90)
+            elif concurrency >= 120.0:
+                alloc_floor = max(alloc_floor, 0.75)
+            elif concurrency >= 60.0:
+                alloc_floor = max(alloc_floor, 0.60)
 
         if safe_streak >= 30:
             alloc_floor = min(alloc_floor, 0.50)
