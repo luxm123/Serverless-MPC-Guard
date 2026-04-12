@@ -802,7 +802,7 @@ def generate_poisson_arrivals(rate, num):
     arrival_times = np.cumsum(intervals)
     return arrival_times
 
-def run_single_request(idx, strategy, start_time, inflight=1):
+def run_single_request(idx, strategy, start_time, inflight=1, queue_delay_ms=0.0):
     # 1. Real Scenario: No injected metrics. System must learn.
     
     # For a pure vertical scaling experiment, priority is not a variable.
@@ -920,7 +920,13 @@ def run_single_request(idx, strategy, start_time, inflight=1):
         )
 
     # 3. Process Results
-    e2e_latency = (time.time() - t0) * 1000.0
+    try:
+        qd = float(queue_delay_ms or 0.0)
+    except Exception:
+        qd = 0.0
+    if not math.isfinite(qd) or qd < 0.0:
+        qd = 0.0
+    e2e_latency = ((time.time() - t0) * 1000.0) + qd
     
     if worker_result:
         try:
@@ -933,6 +939,7 @@ def run_single_request(idx, strategy, start_time, inflight=1):
             'strategy': strategy,
             'priority': priority,
             'e2e_latency': e2e_latency,
+            'queue_delay_ms': qd,
             'ctrl_latency': ctrl_latency,
             'worker_latency': worker_result['client_duration'],
             'server_latency': server_latency,
@@ -958,6 +965,7 @@ def run_single_request(idx, strategy, start_time, inflight=1):
             'strategy': strategy,
             'priority': priority,
             'e2e_latency': e2e_latency,
+            'queue_delay_ms': qd,
             'violation': True,
             'success': False,
             'is_cold_start': False,
@@ -965,7 +973,7 @@ def run_single_request(idx, strategy, start_time, inflight=1):
         }
     return res
 
-def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, num_requests=100, arrival_rate=5.0, max_inflight=0):
+def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, num_requests=100, arrival_rate=5.0, max_inflight=0, replay_speedup=1.0):
     if warm_up:
         print(f"\n>>> Warming up WCP state ({strategy_name})...")
     else:
@@ -1014,18 +1022,33 @@ def run_phase(strategy_name, warm_up=False, max_workers=5, arrival_times=None, n
             print(f"[ERROR] Request failed: {e}")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        try:
+            spd = float(replay_speedup)
+        except Exception:
+            spd = 1.0
+        if not math.isfinite(spd) or spd < 0.0:
+            spd = 1.0
         for i, delay in enumerate(arrival_times):
-            now = time.time() - phase_start
-            wait = delay - now
-            if wait > 0:
-                time.sleep(wait)
+            if spd > 0.0:
+                now_trace = (time.time() - phase_start) * spd
+                wait_trace = float(delay) - float(now_trace)
+                if wait_trace > 0:
+                    time.sleep(wait_trace / spd)
             
+            planned_wall_ts = None
+            if spd > 0.0:
+                planned_wall_ts = phase_start + (float(delay) / spd)
+
             if inflight_sem is not None:
                 inflight_sem.acquire()
+            submit_ts = time.time()
+            qd_ms = 0.0
+            if planned_wall_ts is not None:
+                qd_ms = float(max(0.0, (submit_ts - planned_wall_ts) * 1000.0))
             with inflight_lock:
                 inflight_count += 1
                 inflight_snapshot = inflight_count
-            f = executor.submit(run_single_request, i, strategy_name, phase_start, inflight_snapshot)
+            f = executor.submit(run_single_request, i, strategy_name, phase_start, inflight_snapshot, qd_ms)
             f.add_done_callback(process_result)
             
     # 等待本阶段所有请求完成
@@ -1243,7 +1266,7 @@ def _calc_metrics(results):
             "util_pct": 0.0,
             "gb_s_per_success": 0.0,
             "cost_per_success_usd": 0.0,
-            "cost_per_success_uusd": 0.0,
+            "cost_per_1m_success_usd": 0.0,
             "alloc_p50": 0.0,
             "alloc_p90": 0.0,
             "alloc_std": 0.0,
@@ -1310,7 +1333,7 @@ def _calc_metrics(results):
             continue
     gb_s_per_success = float(gb_s_acc / max(1, len(success)))
     cost_per_success_usd = float(gb_s_per_success * float(PRICE_PER_GB_S_USD))
-    cost_per_success_uusd = float(cost_per_success_usd * 1_000_000.0)
+    cost_per_1m_success_usd = float(cost_per_success_usd * 1_000_000.0)
 
     return {
         "e2e_vio": e2e_viol_rate,
@@ -1326,31 +1349,36 @@ def _calc_metrics(results):
         "util_pct": util_pct,
         "gb_s_per_success": gb_s_per_success,
         "cost_per_success_usd": cost_per_success_usd,
-        "cost_per_success_uusd": cost_per_success_uusd,
+        "cost_per_1m_success_usd": cost_per_1m_success_usd,
         "alloc_p50": alloc_p50,
         "alloc_p90": alloc_p90,
         "alloc_std": alloc_std,
         "alloc_churn": alloc_churn,
     }
 
-def print_summary(results_by_name, paper_mode=True):
+def print_summary(results_by_name, paper_mode=True, paper_qos_metric="e2e"):
     print("\n======================================================================")
+    qos_key = "srv_vio"
+    qos_label = "Srv Viol %"
+    if str(paper_qos_metric).strip().lower() in ["e2e", "e2e_vio", "end2end"]:
+        qos_key = "e2e_vio"
+        qos_label = "E2E Viol %"
     if paper_mode:
-        print(f"{'Strategy':<22} | {'Srv Viol %':<10} | {'Cost(µ$)':<10}")
+        print(f"{'Strategy':<22} | {qos_label:<10} | {'Cost($/1M)':<10}")
     else:
-        print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'GB-s':<7} | {'Cost(µ$)':<10} | {'Overhead':<8} | {'AchRPS':<7}")
+        print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'GB-s':<7} | {'Cost($/1M)':<10} | {'Overhead':<8} | {'AchRPS':<7}")
     print("----------------------------------------------------------------------")
     for name, results in results_by_name.items():
         if paper_mode and name == "static_0.60":
             continue
         m = _calc_metrics(results)
         if paper_mode:
-            print(f"{name:<22} | {m['srv_vio']:<10.2f} | {m['cost_per_success_uusd']:<10.2f}")
+            print(f"{name:<22} | {m.get(qos_key, 0.0):<10.2f} | {m['cost_per_1m_success_usd']:<10.4f}")
         else:
-            print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['gb_s_per_success']:<7.3f} | {m['cost_per_success_uusd']:<10.2f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
+            print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['gb_s_per_success']:<7.3f} | {m['cost_per_1m_success_usd']:<10.2f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
     print("======================================================================\n")
 
-def print_aggregate_summary(metrics_by_strategy, paper_mode=True):
+def print_aggregate_summary(metrics_by_strategy, paper_mode=True, paper_qos_metric="e2e"):
     def _mean_std(vals):
         xs = [float(v) for v in vals if v is not None]
         if not xs:
@@ -1361,9 +1389,14 @@ def print_aggregate_summary(metrics_by_strategy, paper_mode=True):
         return float(np.mean(arr)), float(np.std(arr))
 
     if paper_mode:
+        qos_key = "srv_vio"
+        qos_label = "Srv Viol %"
+        if str(paper_qos_metric).strip().lower() in ["e2e", "e2e_vio", "end2end"]:
+            qos_key = "e2e_vio"
+            qos_label = "E2E Viol %"
         cols = [
-            ("Srv Viol %", "srv_vio"),
-            ("Cost(µ$)", "cost_per_success_uusd"),
+            (qos_label, qos_key),
+            ("Cost($/1M)", "cost_per_1m_success_usd"),
         ]
     else:
         cols = [
@@ -1375,7 +1408,7 @@ def print_aggregate_summary(metrics_by_strategy, paper_mode=True):
             ("AvgSrv", "avg_srv"),
             ("AvgE2E", "avg_e2e"),
             ("GB-s", "gb_s_per_success"),
-            ("Cost(µ$)", "cost_per_success_uusd"),
+            ("Cost($/1M)", "cost_per_1m_success_usd"),
             ("Overhead", "avg_overhead"),
             ("AchRPS", "achieved_success_rps"),
         ]
@@ -1392,7 +1425,10 @@ def print_aggregate_summary(metrics_by_strategy, paper_mode=True):
         row = f"{name:<22}"
         for _label, k in cols:
             mean, std = _mean_std([m.get(k) for m in metrics_by_strategy[name]])
-            row += f" | {mean:>6.2f}±{std:<5.2f}"
+            if k == "cost_per_1m_success_usd":
+                row += f" | {mean:>8.4f}±{std:<7.4f}"
+            else:
+                row += f" | {mean:>6.2f}±{std:<5.2f}"
         print(row)
     print("=" * len(header))
 
@@ -1536,8 +1572,20 @@ def _plot_from_reports(report_paths, out_dir):
         plt.close(fig)
         print(f">>> Saved figure: {out_path}")
 
-    plot_grouped("srv_vio", "Srv QoS Violation (%)", "fig_srv_vio.png", accept_line=10.0)
-    plot_grouped("cost_per_success_uusd", "Cost per Success (µ$)", "fig_cost.png", accept_line=None)
+    paper_metric = None
+    for rep in reports:
+        paper_metric = rep.get("paper_qos_metric")
+        if paper_metric:
+            break
+    pm = str(paper_metric or "e2e").strip().lower()
+    vio_key = "srv_vio"
+    vio_label = "Srv QoS Violation (%)"
+    if pm in ["e2e", "e2e_vio", "end2end"]:
+        vio_key = "e2e_vio"
+        vio_label = "E2E QoS Violation (%)"
+
+    plot_grouped(vio_key, vio_label, "fig_qos_vio.png", accept_line=10.0)
+    plot_grouped("cost_per_1m_success_usd", "Cost per 1M Successes ($)", "fig_cost.png", accept_line=None)
 
     fig, axes = plt.subplots(1, len(reports), figsize=(6 * len(reports), 4.8), sharey=True)
     if len(reports) == 1:
@@ -1546,18 +1594,18 @@ def _plot_from_reports(report_paths, out_dir):
         xs = []
         ys = []
         for s in strategies:
-            x0, _ = _pick_metric(rep, s, "srv_vio")
-            y0, _ = _pick_metric(rep, s, "cost_per_success_uusd")
+            x0, _ = _pick_metric(rep, s, vio_key)
+            y0, _ = _pick_metric(rep, s, "cost_per_1m_success_usd")
             xs.append(x0)
             ys.append(y0)
         ax.scatter(xs, ys, s=60)
         for s, x0, y0 in zip(strategies, xs, ys):
             ax.text(x0, y0, s, fontsize=9, ha="left", va="bottom")
         ax.axvline(10.0, color="gray", linestyle="--", linewidth=1.5)
-        ax.set_xlabel("Srv QoS Violation (%)")
+        ax.set_xlabel(vio_label)
         ax.set_title(lab)
         ax.grid(True, alpha=0.2)
-    axes[0].set_ylabel("Cost per Success (µ$)")
+    axes[0].set_ylabel("Cost per 1M Successes ($)")
     fig.tight_layout()
     out_path = os.path.join(out_dir, "fig_tradeoff.png")
     fig.savefig(out_path, dpi=300)
@@ -1582,7 +1630,7 @@ def parse_args():
     parser.add_argument("--pareto_min_allocs", type=str, default="0.4,0.5,0.6,0.7,0.8,0.9")
     parser.add_argument("--include_baselines_in_pareto", type=int, default=1)
     parser.add_argument("--qos_factor", type=float, default=1.2)
-    parser.add_argument("--calibration_include_cold_start", type=int, default=1)
+    parser.add_argument("--calibration_include_cold_start", type=int, default=0)
     parser.add_argument("--server_slo_ms", type=float, default=0.0)
     parser.add_argument("--e2e_slo_ms", type=float, default=0.0)
     parser.add_argument("--print_efficiency", type=int, default=0)
@@ -1612,7 +1660,9 @@ def parse_args():
     parser.add_argument("--azure_scan_top_functions", type=int, default=10)
     parser.add_argument("--lambda_memory_mb", type=int, default=1024)
     parser.add_argument("--gb_s_price_usd", type=float, default=0.00001667)
+    parser.add_argument("--replay_speedup", type=float, default=1.0)
     parser.add_argument("--paper_mode", type=int, default=1)
+    parser.add_argument("--paper_qos_metric", type=str, default="e2e")
     parser.add_argument("--report_dir", type=str, default="")
     parser.add_argument("--report_tag", type=str, default="")
     parser.add_argument("--plot_reports", type=str, default="")
@@ -1642,7 +1692,7 @@ if __name__ == "__main__":
     _UNC_SCALE = float(args.unc_scale)
     if not math.isfinite(_UNC_SCALE) or _UNC_SCALE <= 0.0:
         _UNC_SCALE = 1.0
-    _UNC_SCALE = float(max(1.0, min(3.0, _UNC_SCALE)))
+    _UNC_SCALE = float(max(0.5, min(3.0, _UNC_SCALE)))
 
     _TIGHT_SLO_MS = float(args.tight_slo_ms)
     if not math.isfinite(_TIGHT_SLO_MS) or _TIGHT_SLO_MS <= 0.0:
@@ -1660,6 +1710,20 @@ if __name__ == "__main__":
     print(f">>> MPC Unc Scale: {_UNC_SCALE:.2f}")
     print(f">>> MPC Tight SLO (ms): {_TIGHT_SLO_MS:.1f}")
     print(f">>> Phase Warmup: {int(args.enable_phase_warmup)} (requests={int(args.phase_warmup_requests)})")
+    try:
+        _REPLAY_SPEEDUP = float(args.replay_speedup)
+    except Exception:
+        _REPLAY_SPEEDUP = 1.0
+    if (not math.isfinite(_REPLAY_SPEEDUP)) or _REPLAY_SPEEDUP <= 0.0:
+        _REPLAY_SPEEDUP = 0.0
+    print(f">>> Replay Speedup: {_REPLAY_SPEEDUP if _REPLAY_SPEEDUP > 0.0 else 0.0}x (1.0x=real-time, 0=disable sleep)")
+    if _REPLAY_SPEEDUP != 1.0:
+        print(">>> NOTE: replay_speedup != 1.0 changes the effective arrival process (debug/iteration only).")
+    _PAPER_QOS_METRIC = str(args.paper_qos_metric or "e2e").strip().lower()
+    if _PAPER_QOS_METRIC not in ["e2e", "srv"]:
+        _PAPER_QOS_METRIC = "e2e"
+    if int(args.paper_mode) == 1:
+        print(f">>> Paper QoS Metric: {_PAPER_QOS_METRIC}")
     try:
         LAMBDA_MEMORY_MB = int(args.lambda_memory_mb)
     except Exception:
@@ -2007,15 +2071,15 @@ if __name__ == "__main__":
                     print(f"\n--- Running {name} ---")
                     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
                     if do_phase_warmup:
-                        run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
-                    res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
+                        run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
+                    res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
                     results_by_name[name] = res
             else:
                 print(f"\n--- Running MPC-Guard (Ours) ---")
                 invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
                 if do_phase_warmup:
-                    run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
-                mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
+                    run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
+                mpc_results, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
                 results_by_name["mpc"] = mpc_results
 
             if str(args.mode).lower() != "pareto" or int(args.include_baselines_in_pareto) == 1:
@@ -2024,27 +2088,27 @@ if __name__ == "__main__":
                         print(f"\n--- Running HPA Baseline ---")
                         invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='baseline', reset_state=True)
                         if do_phase_warmup:
-                            run_phase('baseline', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
-                        res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
+                            run_phase('baseline', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
+                        res, _ = run_phase('baseline', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
                         results_by_name["hpa_baseline"] = res
                     elif b == "aws_tt":
                         print(f"\n--- Running AWS Target Tracking ---")
                         invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='aws_tt', reset_state=True)
                         if do_phase_warmup:
-                            run_phase('aws_tt', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
-                        res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
+                            run_phase('aws_tt', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
+                        res, _ = run_phase('aws_tt', max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
                         results_by_name["aws_tt"] = res
                     elif b == "static":
                         for u in static_allocs:
                             name = f"static_{u:.2f}"
                             print(f"\n--- Running {name} ---")
                             if do_phase_warmup:
-                                run_phase(f"static_{u}", warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight)
-                            res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight)
+                                run_phase(f"static_{u}", warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
+                            res, _ = run_phase(f"static_{u}", max_workers=args.workers, arrival_times=arrival_times, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
                             results_by_name[name] = res
 
             windows_run += 1
-            print_summary(results_by_name, paper_mode=bool(int(args.paper_mode) == 1))
+            print_summary(results_by_name, paper_mode=bool(int(args.paper_mode) == 1), paper_qos_metric=_PAPER_QOS_METRIC)
             if int(args.print_efficiency) == 1:
                 print_efficiency_summary(results_by_name)
 
@@ -2061,7 +2125,7 @@ if __name__ == "__main__":
             raise RuntimeError("All Azure windows produced 0 requests; nothing to evaluate.")
 
         if workload in ["trace", "azure", "bursty"] and len(start_mins) > 1 and windows_run > 0:
-            print_aggregate_summary(per_window_metrics, paper_mode=bool(int(args.paper_mode) == 1))
+            print_aggregate_summary(per_window_metrics, paper_mode=bool(int(args.paper_mode) == 1), paper_qos_metric=_PAPER_QOS_METRIC)
             if window_meta:
                 print("\n==================== WINDOWS USED ====================")
                 for i, m in enumerate(window_meta, start=1):
@@ -2089,6 +2153,8 @@ if __name__ == "__main__":
                     "budget": int(_BUDGET),
                     "workers": int(args.workers),
                     "max_inflight": int(max_inflight),
+                    "replay_speedup": float(_REPLAY_SPEEDUP),
+                    "paper_qos_metric": str(_PAPER_QOS_METRIC),
                     "qos": dict(cal_info or {}),
                     "azure": {
                         "trace_file": _resolve_trace_path(str(args.azure_trace_file)),
