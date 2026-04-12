@@ -107,6 +107,31 @@ def _subsample_arrivals(arrival_times, n, offset=0):
     idx = np.linspace(0, len(span) - 1, n).astype(int)
     return [span[int(i)] for i in idx]
 
+def _compact_arrivals(arrival_times, speedup=60.0):
+    if not arrival_times:
+        return []
+    try:
+        speedup = float(speedup)
+    except Exception:
+        speedup = 60.0
+    if (not math.isfinite(speedup)) or speedup <= 0.0:
+        speedup = 60.0
+    speedup = float(max(1.0, min(3600.0, speedup)))
+    try:
+        t0 = float(arrival_times[0])
+    except Exception:
+        t0 = 0.0
+    out = []
+    for t in arrival_times:
+        try:
+            x = float(t) - t0
+        except Exception:
+            x = 0.0
+        if not math.isfinite(x) or x < 0.0:
+            x = 0.0
+        out.append(x / speedup)
+    return out
+
 def calibrate_qos_threshold_on_azure_trace(task_name, trace_file, app_id, func_id, day, start_min, duration_min, scale, factor=1.2, warmup_requests=30, sample_requests=150, budget=10, include_cold_start=True):
     budget = int(budget) if int(budget) > 0 else 10
     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='static_1.0', reset_state=True)
@@ -128,6 +153,8 @@ def calibrate_qos_threshold_on_azure_trace(task_name, trace_file, app_id, func_i
 
     warm_arrivals = _subsample_arrivals(arrival_times, int(warmup_requests), offset=0)
     sample_arrivals = _subsample_arrivals(arrival_times, int(sample_requests), offset=max(0, len(arrival_times) // 4))
+    warm_arrivals = _compact_arrivals(warm_arrivals, speedup=120.0)
+    sample_arrivals = _compact_arrivals(sample_arrivals, speedup=120.0)
 
     run_phase('static_1.0', warm_up=True, max_workers=budget, arrival_times=warm_arrivals, max_inflight=budget, replay_speedup=1.0, second_rates=second_rates)
     results, _ = run_phase('static_1.0', warm_up=True, max_workers=budget, arrival_times=sample_arrivals, max_inflight=budget, replay_speedup=1.0, second_rates=second_rates)
