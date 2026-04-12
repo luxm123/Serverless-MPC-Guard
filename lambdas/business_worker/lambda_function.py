@@ -327,7 +327,14 @@ def lambda_handler(event, context):
     if _MIDDLEWARE and strategy in ['mpc_integrated', 'gsight', 'owl', 'ours_basic', 'passive_prewarm']:
         global _LAST_FEEDBACK_T
         now_t = time.time()
-        if is_cold or (now_t - _LAST_FEEDBACK_T) >= 0.5:
+        try:
+            feedback_interval_s = float(event.get("metrics", {}).get("feedback_interval_s", os.environ.get("MPC_FEEDBACK_INTERVAL_S", 2.0)) or 2.0)
+        except Exception:
+            feedback_interval_s = 2.0
+        if (not math.isfinite(feedback_interval_s)) or feedback_interval_s <= 0.0:
+            feedback_interval_s = 2.0
+        feedback_interval_s = float(max(0.2, min(10.0, feedback_interval_s)))
+        if is_cold or (now_t - _LAST_FEEDBACK_T) >= feedback_interval_s:
             _MIDDLEWARE._load_state()
             feedback_metrics = {
                 'latency': latency_ms,

@@ -2,6 +2,7 @@ import time
 import json
 import random
 import math
+import os
 import boto3
 from botocore.exceptions import ClientError
 
@@ -291,17 +292,27 @@ class MPCMiddleware:
         target_id = f"mpc_state_{task_type}"
         
         try:
-            # 1. 加载当前状态
-            response = dynamodb_client.get_item(
-                TableName=TABLE_NAME, 
-                Key={'id': {'S': target_id}},
-                ConsistentRead=True
-            )
-            item = response.get('Item')
-            if not item or 'state_blob' not in item: return
-            
-            state = self._sanitize_params(json.loads(item['state_blob']['S']))
-            ver = item.get('lock_version', {}).get('N', '0')
+            now = time.time()
+            state = None
+            ver = None
+            if _L1_CACHE.get('params') and _L1_CACHE.get('state_id') == target_id and (now - float(_L1_CACHE.get('last_sync', 0.0) or 0.0)) < float(_L1_CACHE.get('ttl_s', 0.5) or 0.5):
+                state = self._sanitize_params(dict(_L1_CACHE.get('params') or {}))
+                ver = str(_L1_CACHE.get('version') or "0")
+            else:
+                response = dynamodb_client.get_item(
+                    TableName=TABLE_NAME,
+                    Key={'id': {'S': target_id}},
+                    ConsistentRead=False
+                )
+                item = response.get('Item')
+                if not item or 'state_blob' not in item:
+                    return
+                state = self._sanitize_params(json.loads(item['state_blob']['S']))
+                ver = item.get('lock_version', {}).get('N', '0')
+                _L1_CACHE['params'] = state
+                _L1_CACHE['version'] = ver
+                _L1_CACHE['last_sync'] = now
+                _L1_CACHE['state_id'] = target_id
             
             # 2. 调用 WCP 核心更新算法
             from src.wcp.wcp_update import wcp_update
@@ -349,7 +360,12 @@ class MPCMiddleware:
             update_params['ExpressionAttributeValues'][':expected_lv'] = {'N': str(ver)}
             
             dynamodb_client.update_item(**update_params)
-            print(f"[WCP-v66] {target_id}: Pred={pred['p90']:.1f}, Margin={uncertainty:.1f}, E2E={p90_lat:.1f}")
+            _L1_CACHE['params'] = self._sanitize_params(state)
+            _L1_CACHE['version'] = str(int(ver) + 1)
+            _L1_CACHE['last_sync'] = time.time()
+            _L1_CACHE['state_id'] = target_id
+            if str(os.environ.get("WCP_LOG", "0")).strip() == "1":
+                print(f"[WCP-v66] {target_id}: Pred={pred['p90']:.1f}, Margin={uncertainty:.1f}, E2E={p90_lat:.1f}")
             
         except Exception as e:
             print(f"[WCP-Update-Error] {e}")
