@@ -1290,11 +1290,11 @@ def print_comparison(baseline_results, mpc_results):
         
         total = len(results)
         # E2E Violations
-        e2e_violations = sum(1 for r in results if r.get('e2e_latency', 0) > E2E_SLO_MS)
+        e2e_violations = sum(1 for r in results if (not r.get('success', False)) or (r.get('e2e_latency', 0) > E2E_SLO_MS))
         e2e_viol_rate = (e2e_violations / total) * 100
         
         # Server Violations
-        server_violations = sum(1 for r in results if r.get('server_latency', 0) > SERVER_SLO_MS)
+        server_violations = sum(1 for r in results if (not r.get('success', False)) or (r.get('server_latency', 0) > SERVER_SLO_MS))
         server_viol_rate = (server_violations / total) * 100
         
         success = [r for r in results if r.get('success', False)]
@@ -1356,15 +1356,18 @@ def _calc_metrics(results):
             "gb_s_per_success": 0.0,
             "cost_per_success_usd": 0.0,
             "cost_per_1m_success_usd": 0.0,
+            "gb_s_per_request": 0.0,
+            "cost_per_request_usd": 0.0,
+            "cost_per_1m_request_usd": 0.0,
             "alloc_p50": 0.0,
             "alloc_p90": 0.0,
             "alloc_std": 0.0,
             "alloc_churn": 0.0,
         }
     total = len(results)
-    e2e_violations = sum(1 for r in results if r.get('e2e_latency', 0) > E2E_SLO_MS)
+    e2e_violations = sum(1 for r in results if (not r.get("success", False)) or (r.get("e2e_latency", 0) > E2E_SLO_MS))
     e2e_viol_rate = (e2e_violations / total) * 100
-    server_violations = sum(1 for r in results if r.get('server_latency', 0) > SERVER_SLO_MS)
+    server_violations = sum(1 for r in results if (not r.get("success", False)) or (r.get("server_latency", 0) > SERVER_SLO_MS))
     server_viol_rate = (server_violations / total) * 100
 
     success = [r for r in results if r.get('success', False)]
@@ -1409,7 +1412,7 @@ def _calc_metrics(results):
         util_pct = float(max(0.0, min(100.0, util_pct)))
 
     mem_gb = float(LAMBDA_MEMORY_MB) / 1024.0
-    gb_s_acc = 0.0
+    gb_s_acc_success = 0.0
     for r in success:
         try:
             a = float(r.get("alloc", 1.0) or 1.0)
@@ -1417,12 +1420,27 @@ def _calc_metrics(results):
                 a = 1.0
             s = float(r.get('server_latency', 0.0) or 0.0)
             if math.isfinite(mem_gb) and mem_gb > 0.0 and math.isfinite(s) and s > 0.0:
-                gb_s_acc += (mem_gb * a) * (s / 1000.0)
+                gb_s_acc_success += (mem_gb * a) * (s / 1000.0)
         except Exception:
             continue
-    gb_s_per_success = float(gb_s_acc / max(1, len(success)))
+    gb_s_per_success = float(gb_s_acc_success / max(1, len(success)))
     cost_per_success_usd = float(gb_s_per_success * float(PRICE_PER_GB_S_USD))
     cost_per_1m_success_usd = float(cost_per_success_usd * 1_000_000.0)
+
+    gb_s_acc_req = 0.0
+    for r in results:
+        try:
+            a = float(r.get("alloc", 1.0) or 1.0)
+            if not math.isfinite(a) or a <= 0.0:
+                a = 1.0
+            s = float(r.get("server_latency", 0.0) or 0.0)
+            if math.isfinite(mem_gb) and mem_gb > 0.0 and math.isfinite(s) and s > 0.0:
+                gb_s_acc_req += (mem_gb * a) * (s / 1000.0)
+        except Exception:
+            continue
+    gb_s_per_request = float(gb_s_acc_req / max(1, total))
+    cost_per_request_usd = float(gb_s_per_request * float(PRICE_PER_GB_S_USD))
+    cost_per_1m_request_usd = float(cost_per_request_usd * 1_000_000.0)
 
     return {
         "e2e_vio": e2e_viol_rate,
@@ -1439,6 +1457,9 @@ def _calc_metrics(results):
         "gb_s_per_success": gb_s_per_success,
         "cost_per_success_usd": cost_per_success_usd,
         "cost_per_1m_success_usd": cost_per_1m_success_usd,
+        "gb_s_per_request": gb_s_per_request,
+        "cost_per_request_usd": cost_per_request_usd,
+        "cost_per_1m_request_usd": cost_per_1m_request_usd,
         "alloc_p50": alloc_p50,
         "alloc_p90": alloc_p90,
         "alloc_std": alloc_std,
@@ -1453,18 +1474,18 @@ def print_summary(results_by_name, paper_mode=True, paper_qos_metric="e2e"):
         qos_key = "e2e_vio"
         qos_label = "E2E Viol %"
     if paper_mode:
-        print(f"{'Strategy':<22} | {qos_label:<10} | {'Cost($/1M)':<10}")
+        print(f"{'Strategy':<22} | {qos_label:<10} | {'Cost($/1M req)':<14}")
     else:
-        print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'GB-s':<7} | {'Cost($/1M)':<10} | {'Overhead':<8} | {'AchRPS':<7}")
+        print(f"{'Strategy':<22} | {'E2E Viol %':<10} | {'Srv Viol %':<10} | {'AvgU':<6} | {'Dens':<6} | {'P90 E2E':<10} | {'AvgSrv':<8} | {'AvgE2E':<8} | {'GB-s':<7} | {'Cost($/1M req)':<14} | {'Overhead':<8} | {'AchRPS':<7}")
     print("----------------------------------------------------------------------")
     for name, results in results_by_name.items():
         if paper_mode and name == "static_0.60":
             continue
         m = _calc_metrics(results)
         if paper_mode:
-            print(f"{name:<22} | {m.get(qos_key, 0.0):<10.2f} | {m['cost_per_1m_success_usd']:<10.4f}")
+            print(f"{name:<22} | {m.get(qos_key, 0.0):<10.2f} | {m['cost_per_1m_request_usd']:<14.4f}")
         else:
-            print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['gb_s_per_success']:<7.3f} | {m['cost_per_1m_success_usd']:<10.2f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
+            print(f"{name:<22} | {m['e2e_vio']:<10.2f} | {m['srv_vio']:<10.2f} | {m['avg_alloc']:<6.2f} | {m['density']:<6.2f} | {m['p90_e2e']:<10.2f} | {m['avg_srv']:<8.2f} | {m['avg_e2e']:<8.2f} | {m['gb_s_per_request']:<7.3f} | {m['cost_per_1m_request_usd']:<14.2f} | {m['avg_overhead']:<8.2f} | {m['achieved_success_rps']:<7.2f}")
     print("======================================================================\n")
 
 def print_aggregate_summary(metrics_by_strategy, paper_mode=True, paper_qos_metric="e2e"):
@@ -1485,7 +1506,7 @@ def print_aggregate_summary(metrics_by_strategy, paper_mode=True, paper_qos_metr
             qos_label = "E2E Viol %"
         cols = [
             (qos_label, qos_key),
-            ("Cost($/1M)", "cost_per_1m_success_usd"),
+            ("Cost($/1M req)", "cost_per_1m_request_usd"),
         ]
     else:
         cols = [
@@ -1496,8 +1517,8 @@ def print_aggregate_summary(metrics_by_strategy, paper_mode=True, paper_qos_metr
             ("P90 E2E", "p90_e2e"),
             ("AvgSrv", "avg_srv"),
             ("AvgE2E", "avg_e2e"),
-            ("GB-s", "gb_s_per_success"),
-            ("Cost($/1M)", "cost_per_1m_success_usd"),
+            ("GB-s", "gb_s_per_request"),
+            ("Cost($/1M req)", "cost_per_1m_request_usd"),
             ("Overhead", "avg_overhead"),
             ("AchRPS", "achieved_success_rps"),
         ]
@@ -1514,7 +1535,7 @@ def print_aggregate_summary(metrics_by_strategy, paper_mode=True, paper_qos_metr
         row = f"{name:<22}"
         for _label, k in cols:
             mean, std = _mean_std([m.get(k) for m in metrics_by_strategy[name]])
-            if k == "cost_per_1m_success_usd":
+            if k == "cost_per_1m_request_usd":
                 row += f" | {mean:>8.4f}±{std:<7.4f}"
             else:
                 row += f" | {mean:>6.2f}±{std:<5.2f}"

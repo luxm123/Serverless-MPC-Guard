@@ -113,7 +113,7 @@ class Optimizer:
             alloc_floor = 0.40 + 0.20 * ((pred_total - (safety_target - 30.0)) / 30.0)
 
         if float(slo_limit) <= tight_slo_ms:
-            alloc_floor = max(alloc_floor, 0.75 if error <= 0.0 else 0.85)
+            alloc_floor = max(alloc_floor, 0.85 if error <= 0.0 else 0.95)
 
         if concurrency >= 180.0:
             alloc_floor = max(alloc_floor, 0.90)
@@ -126,6 +126,8 @@ class Optimizer:
             alloc_floor = min(alloc_floor, 0.50)
         if safe_streak >= 60:
             alloc_floor = min(alloc_floor, 0.45)
+        if float(slo_limit) <= tight_slo_ms:
+            alloc_floor = max(alloc_floor, 0.80)
         
         server_pred_prev = server_pred
         if safety_target > 1.0:
@@ -155,13 +157,16 @@ class Optimizer:
         elif new_alloc < prev_u:
             # Efficiency gain: allow down-scaling
             if concurrency < 30.0:
-                max_reduction = 0.18 if error < -50.0 else 0.10
+                max_reduction = 0.10 if error < -50.0 else 0.06
             else:
-                max_reduction = 0.12 if error < -40.0 else 0.06
+                max_reduction = 0.10 if error < -40.0 else 0.05
             new_alloc = max(new_alloc, prev_u - max_reduction)
         else:
             # QoS protection: allow up-scaling
-            max_inc = 0.60 if concurrency >= 120.0 else (0.20 if concurrency < 30.0 else 0.40)
+            if concurrency < 30.0:
+                max_inc = 0.35 if error > 0.0 else 0.25
+            else:
+                max_inc = 0.60 if concurrency >= 120.0 else 0.40
             new_alloc = min(new_alloc, prev_u + max_inc)
 
         final_alloc = max(alloc_floor, min_alloc, min(max_alloc, new_alloc))
