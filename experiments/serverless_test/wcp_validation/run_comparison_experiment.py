@@ -933,7 +933,19 @@ def run_single_request(idx, strategy, start_time, inflight=1, queue_delay_ms=0.0
             is_cold_start = bool((worker_result.get('response') or {}).get('is_cold_start', False))
         except Exception:
             is_cold_start = False
-        server_latency = worker_result['response'].get('latency_ms', 0) if 'response' in worker_result else 0
+        server_latency = 0.0
+        try:
+            if 'response' in worker_result and isinstance(worker_result.get('response'), dict):
+                server_latency = float(worker_result['response'].get('latency_ms', 0.0) or 0.0)
+            if (not math.isfinite(server_latency)) or server_latency <= 0.0:
+                server_latency = float(worker_result.get('client_duration', 0.0) or 0.0)
+            if (not math.isfinite(server_latency)) or server_latency < 0.0:
+                server_latency = 0.0
+        except Exception:
+            try:
+                server_latency = float(worker_result.get('client_duration', 0.0) or 0.0)
+            except Exception:
+                server_latency = 0.0
         res = {
             'id': idx,
             'strategy': strategy,
