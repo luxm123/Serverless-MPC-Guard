@@ -1,6 +1,7 @@
 import json
 import time
 import random
+import math
 import sys
 import os
 
@@ -240,7 +241,14 @@ def lambda_handler(event, context):
 
     # 核心逻辑：负载规模受 cpu_limit 指令严格控制
     # cpu_limit 越小，分配给 Lambda 的实际算力越低，我们通过调整计算量来实现这种物理效应
-    scale = 1.0 / (cpu_limit + 0.01) 
+    try:
+        cpu_scale_exp = float(metrics_in.get("cpu_scale_exp", os.environ.get("CPU_SCALE_EXP", 0.85)) or 0.85)
+    except Exception:
+        cpu_scale_exp = 0.85
+    if (not math.isfinite(cpu_scale_exp)) or cpu_scale_exp <= 0.0:
+        cpu_scale_exp = 0.85
+    cpu_scale_exp = float(max(0.5, min(1.0, cpu_scale_exp)))
+    scale = float((1.0 / (cpu_limit + 0.01)) ** cpu_scale_exp)
 
     try:
         # v54.2: Use startswith to support isolated task names (e.g., linpack_mpc)
