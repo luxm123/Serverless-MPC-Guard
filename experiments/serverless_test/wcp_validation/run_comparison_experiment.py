@@ -476,10 +476,15 @@ def scan_azure_windows_any_function_wide_csv(trace_file, duration_min, stride_mi
         top_funcs = 10
     return results[:top_funcs], trace_path
 
-def scan_azure_windows_any_function_wide_feather(trace_file, duration_min, stride_min, scale, target_rps_min, target_rps_max, top_funcs):
+def scan_azure_windows_any_function_wide_feather(trace_file, duration_min, stride_min, scale, target_rps_min, target_rps_max, top_funcs, max_rows=20000, row_chunk=128, day_filter=None):
     trace_path = _resolve_trace_path(trace_file)
     if not trace_path or not os.path.exists(trace_path):
         return [], trace_path
+
+    try:
+        import pyarrow as pa
+    except Exception as e:
+        raise RuntimeError("Reading .feather Azure trace requires pyarrow.") from e
 
     try:
         duration_min = int(duration_min)
@@ -532,6 +537,26 @@ def scan_azure_windows_any_function_wide_feather(trace_file, duration_min, strid
 
     import heapq
     heap = []
+    scanned = 0
+    try:
+        max_rows = int(max_rows)
+    except Exception:
+        max_rows = 20000
+    if max_rows < 0:
+        max_rows = 0
+    try:
+        row_chunk = int(row_chunk)
+    except Exception:
+        row_chunk = 128
+    if row_chunk <= 0:
+        row_chunk = 128
+
+    day_allow = None
+    if day_filter is not None:
+        try:
+            day_allow = int(day_filter)
+        except Exception:
+            day_allow = None
 
     for batch in _iter_feather_record_batches(trace_path):
         names = list(batch.schema.names)
@@ -540,29 +565,81 @@ def scan_azure_windows_any_function_wide_feather(trace_file, duration_min, strid
             raise RuntimeError(f"Feather schema missing columns: {missing[:10]}")
 
         b = batch.select(need_cols)
-        df = b.to_pandas()
-        if df.empty:
+        nrows = int(b.num_rows)
+        if nrows <= 0:
             continue
 
-        mat = df[minute_cols].to_numpy(dtype=np.float32, copy=False)
-        mat = np.where(np.isfinite(mat) & (mat > 0.0), mat, 0.0).astype(np.float32, copy=False)
-        prefix = np.concatenate([np.zeros((mat.shape[0], 1), dtype=np.float32), np.cumsum(mat, axis=1, dtype=np.float32)], axis=1)
+        for off in range(0, nrows, row_chunk):
+            if max_rows > 0 and scanned >= max_rows:
+                break
+            take = min(row_chunk, nrows - off)
+            if max_rows > 0:
+                take = min(take, max_rows - scanned)
+            if take <= 0:
+                continue
 
-        seg = prefix[:, starts_arr + dur] - prefix[:, starts_arr]
-        avg = (seg * float(scale)) / float(60.0 * dur)
-        mask = (seg > 0.0) & (avg >= float(target_rps_min)) & (avg <= float(target_rps_max))
-        hits = mask.sum(axis=1).astype(int)
+            rb = b.slice(off, take)
+            try:
+                apps = rb.column(0).to_pylist()
+                funcs = rb.column(1).to_pylist()
+                days = rb.column(2).to_pylist()
+            except Exception:
+                continue
 
-        rows = np.nonzero(hits > 0)[0]
-        for r in rows:
-            w = int(np.argmax(mask[r]))
-            ex = (int(starts_arr[w]), float(avg[r, w]), float(seg[r, w] * float(scale)))
-            item = (int(hits[r]), str(df.loc[int(r), "HashApp"]), str(df.loc[int(r), "HashFunction"]), int(df.loc[int(r), "day"]), ex)
-            if len(heap) < top_funcs:
-                heapq.heappush(heap, item)
-            else:
-                if item > heap[0]:
-                    heapq.heapreplace(heap, item)
+            if day_allow is not None:
+                keep_idx = [i for i, d in enumerate(days) if int(d) == int(day_allow)]
+                if not keep_idx:
+                    scanned += take
+                    continue
+                try:
+                    rb = rb.take(pa.array(keep_idx, type=pa.int32()))
+                except Exception:
+                    scanned += take
+                    continue
+                try:
+                    apps = rb.column(0).to_pylist()
+                    funcs = rb.column(1).to_pylist()
+                    days = rb.column(2).to_pylist()
+                except Exception:
+                    scanned += take
+                    continue
+
+            scanned += take
+            rr = int(rb.num_rows)
+            if rr <= 0:
+                continue
+
+            try:
+                cols = []
+                for ci in range(3, rb.num_columns):
+                    arr = rb.column(ci).to_numpy(zero_copy_only=False)
+                    cols.append(np.asarray(arr, dtype=np.float32))
+                mat = np.column_stack(cols) if cols else np.zeros((rr, 0), dtype=np.float32)
+            except Exception:
+                continue
+            if mat.shape[1] < dur:
+                continue
+            mat = np.where(np.isfinite(mat) & (mat > 0.0), mat, 0.0).astype(np.float32, copy=False)
+
+            prefix = np.concatenate([np.zeros((mat.shape[0], 1), dtype=np.float32), np.cumsum(mat, axis=1, dtype=np.float32)], axis=1)
+            seg = prefix[:, starts_arr + dur] - prefix[:, starts_arr]
+            avg = (seg * float(scale)) / float(60.0 * dur)
+            mask = (seg > 0.0) & (avg >= float(target_rps_min)) & (avg <= float(target_rps_max))
+            hits = mask.sum(axis=1).astype(int)
+
+            rows = np.nonzero(hits > 0)[0]
+            for r in rows:
+                w = int(np.argmax(mask[r]))
+                ex = (int(starts_arr[w]), float(avg[r, w]), float(seg[r, w] * float(scale)))
+                item = (int(hits[r]), str(apps[int(r)]), str(funcs[int(r)]), int(days[int(r)]), ex)
+                if len(heap) < top_funcs:
+                    heapq.heappush(heap, item)
+                else:
+                    if item > heap[0]:
+                        heapq.heapreplace(heap, item)
+
+        if max_rows > 0 and scanned >= max_rows:
+            break
 
     heap.sort(reverse=True)
     return heap, trace_path
@@ -1670,6 +1747,9 @@ def parse_args():
     parser.add_argument("--azure_scan_top", type=int, default=20)
     parser.add_argument("--azure_scan_find_any_function", type=int, default=0)
     parser.add_argument("--azure_scan_top_functions", type=int, default=10)
+    parser.add_argument("--azure_scan_max_rows", type=int, default=20000)
+    parser.add_argument("--azure_scan_row_chunk", type=int, default=128)
+    parser.add_argument("--azure_scan_day", type=int, default=-1)
     parser.add_argument("--lambda_memory_mb", type=int, default=1024)
     parser.add_argument("--gb_s_price_usd", type=float, default=0.00001667)
     parser.add_argument("--replay_speedup", type=float, default=1.0)
@@ -1781,6 +1861,9 @@ if __name__ == "__main__":
                     target_rps_min=lo,
                     target_rps_max=hi,
                     top_funcs=int(args.azure_scan_top_functions),
+                    max_rows=int(args.azure_scan_max_rows),
+                    row_chunk=int(args.azure_scan_row_chunk),
+                    day_filter=(None if int(args.azure_scan_day) < 0 else int(args.azure_scan_day)),
                 )
             else:
                 res, trace_path = scan_azure_windows_any_function_wide_csv(
