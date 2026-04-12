@@ -22,11 +22,14 @@ _L1_CACHE = {
     'state_id': None
 }
 
+_LOCAL_STATE = {}
+
 class MPCMiddleware:
     def __init__(self, state_id='global_params'):
         from src.mpc.controller import MPCController
         self.state_id = state_id
         self.controller = MPCController()
+        self._state_mode = str(os.environ.get("MPC_STATE_MODE", "dynamodb") or "dynamodb").strip().lower()
 
     def _finite_float(self, val, default):
         try:
@@ -65,6 +68,18 @@ class MPCMiddleware:
     def _load_state(self):
         global _L1_CACHE
         now = time.time()
+        mode = str(getattr(self, "_state_mode", "dynamodb") or "dynamodb").strip().lower()
+
+        if mode in ["local", "memory", "mem", "inmem"]:
+            item = _LOCAL_STATE.get(self.state_id)
+            if not item:
+                return None, None
+            try:
+                state = self._sanitize_params(dict(item.get("state") or {}))
+            except Exception:
+                state = None
+            ver = str(item.get("version") or "0")
+            return state, ver
 
         try:
             ttl_s = float(os.environ.get("MPC_STATE_CACHE_TTL_S", _L1_CACHE.get("ttl_s", 2.0)) or 2.0)
@@ -110,6 +125,8 @@ class MPCMiddleware:
         task = event.get('task', {})
         task_type = task.get('task_type', event.get('task_type', 'image_processing'))
         strategy = event.get('strategy', 'mpc_integrated')
+
+        self._state_mode = str(metrics.get("state_mode", os.environ.get("MPC_STATE_MODE", "dynamodb")) or "dynamodb").strip().lower()
         
         original_state_id = self.state_id
         if self.state_id == 'global_params':
@@ -245,6 +262,21 @@ class MPCMiddleware:
         global _L1_CACHE
         try:
             now_t = time.time()
+            mode = str(getattr(self, "_state_mode", "dynamodb") or "dynamodb").strip().lower()
+            if mode in ["local", "memory", "mem", "inmem"]:
+                safe_params = self._sanitize_params(params)
+                try:
+                    expected_version = int(version)
+                except Exception:
+                    expected_version = 0
+                new_version = expected_version + 1
+                _LOCAL_STATE[self.state_id] = {"state": safe_params.copy(), "version": str(new_version), "last_updated": float(time.time())}
+                _L1_CACHE['params'] = safe_params.copy()
+                _L1_CACHE['version'] = str(new_version)
+                _L1_CACHE['last_sync'] = now_t
+                _L1_CACHE['last_write'] = now_t
+                _L1_CACHE['state_id'] = self.state_id
+                return "OK"
             if not force:
                 try:
                     min_write_interval_s = float(os.environ.get("MPC_STATE_WRITE_INTERVAL_S", 2.0) or 2.0)

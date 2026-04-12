@@ -30,6 +30,7 @@ _BUDGET = 10
 _UNC_SCALE = 1.0
 _TIGHT_SLO_MS = 80.0
 _CPU_SCALE_EXP = 0.85
+_MPC_STATE_MODE = "dynamodb"
 _LAST_AZURE_TRACE_META = None
 LAMBDA_MEMORY_MB = 1024
 PRICE_PER_GB_S_USD = 0.00001667
@@ -971,6 +972,7 @@ def run_single_request(idx, strategy, start_time, inflight=1, queue_delay_ms=0.0
         "unc_scale": float(_UNC_SCALE),
         "tight_slo_ms": float(_TIGHT_SLO_MS),
         "cpu_scale_exp": float(_CPU_SCALE_EXP),
+        "state_mode": str(_MPC_STATE_MODE),
     }
     if strategy == 'mpc_integrated':
         with _MPC_MIN_ALLOC_LOCK:
@@ -1849,6 +1851,7 @@ def parse_args():
     parser.add_argument("--enable_phase_warmup", type=int, default=1)
     parser.add_argument("--phase_warmup_requests", type=int, default=50)
     parser.add_argument("--cpu_scale_exp", type=float, default=0.85)
+    parser.add_argument("--mpc_state_mode", type=str, default="dynamodb")
     parser.add_argument("--max_alloc", type=float, default=1.0)
     parser.add_argument("--unc_scale", type=float, default=1.0)
     parser.add_argument("--tight_slo_ms", type=float, default=80.0)
@@ -1918,6 +1921,9 @@ if __name__ == "__main__":
     if not math.isfinite(_CPU_SCALE_EXP) or _CPU_SCALE_EXP <= 0.0:
         _CPU_SCALE_EXP = 0.85
     _CPU_SCALE_EXP = float(max(0.5, min(1.0, _CPU_SCALE_EXP)))
+    _MPC_STATE_MODE = str(args.mpc_state_mode or "dynamodb").strip().lower()
+    if _MPC_STATE_MODE not in ["dynamodb", "local", "memory", "mem", "inmem"]:
+        _MPC_STATE_MODE = "dynamodb"
     _BUDGET = int(args.budget)
     if _BUDGET <= 0:
         _BUDGET = 10
