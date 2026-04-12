@@ -17,7 +17,7 @@ _L1_CACHE = {
     'params': None,
     'version': None,
     'last_sync': 0,
-    'ttl_s': 0.5, # Cache state for 500ms within a container
+    'ttl_s': 2.0,
     'last_write': 0.0,
     'state_id': None
 }
@@ -65,15 +65,24 @@ class MPCMiddleware:
     def _load_state(self):
         global _L1_CACHE
         now = time.time()
+
+        try:
+            ttl_s = float(os.environ.get("MPC_STATE_CACHE_TTL_S", _L1_CACHE.get("ttl_s", 2.0)) or 2.0)
+        except Exception:
+            ttl_s = float(_L1_CACHE.get("ttl_s", 2.0) or 2.0)
+        if (not math.isfinite(ttl_s)) or ttl_s <= 0.0:
+            ttl_s = 2.0
+        ttl_s = float(max(0.05, min(30.0, ttl_s)))
         
-        if _L1_CACHE['params'] and (now - _L1_CACHE['last_sync']) < _L1_CACHE['ttl_s'] and _L1_CACHE['state_id'] == self.state_id:
+        if _L1_CACHE['params'] and (now - _L1_CACHE['last_sync']) < ttl_s and _L1_CACHE['state_id'] == self.state_id:
             return _L1_CACHE['params'], _L1_CACHE['version']
 
         try:
+            consistent = str(os.environ.get("MPC_STATE_CONSISTENT_READ", "0")).strip() == "1"
             response = dynamodb_client.get_item(
                 TableName=TABLE_NAME, 
                 Key={'id': {'S': self.state_id}},
-                ConsistentRead=True
+                ConsistentRead=bool(consistent)
             )
             item = response.get('Item')
             if item:
@@ -237,8 +246,15 @@ class MPCMiddleware:
         try:
             now_t = time.time()
             if not force:
+                try:
+                    min_write_interval_s = float(os.environ.get("MPC_STATE_WRITE_INTERVAL_S", 2.0) or 2.0)
+                except Exception:
+                    min_write_interval_s = 2.0
+                if (not math.isfinite(min_write_interval_s)) or min_write_interval_s <= 0.0:
+                    min_write_interval_s = 2.0
+                min_write_interval_s = float(max(0.1, min(30.0, min_write_interval_s)))
                 last_write = float(_L1_CACHE.get('last_write', 0.0) or 0.0)
-                if (now_t - last_write) < 0.5:
+                if (now_t - last_write) < min_write_interval_s:
                     safe_params = self._sanitize_params(params)
                     _L1_CACHE['params'] = safe_params.copy()
                     _L1_CACHE['last_sync'] = now_t
