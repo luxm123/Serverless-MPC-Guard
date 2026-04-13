@@ -340,12 +340,23 @@ class MPCMiddleware:
         target_id = f"mpc_state_{task_type}"
         
         try:
+            mode = str(getattr(self, "_state_mode", os.environ.get("MPC_STATE_MODE", "dynamodb")) or "dynamodb").strip().lower()
             now = time.time()
             state = None
             ver = None
             if _L1_CACHE.get('params') and _L1_CACHE.get('state_id') == target_id and (now - float(_L1_CACHE.get('last_sync', 0.0) or 0.0)) < float(_L1_CACHE.get('ttl_s', 0.5) or 0.5):
                 state = self._sanitize_params(dict(_L1_CACHE.get('params') or {}))
                 ver = str(_L1_CACHE.get('version') or "0")
+            elif mode in ["local", "memory", "mem", "inmem"]:
+                item = _LOCAL_STATE.get(target_id)
+                if not item:
+                    return
+                state = self._sanitize_params(dict(item.get("state") or {}))
+                ver = str(item.get("version") or "0")
+                _L1_CACHE['params'] = state
+                _L1_CACHE['version'] = ver
+                _L1_CACHE['last_sync'] = now
+                _L1_CACHE['state_id'] = target_id
             else:
                 response = dynamodb_client.get_item(
                     TableName=TABLE_NAME,
@@ -393,25 +404,36 @@ class MPCMiddleware:
             state['last_y'] = self._clamp_ms(p90_lat, 1.0, 500.0, pred_p90)
             state['last_prediction'] = pred_p90
             
-            # 保存状态
-            update_params = {
-                'TableName': TABLE_NAME,
-                'Key': {'id': {'S': target_id}},
-                'UpdateExpression': "SET state_blob = :b, lock_version = :new_lv, last_updated = :t",
-                'ExpressionAttributeValues': {
-                    ':b': {'S': json.dumps(self._sanitize_params(state), allow_nan=False)},
-                    ':new_lv': {'N': str(int(ver) + 1)},
-                    ':t': {'N': str(time.time())}
-                },
-                'ConditionExpression': "lock_version = :expected_lv"
-            }
-            update_params['ExpressionAttributeValues'][':expected_lv'] = {'N': str(ver)}
-            
-            dynamodb_client.update_item(**update_params)
-            _L1_CACHE['params'] = self._sanitize_params(state)
-            _L1_CACHE['version'] = str(int(ver) + 1)
-            _L1_CACHE['last_sync'] = time.time()
-            _L1_CACHE['state_id'] = target_id
+            if mode in ["local", "memory", "mem", "inmem"]:
+                try:
+                    new_ver = str(int(ver) + 1)
+                except Exception:
+                    new_ver = "1"
+                safe = self._sanitize_params(state)
+                _LOCAL_STATE[target_id] = {"state": safe.copy(), "version": new_ver, "last_updated": float(time.time())}
+                _L1_CACHE['params'] = safe.copy()
+                _L1_CACHE['version'] = new_ver
+                _L1_CACHE['last_sync'] = time.time()
+                _L1_CACHE['state_id'] = target_id
+            else:
+                update_params = {
+                    'TableName': TABLE_NAME,
+                    'Key': {'id': {'S': target_id}},
+                    'UpdateExpression': "SET state_blob = :b, lock_version = :new_lv, last_updated = :t",
+                    'ExpressionAttributeValues': {
+                        ':b': {'S': json.dumps(self._sanitize_params(state), allow_nan=False)},
+                        ':new_lv': {'N': str(int(ver) + 1)},
+                        ':t': {'N': str(time.time())}
+                    },
+                    'ConditionExpression': "lock_version = :expected_lv"
+                }
+                update_params['ExpressionAttributeValues'][':expected_lv'] = {'N': str(ver)}
+                
+                dynamodb_client.update_item(**update_params)
+                _L1_CACHE['params'] = self._sanitize_params(state)
+                _L1_CACHE['version'] = str(int(ver) + 1)
+                _L1_CACHE['last_sync'] = time.time()
+                _L1_CACHE['state_id'] = target_id
             if str(os.environ.get("WCP_LOG", "0")).strip() == "1":
                 print(f"[WCP-v66] {target_id}: Pred={pred['p90']:.1f}, Margin={uncertainty:.1f}, E2E={p90_lat:.1f}")
             
