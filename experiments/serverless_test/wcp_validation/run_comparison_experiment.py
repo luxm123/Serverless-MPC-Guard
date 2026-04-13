@@ -209,7 +209,7 @@ def _resolve_trace_path(trace_file):
         return ""
     trace_path = str(trace_file)
     if not os.path.isabs(trace_path):
-        trace_path = os.path.join(os.getcwd(), trace_path)
+        trace_path = os.path.abspath(trace_path)
     return trace_path
 
 def _is_feather_trace_file(trace_path):
