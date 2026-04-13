@@ -30,7 +30,19 @@ class Optimizer:
 
         current_rps = float(state.get('current_rps', 0.0))
         prev_rps = float(state.get('prev_rps', 0.0))
-        if current_rps > 1.5 * prev_rps and prev_rps > 5.0:
+        try:
+            budget = float(state.get("budget", 0.0) or 0.0)
+        except Exception:
+            budget = 0.0
+        if not math.isfinite(budget) or budget < 0.0:
+            budget = 0.0
+        spike = False
+        if math.isfinite(current_rps) and math.isfinite(prev_rps):
+            if prev_rps > 0.5 and current_rps > 1.5 * prev_rps and current_rps > 2.0:
+                spike = True
+            elif budget > 0.0 and current_rps > 1.2 * budget and (current_rps - prev_rps) > 0.3 * budget:
+                spike = True
+        if spike:
             try:
                 jump_max = float(state.get('max_alloc', 1.0) or 1.0)
             except Exception:
@@ -38,7 +50,7 @@ class Optimizer:
             if not math.isfinite(jump_max):
                 jump_max = 1.0
             jump_max = float(max(0.4, min(4.0, jump_max)))
-            return float(min(jump_max, max(prev_u, prev_u + 0.25)))
+            return float(min(jump_max, max(prev_u, prev_u + 0.45)))
 
         # --- v66.0: Robust Prediction-Based Control ---
         # pred_upper is (WCP Prediction + Margin). 
@@ -115,12 +127,6 @@ class Optimizer:
         if float(slo_limit) <= tight_slo_ms:
             alloc_floor = max(alloc_floor, 0.85 if error <= 0.0 else 0.95)
 
-        try:
-            budget = float(state.get("budget", 0.0) or 0.0)
-        except Exception:
-            budget = 0.0
-        if not math.isfinite(budget) or budget < 0.0:
-            budget = 0.0
         if budget > 0.0:
             if concurrency >= 1.8 * budget:
                 alloc_floor = max(alloc_floor, 0.90)
@@ -141,7 +147,12 @@ class Optimizer:
         if safe_streak >= 60:
             alloc_floor = min(alloc_floor, 0.45)
         if float(slo_limit) <= tight_slo_ms:
-            alloc_floor = max(alloc_floor, 0.80)
+            safe_relax = False
+            if budget > 0.0:
+                safe_relax = (safe_streak >= 20 and error <= -20.0 and backlog <= 0.8 * budget and uncertainty <= 15.0)
+            else:
+                safe_relax = (safe_streak >= 20 and error <= -20.0 and backlog <= 8.0 and uncertainty <= 15.0)
+            alloc_floor = max(alloc_floor, 0.65 if safe_relax else 0.80)
         
         server_pred_prev = server_pred
         if safety_target > 1.0:
