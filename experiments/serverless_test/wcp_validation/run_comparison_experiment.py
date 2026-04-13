@@ -57,7 +57,7 @@ def _pctl(values, p):
     except Exception:
         return 0.0
 
-def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=30, sample_requests=150, budget=10, include_cold_start=True):
+def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=30, sample_requests=150, budget=10, include_cold_start=True, percentile=90.0):
     budget = int(budget) if int(budget) > 0 else 10
 
     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='static_1.0', reset_state=True)
@@ -75,14 +75,15 @@ def calibrate_qos_threshold(task_name, factor=1.2, warmup_requests=30, sample_re
         cal_success = [r for r in success if not bool(r.get('is_cold_start', False))]
         if not cal_success:
             cal_success = success
-    base_p90_e2e = _p90([r.get('e2e_latency', 0.0) for r in cal_success])
-    base_p90_srv = _p90([r.get('server_latency', 0.0) for r in cal_success])
+    base_e2e = _pctl([r.get('e2e_latency', 0.0) for r in cal_success], percentile)
+    base_srv = _pctl([r.get('server_latency', 0.0) for r in cal_success], percentile)
 
-    qos_e2e = float(max(1.0, base_p90_e2e * float(factor)))
-    qos_srv = float(max(1.0, base_p90_srv * float(factor)))
+    qos_e2e = float(max(1.0, base_e2e * float(factor)))
+    qos_srv = float(max(1.0, base_srv * float(factor)))
     return {
-        "base_p90_e2e_ms": float(base_p90_e2e),
-        "base_p90_srv_ms": float(base_p90_srv),
+        "calibration_percentile": float(percentile),
+        "base_pXX_e2e_ms": float(base_e2e),
+        "base_pXX_srv_ms": float(base_srv),
         "qos_e2e_ms": float(qos_e2e),
         "qos_srv_ms": float(qos_srv)
     }
@@ -132,7 +133,7 @@ def _compact_arrivals(arrival_times, speedup=60.0):
         out.append(x / speedup)
     return out
 
-def calibrate_qos_threshold_on_azure_trace(task_name, trace_file, app_id, func_id, day, start_min, duration_min, scale, factor=1.2, warmup_requests=30, sample_requests=150, budget=10, include_cold_start=True):
+def calibrate_qos_threshold_on_azure_trace(task_name, trace_file, app_id, func_id, day, start_min, duration_min, scale, factor=1.2, warmup_requests=30, sample_requests=150, budget=10, include_cold_start=True, percentile=90.0):
     budget = int(budget) if int(budget) > 0 else 10
     invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='static_1.0', reset_state=True)
 
@@ -149,7 +150,7 @@ def calibrate_qos_threshold_on_azure_trace(task_name, trace_file, app_id, func_i
     )
     arrival_times = generate_trace_arrivals(second_rates, base_rps=1.0)
     if not arrival_times:
-        return calibrate_qos_threshold(task_name, factor=factor, warmup_requests=warmup_requests, sample_requests=sample_requests, budget=budget, include_cold_start=include_cold_start)
+        return calibrate_qos_threshold(task_name, factor=factor, warmup_requests=warmup_requests, sample_requests=sample_requests, budget=budget, include_cold_start=include_cold_start, percentile=percentile)
 
     warm_arrivals = _subsample_arrivals(arrival_times, int(warmup_requests), offset=0)
     sample_arrivals = _subsample_arrivals(arrival_times, int(sample_requests), offset=max(0, len(arrival_times) // 4))
@@ -166,14 +167,15 @@ def calibrate_qos_threshold_on_azure_trace(task_name, trace_file, app_id, func_i
         cal_success = [r for r in success if not bool(r.get('is_cold_start', False))]
         if not cal_success:
             cal_success = success
-    base_p90_e2e = _p90([r.get('e2e_latency', 0.0) for r in cal_success])
-    base_p90_srv = _p90([r.get('server_latency', 0.0) for r in cal_success])
+    base_e2e = _pctl([r.get('e2e_latency', 0.0) for r in cal_success], percentile)
+    base_srv = _pctl([r.get('server_latency', 0.0) for r in cal_success], percentile)
 
-    qos_e2e = float(max(1.0, base_p90_e2e * float(factor)))
-    qos_srv = float(max(1.0, base_p90_srv * float(factor)))
+    qos_e2e = float(max(1.0, base_e2e * float(factor)))
+    qos_srv = float(max(1.0, base_srv * float(factor)))
     return {
-        "base_p90_e2e_ms": float(base_p90_e2e),
-        "base_p90_srv_ms": float(base_p90_srv),
+        "calibration_percentile": float(percentile),
+        "base_pXX_e2e_ms": float(base_e2e),
+        "base_pXX_srv_ms": float(base_srv),
         "qos_e2e_ms": float(qos_e2e),
         "qos_srv_ms": float(qos_srv)
     }
@@ -1922,6 +1924,7 @@ def parse_args():
     parser.add_argument("--pareto_min_allocs", type=str, default="0.4,0.5,0.6,0.7,0.8,0.9")
     parser.add_argument("--include_baselines_in_pareto", type=int, default=1)
     parser.add_argument("--qos_factor", type=float, default=1.2)
+    parser.add_argument("--calibration_percentile", type=float, default=90.0)
     parser.add_argument("--calibration_include_cold_start", type=int, default=0)
     parser.add_argument("--server_slo_ms", type=float, default=0.0)
     parser.add_argument("--e2e_slo_ms", type=float, default=0.0)
@@ -2232,6 +2235,7 @@ if __name__ == "__main__":
                 sample_requests=150,
                 budget=_BUDGET,
                 include_cold_start=include_cold,
+                percentile=float(args.calibration_percentile),
             )
         else:
             cal = calibrate_qos_threshold(
@@ -2241,6 +2245,7 @@ if __name__ == "__main__":
                 sample_requests=150,
                 budget=_BUDGET,
                 include_cold_start=include_cold,
+                percentile=float(args.calibration_percentile),
             )
         SERVER_SLO_MS = float(cal["qos_srv_ms"])
         E2E_SLO_MS = float(cal["qos_e2e_ms"])
@@ -2250,7 +2255,10 @@ if __name__ == "__main__":
         else:
             cal_info["mode"] = "auto_with_cold" if include_cold else "auto_warm_only"
         cal_tag = "with_cold" if include_cold else "warm_only"
-        print(f">>> QoS Thresholds (auto/{cal_tag}): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
+        pxx = float(cal.get("calibration_percentile", 90.0) or 90.0)
+        base_srv = float(cal.get("base_pXX_srv_ms", 0.0) or 0.0)
+        base_e2e = float(cal.get("base_pXX_e2e_ms", 0.0) or 0.0)
+        print(f">>> QoS Thresholds (auto/{cal_tag}): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP{pxx:.0f}: Srv={base_srv:.1f}ms, E2E={base_e2e:.1f}ms)")
     
     baselines = [x.strip() for x in str(args.baselines).split(',') if x.strip()]
 
