@@ -1961,6 +1961,7 @@ def parse_args():
     parser.add_argument("--replay_speedup", type=float, default=1.0)
     parser.add_argument("--paper_mode", type=int, default=1)
     parser.add_argument("--paper_qos_metric", type=str, default="e2e")
+    parser.add_argument("--strategies", type=str, default="static,mpc_integrated")
     parser.add_argument("--report_dir", type=str, default="")
     parser.add_argument("--report_tag", type=str, default="")
     parser.add_argument("--plot_reports", type=str, default="")
@@ -2252,17 +2253,25 @@ if __name__ == "__main__":
         print(f">>> QoS Thresholds (auto/{cal_tag}): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
     
     baselines = [x.strip() for x in str(args.baselines).split(',') if x.strip()]
-    static_allocs = []
-    for seg in str(args.static_allocs).split(','):
-        seg = seg.strip()
-        if not seg:
-            continue
-        try:
-            static_allocs.append(float(seg))
-        except Exception:
-            pass
-    if int(args.paper_mode) == 1:
-        static_allocs = [u for u in static_allocs if u >= 0.8]
+    
+    # Override baselines if --strategies is provided
+    user_strategies = [x.strip() for x in str(args.strategies).split(',') if x.strip()]
+    if "--strategies" in sys.argv:
+        # If user explicitly provided --strategies, we map it to our internal logic
+        baselines = []
+        if "hpa" in user_strategies: baselines.append("hpa")
+        if "aws_tt" in user_strategies: baselines.append("aws_tt")
+        if any(s.startswith("static") for s in user_strategies):
+            baselines.append("static")
+            # If user specified static_0.80 etc, update static_allocs
+            specific_statics = [float(s.split("_")[1]) for s in user_strategies if s.startswith("static_")]
+            if specific_statics:
+                static_allocs = specific_statics
+        
+        # We handle 'mpc_integrated' separately in the loop below, 
+        # but we need to make sure the loop runs.
+    
+    static_allocs = sorted(list(set(static_allocs)))
     pareto_mins = []
     for seg in str(args.pareto_min_allocs).split(','):
         seg = seg.strip()
@@ -2415,7 +2424,7 @@ if __name__ == "__main__":
                         run_phase('mpc_integrated', warm_up=True, max_workers=warm_workers, num_requests=phase_warmup_n, max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP)
                     res, _ = run_phase('mpc_integrated', max_workers=args.workers, arrival_times=arrival_times, arrival_rate=float(rps), max_inflight=max_inflight, replay_speedup=_REPLAY_SPEEDUP, second_rates=second_rates)
                     results_by_name[name] = res
-            else:
+            elif "mpc_integrated" in user_strategies or "mpc" in user_strategies:
                 print(f"\n--- Running MPC-Guard (Ours) ---")
                 invoke_worker_lambda(decision={}, task={"id": "reset"}, mode='auto', strategy='mpc_integrated', reset_state=True)
                 if do_phase_warmup:
