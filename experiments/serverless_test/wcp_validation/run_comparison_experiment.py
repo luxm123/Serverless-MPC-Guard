@@ -2253,24 +2253,39 @@ if __name__ == "__main__":
         print(f">>> QoS Thresholds (auto/{cal_tag}): Server={SERVER_SLO_MS:.1f}ms, E2E={E2E_SLO_MS:.1f}ms (BaseP90: Srv={cal['base_p90_srv_ms']:.1f}ms, E2E={cal['base_p90_e2e_ms']:.1f}ms)")
     
     baselines = [x.strip() for x in str(args.baselines).split(',') if x.strip()]
-    
-    # Override baselines if --strategies is provided
+
+    static_allocs = []
+    for seg in str(args.static_allocs).split(','):
+        seg = seg.strip()
+        if not seg:
+            continue
+        try:
+            static_allocs.append(float(seg))
+        except Exception:
+            pass
+    if int(args.paper_mode) == 1:
+        static_allocs = [u for u in static_allocs if u >= 0.8]
+
     user_strategies = [x.strip() for x in str(args.strategies).split(',') if x.strip()]
     if "--strategies" in sys.argv:
-        # If user explicitly provided --strategies, we map it to our internal logic
         baselines = []
-        if "hpa" in user_strategies: baselines.append("hpa")
-        if "aws_tt" in user_strategies: baselines.append("aws_tt")
+        if "hpa" in user_strategies:
+            baselines.append("hpa")
+        if "aws_tt" in user_strategies:
+            baselines.append("aws_tt")
         if any(s.startswith("static") for s in user_strategies):
             baselines.append("static")
-            # If user specified static_0.80 etc, update static_allocs
-            specific_statics = [float(s.split("_")[1]) for s in user_strategies if s.startswith("static_")]
+            specific_statics = []
+            for s in user_strategies:
+                if not s.startswith("static_"):
+                    continue
+                try:
+                    specific_statics.append(float(s.split("_", 1)[1]))
+                except Exception:
+                    continue
             if specific_statics:
                 static_allocs = specific_statics
-        
-        # We handle 'mpc_integrated' separately in the loop below, 
-        # but we need to make sure the loop runs.
-    
+
     static_allocs = sorted(list(set(static_allocs)))
     pareto_mins = []
     for seg in str(args.pareto_min_allocs).split(','):
