@@ -4,6 +4,7 @@ import random
 import math
 import sys
 import os
+import gc
 
 # 动态添加路径以便加载 benchmarks 中的函数
 # 注意：在 Lambda 运行环境中，benchmarks/function_bench 被打包在 function_bench 目录下
@@ -233,6 +234,14 @@ def lambda_handler(event, context):
     scheduling_overhead_ms = (time.time() - scheduling_start) * 1000.0
     debug_info['scheduling_overhead_ms'] = scheduling_overhead_ms
 
+    gc_was_enabled = False
+    try:
+        gc_was_enabled = bool(gc.isenabled())
+        if gc_was_enabled:
+            gc.disable()
+    except Exception:
+        gc_was_enabled = False
+
     start_time = time.time()
     
     # v54.2: 人为增加冷启动惩罚，模拟生产环境下的初始化开销
@@ -322,6 +331,11 @@ def lambda_handler(event, context):
     
     end_time = time.time()
     latency_ms = (end_time - start_time) * 1000.0
+    try:
+        if gc_was_enabled and (not gc.isenabled()):
+            gc.enable()
+    except Exception:
+        pass
 
     # --- 3. 反馈更新 (Feedback Loop) ---
     if _MIDDLEWARE and strategy in ['mpc_integrated', 'gsight', 'owl', 'ours_basic', 'passive_prewarm']:
