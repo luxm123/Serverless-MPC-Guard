@@ -118,31 +118,31 @@ class Optimizer:
         state['safe_streak'] = safe_streak
 
         if pred_total <= (safety_target - 30.0):
-            alloc_floor = 0.30
+            alloc_floor = 0.60
         elif pred_total >= safety_target:
-            alloc_floor = 0.50
+            alloc_floor = 0.80
         else:
-            alloc_floor = 0.30 + 0.20 * ((pred_total - (safety_target - 30.0)) / 30.0)
+            alloc_floor = 0.60 + 0.20 * ((pred_total - (safety_target - 30.0)) / 30.0)
 
         if budget > 0.0:
             if concurrency >= 1.8 * budget:
-                alloc_floor = max(alloc_floor, 0.90)
+                alloc_floor = max(alloc_floor, 0.95)
             elif concurrency >= 1.2 * budget:
-                alloc_floor = max(alloc_floor, 0.75)
+                alloc_floor = max(alloc_floor, 0.90)
             elif concurrency >= 0.6 * budget:
-                alloc_floor = max(alloc_floor, 0.60)
+                alloc_floor = max(alloc_floor, 0.80)
         else:
             if concurrency >= 180.0:
-                alloc_floor = max(alloc_floor, 0.90)
+                alloc_floor = max(alloc_floor, 0.95)
             elif concurrency >= 120.0:
-                alloc_floor = max(alloc_floor, 0.75)
+                alloc_floor = max(alloc_floor, 0.90)
             elif concurrency >= 60.0:
-                alloc_floor = max(alloc_floor, 0.60)
+                alloc_floor = max(alloc_floor, 0.80)
 
         if safe_streak >= 30:
-            alloc_floor = min(alloc_floor, 0.50)
+            alloc_floor = min(alloc_floor, 0.80)
         if safe_streak >= 60:
-            alloc_floor = min(alloc_floor, 0.45)
+            alloc_floor = min(alloc_floor, 0.75)
         if float(slo_limit) <= tight_slo_ms:
             safe_relax = False
             if budget > 0.0:
@@ -150,7 +150,7 @@ class Optimizer:
             else:
                 safe_relax = (safe_streak >= 20 and error <= -20.0 and backlog <= 8.0 and uncertainty <= 15.0)
             if safe_relax:
-                alloc_floor = min(alloc_floor, 0.50)
+                alloc_floor = min(alloc_floor, 0.75)
         
         server_pred_prev = server_pred
         if safety_target > 1.0:
@@ -162,18 +162,16 @@ class Optimizer:
 
         if error > 0.0:
             target_alloc = max(prev_u, u_req)
-            lr = 0.75 if concurrency >= 60.0 else 0.65
+            lr = 0.65 if concurrency >= 60.0 else 0.55
         else:
             target_alloc = min(prev_u, u_req)
-            lr = 0.45 if concurrency >= 30.0 else 0.38
+            lr = 0.28 if concurrency >= 30.0 else 0.22
 
         target_alloc = float(max(alloc_floor, min_alloc, min(max_alloc, target_alloc)))
         new_alloc = float(prev_u + lr * (target_alloc - prev_u))
 
-        if server_pred >= (safety_target - 5.0) and new_alloc < prev_u:
-            # Allow small reductions even near safety target, but limit them
-            max_reduction_near_target = 0.02
-            new_alloc = max(new_alloc, prev_u - max_reduction_near_target)
+        if server_pred >= (safety_target - 10.0) and new_alloc < prev_u:
+            new_alloc = prev_u
         
         # Safety Clamps & Adaptive Bounds
         emergency_margin = max(20.0, 0.3 * float(slo_limit))
@@ -182,9 +180,9 @@ class Optimizer:
         elif new_alloc < prev_u:
             # Efficiency gain: allow down-scaling
             if concurrency < 30.0:
-                max_reduction = 0.15 if error < -50.0 else 0.10
+                max_reduction = 0.08 if error < -50.0 else 0.04
             else:
-                max_reduction = 0.15 if error < -40.0 else 0.08
+                max_reduction = 0.08 if error < -40.0 else 0.04
             new_alloc = max(new_alloc, prev_u - max_reduction)
         else:
             # QoS protection: allow up-scaling
