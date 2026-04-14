@@ -130,12 +130,28 @@ class Optimizer:
             safe_streak = max(0, safe_streak - 1)
         state['safe_streak'] = safe_streak
 
+        try:
+            floor_min = float(state.get('alloc_floor_min', 0.0) or 0.0)
+        except Exception:
+            floor_min = 0.0
+        if not math.isfinite(floor_min) or floor_min <= 0.0:
+            floor_min = 0.35
+        floor_min = float(max(0.0, min(max_alloc, floor_min)))
+
+        try:
+            floor_max = float(state.get('alloc_floor_max', 0.0) or 0.0)
+        except Exception:
+            floor_max = 0.0
+        if not math.isfinite(floor_max) or floor_max <= 0.0:
+            floor_max = 0.75
+        floor_max = float(max(floor_min, min(max_alloc, floor_max)))
+
         if pred_total <= relax_low:
-            alloc_floor = 0.60
+            alloc_floor = floor_min
         elif pred_total >= safety_target:
-            alloc_floor = 0.80
+            alloc_floor = floor_max
         else:
-            alloc_floor = 0.60 + 0.20 * ((pred_total - relax_low) / relax_band_ms)
+            alloc_floor = floor_min + (floor_max - floor_min) * ((pred_total - relax_low) / relax_band_ms)
 
         if budget > 0.0:
             if concurrency >= 1.8 * budget:
@@ -153,9 +169,9 @@ class Optimizer:
                 alloc_floor = max(alloc_floor, 0.80)
 
         if safe_streak >= 30:
-            alloc_floor = min(alloc_floor, 0.80)
+            alloc_floor = min(alloc_floor, max(floor_min, floor_max - 0.05))
         if safe_streak >= 60:
-            alloc_floor = min(alloc_floor, 0.75)
+            alloc_floor = min(alloc_floor, max(floor_min, floor_max - 0.10))
         if float(slo_limit) <= tight_slo_ms:
             safe_relax = False
             if budget > 0.0:
@@ -163,7 +179,7 @@ class Optimizer:
             else:
                 safe_relax = (safe_streak >= 20 and error <= -20.0 and backlog <= 8.0 and uncertainty <= 15.0)
             if safe_relax:
-                alloc_floor = min(alloc_floor, 0.75)
+                alloc_floor = min(alloc_floor, max(floor_min, floor_max - 0.10))
         
         server_pred_prev = server_pred
         if safety_target > 1.0:
@@ -214,6 +230,8 @@ class Optimizer:
             "e2e_overhead_ms": overhead_ms,
             "relax_band_ms": relax_band_ms,
             "safe_band_ms": safe_band_ms,
+            "alloc_floor_min": floor_min,
+            "alloc_floor_max": floor_max,
             "alloc_floor": alloc_floor,
             "min_alloc": min_alloc,
             "max_alloc": max_alloc,
