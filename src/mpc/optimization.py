@@ -111,18 +111,31 @@ class Optimizer:
         min_alloc = float(max(0.0, min(max_alloc, min_alloc)))
 
         safe_streak = int(state.get('safe_streak', 0))
-        if pred_total <= (safety_target - 35.0) and obs_total <= (safety_target - 35.0) and uncertainty <= 15.0:
+
+        try:
+            relax_band_ms = float(state.get('relax_band_ms', 0.0) or 0.0)
+        except Exception:
+            relax_band_ms = 0.0
+        if not math.isfinite(relax_band_ms) or relax_band_ms <= 0.0:
+            relax_band_ms = max(8.0, min(35.0, 0.15 * float(slo_limit)))
+        relax_band_ms = float(max(4.0, min(60.0, relax_band_ms)))
+        safe_band_ms = float(max(relax_band_ms, min(45.0, relax_band_ms + max(5.0, 0.03 * float(slo_limit)))))
+
+        safe_low = float(safety_target - safe_band_ms)
+        relax_low = float(safety_target - relax_band_ms)
+
+        if pred_total <= safe_low and obs_total <= safe_low and uncertainty <= 15.0:
             safe_streak += 1
         else:
             safe_streak = max(0, safe_streak - 1)
         state['safe_streak'] = safe_streak
 
-        if pred_total <= (safety_target - 30.0):
+        if pred_total <= relax_low:
             alloc_floor = 0.60
         elif pred_total >= safety_target:
             alloc_floor = 0.80
         else:
-            alloc_floor = 0.60 + 0.20 * ((pred_total - (safety_target - 30.0)) / 30.0)
+            alloc_floor = 0.60 + 0.20 * ((pred_total - relax_low) / relax_band_ms)
 
         if budget > 0.0:
             if concurrency >= 1.8 * budget:
@@ -199,6 +212,8 @@ class Optimizer:
             "pred_total": pred_total,
             "obs_total": obs_total,
             "e2e_overhead_ms": overhead_ms,
+            "relax_band_ms": relax_band_ms,
+            "safe_band_ms": safe_band_ms,
             "alloc_floor": alloc_floor,
             "min_alloc": min_alloc,
             "max_alloc": max_alloc,

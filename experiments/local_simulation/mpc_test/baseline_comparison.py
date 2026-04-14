@@ -32,10 +32,17 @@ def run_experiment(mode='mpc', duration_sec=30):
     
     # System State for MPC
     system_state = {
-        'congestion_price': 0.0,
-        'mpc_stats': {'n': 0, 'sum': [0.0, 0.0], 'sum_sq': [0.0, 0.0]},
-        'p90_latency': 150.0,
-        'cpu_util': 0.5
+        'last_alloc': 1.0,
+        'p90_belief': 150.0,
+        'uncertainty': 20.0,
+        'last_y': 150.0,
+        'slo_limit': 200.0,
+        'e2e_overhead_ms': 0.0,
+        'concurrency': 1.0,
+        'backlog': 1.0,
+        'budget': 0.0,
+        'min_alloc': 0.0,
+        'max_alloc': 4.0
     }
 
     while time.time() - start_time < duration_sec:
@@ -45,18 +52,12 @@ def run_experiment(mode='mpc', duration_sec=30):
         # --- Decision Making ---
         if mode == 'mpc':
             # Full MPC Logic
+            system_state['slo_limit'] = float(task.get('slo', system_state.get('slo_limit', 200.0)))
             result = controller.decide(task, wcp_constraints, system_state)
             decision = {
                 'should_shed': result['decision']['should_shed'],
                 'resource_alloc': result['decision']['resource_alloc']
             }
-            # Feedback Loop (Part III) - Update Weights based on prev step metrics
-            # (Simplified: Just pass env stats directly)
-            sim_metrics = {
-                'slo_violation_rate': env.stats['slo_violations'] / max(1, env.stats['total_tasks']),
-                'resource_waste_rate': env.stats['resource_waste'] / max(1, env.stats['total_tasks'])
-            }
-            controller.update_feedback(sim_metrics)
             
         elif mode == 'static':
             # Static Priority Logic: High gets 1.0, Med 0.8, Low 0.5
@@ -74,8 +75,15 @@ def run_experiment(mode='mpc', duration_sec=30):
         obs = env.step(task, decision)
         
         # Update System State for next step
-        system_state['congestion_price'] = obs['congestion_price']
-        system_state['cpu_util'] = obs['cpu_util']
+        try:
+            last_y = float(obs.get('latency', 0.0) or 0.0)
+        except Exception:
+            last_y = 0.0
+        if last_y > 0.0:
+            prev_p90 = float(system_state.get('p90_belief', last_y) or last_y)
+            system_state['p90_belief'] = 0.9 * prev_p90 + 0.1 * last_y
+            system_state['last_y'] = last_y
+        system_state['last_alloc'] = float(decision.get('resource_alloc', system_state.get('last_alloc', 1.0)))
         
         # Simulate time step
         # time.sleep(0.001) # Optional for real-time feel, but skip for speed

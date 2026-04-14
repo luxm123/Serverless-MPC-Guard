@@ -25,7 +25,7 @@ _SRV_LAT_EMA_MS = {}
 _SRV_LAT_LOCK = threading.Lock()
 _MPC_MIN_ALLOC_LOCK = threading.Lock()
 _MPC_MIN_ALLOC = 0.0
-_MAX_ALLOC = 1.0
+_MAX_ALLOC = 4.0
 _BUDGET = 10
 _UNC_SCALE = 1.0
 _TIGHT_SLO_MS = 80.0
@@ -1933,7 +1933,7 @@ def parse_args():
     parser.add_argument("--phase_warmup_requests", type=int, default=50)
     parser.add_argument("--cpu_scale_exp", type=float, default=0.85)
     parser.add_argument("--mpc_state_mode", type=str, default="dynamodb")
-    parser.add_argument("--max_alloc", type=float, default=1.0)
+    parser.add_argument("--max_alloc", type=float, default=4.0)
     parser.add_argument("--unc_scale", type=float, default=1.0)
     parser.add_argument("--tight_slo_ms", type=float, default=80.0)
     parser.add_argument("--azure_trace_file", type=str, default="")

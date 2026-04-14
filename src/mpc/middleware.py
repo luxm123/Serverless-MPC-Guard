@@ -31,6 +31,40 @@ class MPCMiddleware:
         self.controller = MPCController()
         self._state_mode = str(os.environ.get("MPC_STATE_MODE", "dynamodb") or "dynamodb").strip().lower()
 
+    def _json_safe(self, obj, depth=0):
+        if depth >= 6:
+            return None
+        if obj is None:
+            return None
+        if isinstance(obj, (bool, str)):
+            return obj
+        if isinstance(obj, (int, float)):
+            x = float(obj)
+            if not math.isfinite(x):
+                return 0.0
+            return x
+        if isinstance(obj, dict):
+            out = {}
+            for k, v in obj.items():
+                try:
+                    ks = str(k)
+                except Exception:
+                    continue
+                out[ks] = self._json_safe(v, depth=depth + 1)
+            return out
+        if isinstance(obj, (list, tuple)):
+            return [self._json_safe(v, depth=depth + 1) for v in obj]
+        try:
+            x = float(obj)
+            if math.isfinite(x):
+                return x
+            return 0.0
+        except Exception:
+            try:
+                return str(obj)
+            except Exception:
+                return None
+
     def _finite_float(self, val, default):
         try:
             x = float(val)
@@ -50,7 +84,7 @@ class MPCMiddleware:
 
     def _sanitize_params(self, params):
         if not isinstance(params, dict):
-            return params
+            return self._json_safe(params)
         out = dict(params)
         out['last_alloc'] = self._finite_float(out.get('last_alloc', 1.0), 1.0)
         out['p90_belief'] = self._clamp_ms(out.get('p90_belief', 110.0), 1.0, 500.0, 110.0)
@@ -63,6 +97,8 @@ class MPCMiddleware:
             out['safe_streak'] = 0
         if out['safe_streak'] < 0:
             out['safe_streak'] = 0
+        for k in list(out.keys()):
+            out[k] = self._json_safe(out.get(k), depth=0)
         return out
 
     def _load_state(self):
