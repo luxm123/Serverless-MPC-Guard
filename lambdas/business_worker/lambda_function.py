@@ -231,6 +231,26 @@ def lambda_handler(event, context):
             'strategy': strategy,
             'version': 'STATIC_ALLOC'
         }
+    elif strategy == 'oracle':
+        # Oracle: 预计算的最优分配（来自 controller 的决策）
+        # 与 static 类似，但分配值由 controller 动态注入
+        oracle_alloc = 1.0
+        try:
+            # 从 decision 或根级别获取预计算的分配
+            if decision and 'resource_alloc' in decision:
+                oracle_alloc = float(decision.get('resource_alloc', 1.0))
+            else:
+                oracle_alloc = float(event.get('resource_alloc', 1.0))
+        except Exception:
+            oracle_alloc = 1.0
+        cpu_limit = float(max(0.40, min(max_alloc, oracle_alloc)))
+        debug_info = {
+            'resource_alloc': cpu_limit,
+            'prev_alloc': current_alloc if 'current_alloc' in locals() else cpu_limit,
+            'new_alloc': cpu_limit,
+            'strategy': 'oracle',
+            'version': 'ORACLE_OPTIMAL'
+        }
     scheduling_overhead_ms = (time.time() - scheduling_start) * 1000.0
     debug_info['scheduling_overhead_ms'] = scheduling_overhead_ms
 
